@@ -4,6 +4,7 @@ mod config;
 mod conversation;
 mod hooks;
 mod layout;
+mod lsp;
 mod markdown;
 mod pipeline;
 mod provider;

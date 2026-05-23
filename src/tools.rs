@@ -36,6 +36,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(PlanTool),
         Box::new(GoalTool),
         Box::new(ChoiceTool),
+        Box::new(LspDiagnostics),
     ]
 }
 
@@ -968,5 +969,48 @@ impl Tool for ChoiceTool {
         let list: String = opts.iter().enumerate().map(|(i, o)| format!("  {}. {}\n", i + 1, o)).collect();
         let prompt = format!("Choose ({mode}):\n{list}\nReply with the number(s) of your choice.");
         ToolResult { tool_call_id: String::new(), content: prompt, is_error: false }
+    }
+}
+
+// ── LSP Diagnostics tool ──
+
+pub struct LspDiagnostics;
+
+#[async_trait::async_trait]
+impl Tool for LspDiagnostics {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "diagnostics".into(),
+                description: "Run language-specific linter/checker on the workspace. Detects Rust, Python, JS/TS, Go automatically. Reports errors and warnings.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, _arguments: &str) -> ToolResult {
+        let langs = crate::lsp::detect_language(workspace);
+        if langs.is_empty() {
+            return ToolResult { tool_call_id: String::new(), content: "No supported language detected in workspace.".into(), is_error: true };
+        }
+        let mut out = String::new();
+        for lang in &langs {
+            match crate::lsp::run_diagnostics(workspace, lang) {
+                Ok(diag) => {
+                    if !diag.trim().is_empty() {
+                        out.push_str(&format!("[{lang}]\n{diag}\n"));
+                    } else {
+                        out.push_str(&format!("[{lang}] No issues found.\n"));
+                    }
+                }
+                Err(e) => out.push_str(&format!("[{lang}] {e}\n")),
+            }
+        }
+        ToolResult { tool_call_id: String::new(), content: if out.is_empty() { "No diagnostics available.".into() } else { out }, is_error: false }
     }
 }
