@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph, Wrap};
 
 // ═══ Draw ═══
 
@@ -40,11 +40,27 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     }
     let bottom = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(input_h)].into_iter().chain(std::iter::repeat(Constraint::Length(1)).take(hint_count)).chain(std::iter::once(Constraint::Length(1))).collect::<Vec<_>>()).split(chunks[1]);
     draw_input(f, bottom[0], app);
-    // Render toasts (top-right)
+    // Render toasts at top-center (stacked vertically)
+    let mut toast_y = 0u16;
     for toast in &app.toasts {
-        if !toast.is_expired() { toast.render(f, area); }
+        if !toast.is_expired() {
+            let w = (toast.message.len() as u16 + 4).min(area.width - 4);
+            let x = (area.width - w) / 2;
+            let r = Rect { x: area.x + x, y: area.y + toast_y, width: w, height: 3 };
+            toast_y += 3;
+            let color = match toast.level {
+                crate::board::ToastLevel::Info => Color::Cyan,
+                crate::board::ToastLevel::Warn => Color::Yellow,
+                crate::board::ToastLevel::Error => Color::Red,
+            };
+            let block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(color));
+            f.render_widget(Paragraph::new(toast.message.as_str()).block(block), r);
+        }
     }
     app.toasts.retain(|t| !t.is_expired());
+    // Progress bar at top-right
+    app.progress.render(f, area);
     // Render confirm dialog
     app.confirm.render(f, area);
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {

@@ -398,3 +398,31 @@ impl Board {
             .render(f, area, Text::from(lines));
     }
 }
+
+// ── ProgressBoard ──
+
+#[derive(Default)]
+#[allow(dead_code)]
+pub struct ProgressBoard {
+    pub label: String,
+    pub progress: f32,
+    pub visible: bool,
+}
+
+impl ProgressBoard {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self { label: label.into(), progress: 0.0, visible: false }
+    }
+
+    pub fn render(&self, f: &mut Frame, area: Rect) {
+        if !self.visible { return; }
+        let w = 30u16.min(area.width - 4);
+        let bar_w = w.saturating_sub(2) as usize;
+        let filled = (self.progress * bar_w as f32) as usize;
+        let bar = format!("[{}{}]", "█".repeat(filled), " ".repeat(bar_w.saturating_sub(filled)));
+        let r = Rect { x: area.x + area.width - w - 2, y: area.y + 1, width: w, height: 3 };
+        let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+            .title(self.label.as_str()).border_style(Style::default().fg(Color::Cyan));
+        f.render_widget(Paragraph::new(bar).block(block), r);
+    }
+}

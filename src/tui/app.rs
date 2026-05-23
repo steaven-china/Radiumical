@@ -40,6 +40,7 @@ pub struct App {
     pub model_board: crate::board::BoardState,
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
+    pub progress: crate::board::ProgressBoard,
     pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
     pub selection: Option<(usize, usize)>,
@@ -70,6 +71,7 @@ impl App {
             model_picker: crate::board::ListBoard::new(" Models "),
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
+            progress: crate::board::ProgressBoard::new("Working"),
             available_models: vec![config.model.clone()],
             selection: None, selecting: false,
         }
@@ -299,8 +301,11 @@ impl App {
             UiEvent::LlmReasoning(rc) => { if let Some(last) = self.output.last_mut() { if last.starts_with("\x01") { last.push_str(&rc); return; } } self.output.push(format!("\x01{}", rc)); }
             UiEvent::ThinkingTick => { if !self.thinking { self.thinking_start = Instant::now(); } self.thinking = true; }
             UiEvent::LlmDone => { if self.output.last().map_or(true, |l| !l.is_empty()) { self.output.push(String::new()); } }
-            UiEvent::ToolStart { name, index, total, args } => { let w = 56usize; let header = if total > 1 { format!("{} ({}/{})", name, index + 1, total) } else { name }; let fill = w.saturating_sub(header.len() + 2); self.output.push(format!("  ┌─ {header} {}", "─".repeat(fill))); let sa: String = args.chars().take(w.saturating_sub(2)).collect(); let dots = if args.chars().count() > w.saturating_sub(2) { "…" } else { "" }; self.output.push(format!("  │ {sa}{dots}")); }
-            UiEvent::ToolDone => { let w = 56usize; self.output.push(format!("  └{}┘", "─".repeat(w))); self.output.push(String::new()); }
+            UiEvent::ToolStart { name, index, total, args } => {
+                self.progress.visible = true;
+                self.progress.label = name.clone();
+                self.progress.progress = index as f32 / total.max(1) as f32; let w = 56usize; let header = if total > 1 { format!("{} ({}/{})", name, index + 1, total) } else { name }; let fill = w.saturating_sub(header.len() + 2); self.output.push(format!("  ┌─ {header} {}", "─".repeat(fill))); let sa: String = args.chars().take(w.saturating_sub(2)).collect(); let dots = if args.chars().count() > w.saturating_sub(2) { "…" } else { "" }; self.output.push(format!("  │ {sa}{dots}")); }
+            UiEvent::ToolDone => { let w = 56usize; self.output.push(format!("  └{}┘", "─".repeat(w))); self.output.push(String::new()); self.progress.visible = false; }
             UiEvent::Error(e) => { self.output.push(format!("  {e}")); self.thinking = false; }
             UiEvent::ThinkingDone => { self.thinking = false; }
         }
