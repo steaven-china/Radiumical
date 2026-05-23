@@ -45,6 +45,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
         if !toast.is_expired() { toast.render(f, area); }
     }
     app.toasts.retain(|t| !t.is_expired());
+    // Render confirm dialog
+    app.confirm.render(f, area);
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
         let selected = app.hint_selected == Some(hint_page_start + i);
         draw_hint_row(f, bottom[1 + i], n, d, selected);

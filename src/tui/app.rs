@@ -39,6 +39,7 @@ pub struct App {
     pub help_board: crate::board::BoardState,
     pub model_board: crate::board::BoardState,
     pub model_picker: crate::board::ListBoard,
+    pub confirm: crate::board::ConfirmBoard,
     pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
     pub selection: Option<(usize, usize)>,
@@ -68,6 +69,7 @@ impl App {
             model_board: crate::board::BoardState::new(" Models ", 30, 10, crate::board::Corner::BottomRight),
             model_picker: crate::board::ListBoard::new(" Models "),
             toasts: Vec::new(),
+            confirm: crate::board::ConfirmBoard::new("Are you sure?"),
             available_models: vec![config.model.clone()],
             selection: None, selecting: false,
         }
@@ -116,6 +118,7 @@ impl App {
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => { self.history_idx = None; self.input.insert(self.cursor, '\n'); self.cursor += 1; self.update_hints(); }
             (KeyCode::Enter, _) => {
+                if self.confirm.visible { if self.confirm.yes_selected { if self.confirm.message.contains("Exit") { self.should_quit = true; } else if self.confirm.message.contains("Clear") { self.output.clear(); self.input.clear(); self.cursor = 0; self.hints.clear(); self.scroll = 0.0; self.stick_to_bottom = true; } } self.confirm.visible = false; return; }
                 if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
                 // If hint selection active, confirm it instead of submitting
                 if let Some(idx) = self.hint_selected {
@@ -205,6 +208,7 @@ impl App {
             (KeyCode::Home, _) => { self.history_idx = None; self.cursor = 0; }
             (KeyCode::End, _) => { if self.input.is_empty() { self.stick_to_bottom = true; self.scroll = 0.0; } else { self.history_idx = None; self.cursor = self.input.len(); } }
             (KeyCode::Tab, _) => {
+                if self.confirm.visible { self.confirm.toggle(); return; }
                 if self.input.starts_with('/') {
                     if let Some(idx) = self.hint_selected {
                         let max = self.hints.len().saturating_sub(1);
@@ -221,7 +225,7 @@ impl App {
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
-            (KeyCode::Esc, _) => { if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
+            (KeyCode::Esc, _) => { if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
             _ => {}
         }
     }
