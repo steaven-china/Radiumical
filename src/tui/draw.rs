@@ -61,6 +61,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     app.toasts.retain(|t| !t.is_expired());
     // Progress bar at top-right
     app.progress.render(f, area);
+    // Dashboard (// toggle)
+    if app.show_dashboard { draw_dashboard(f, area, app); }
     // Render confirm dialog
     app.confirm.render(f, area);
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
@@ -148,6 +150,40 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     }
     let block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(Style::default().fg(Color::DarkGray));
     f.render_widget(Paragraph::new(Text::from(spans)).block(block).wrap(Wrap { trim: false }), area);
+}
+
+fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
+    let w = (area.width as f32 * 0.65) as u16;
+    let h = (area.height as f32 * 0.65) as u16;
+    let x = (area.width - w) / 2;
+    let y = (area.height - h) / 2;
+    let r = Rect { x: area.x + x, y: area.y + y, width: w, height: h };
+
+    let entries = vec![
+        ("//", "Close dashboard"),
+        ("/help", "Command list"),
+        ("/models", "Switch model"),
+        ("/settings", "View config"),
+        ("/session list", "Saved sessions"),
+        ("/think high", "Light reasoning"),
+        ("/think max", "Deep reasoning"),
+        ("/cod on", "Chain of Draft"),
+        ("/debug blocks", "Layout debug"),
+        ("Ctrl+O", "Toggle thinking"),
+        ("Ctrl+Shift+C", "Copy output"),
+        ("Esc", "Cancel / close"),
+    ];
+    let max_w = entries.iter().map(|(k,_)| k.len()).max().unwrap_or(10);
+    let lines: Vec<Line> = entries.iter().map(|(k, v)| {
+        Line::from(vec![
+            Span::styled(format!("  {k:<w$}", w = max_w), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("  {v}"), Style::default().fg(Color::Rgb(160, 160, 170))),
+        ])
+    }).collect();
+
+    let block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+        .title(" Dashboard ").border_style(Style::default().fg(Color::Cyan));
+    f.render_widget(Paragraph::new(Text::from(lines)).block(block), r);
 }
 
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {

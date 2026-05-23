@@ -41,6 +41,7 @@ pub struct App {
     pub model_board: crate::board::BoardState,
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
+    pub show_dashboard: bool,
     pub progress: crate::board::ProgressBoard,
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
@@ -73,6 +74,7 @@ impl App {
             model_picker: crate::board::ListBoard::new(" Models "),
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
+            show_dashboard: false,
             progress: crate::board::ProgressBoard::new("Working"),
             plan_board: crate::board::BoardState::new(" Plan ", 30, 8, crate::board::Corner::TopRight),
             available_models: vec![config.model.clone()],
@@ -123,6 +125,7 @@ impl App {
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => { self.history_idx = None; self.input.insert(self.cursor, '\n'); self.cursor += 1; self.update_hints(); }
             (KeyCode::Enter, _) => {
+                if self.input.trim() == "//" { self.show_dashboard = !self.show_dashboard; self.input.clear(); self.cursor = 0; return; }
                 if self.confirm.visible { if self.confirm.yes_selected { if self.confirm.message.contains("Exit") { self.should_quit = true; } else if self.confirm.message.contains("Clear") { self.output.clear(); self.input.clear(); self.cursor = 0; self.hints.clear(); self.scroll = 0.0; self.stick_to_bottom = true; } } self.confirm.visible = false; return; }
                 if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
                 // If hint selection active, confirm it instead of submitting
@@ -232,7 +235,7 @@ impl App {
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
-            (KeyCode::Esc, _) => { if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
+            (KeyCode::Esc, _) => { if self.show_dashboard { self.show_dashboard = false; return; } if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
             _ => {}
         }
     }
