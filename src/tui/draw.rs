@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph};
 
 // ═══ Draw ═══
 

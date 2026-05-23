@@ -34,6 +34,8 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(RunCommand),
         Box::new(TodoList),
         Box::new(PlanTool),
+        Box::new(GoalTool),
+        Box::new(ChoiceTool),
     ]
 }
 
@@ -860,5 +862,111 @@ impl Tool for PlanTool {
         }
 
         ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use set/done/list."), is_error: true }
+    }
+}
+
+// ── Goal tool ──
+
+fn goals() -> &'static Mutex<Vec<String>> {
+    static GOALS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    GOALS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub struct GoalTool;
+
+#[async_trait::async_trait]
+impl Tool for GoalTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "goal".into(),
+                description: "Set or view the current goal and sub-goals. Actions: 'set <goal>', 'add <sub-goal>', 'done <index>', 'list'. Use to decompose a task into goals, then work through them.".into(),
+                parameters: serde_json::json!({
+                    "type": "object", "properties": {
+                        "action": { "type": "string", "description": "Action: 'set <goal>', 'add <sub-goal>', 'done <index>', 'list'" }
+                    }, "required": ["action"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+        let mut g = goals().lock().unwrap();
+
+        if action == "list" || action.is_empty() {
+            if g.is_empty() { return ToolResult { tool_call_id: String::new(), content: "No goals set.".into(), is_error: false }; }
+            let list: String = g.iter().enumerate().map(|(i, t)| format!("  {}. {}\n", i + 1, t)).collect();
+            return ToolResult { tool_call_id: String::new(), content: list, is_error: false };
+        }
+
+        if let Some(goal) = action.strip_prefix("set ") {
+            g.clear(); g.push(goal.to_string());
+            return ToolResult { tool_call_id: String::new(), content: format!("Goal set: {goal}"), is_error: false };
+        }
+
+        if let Some(sub) = action.strip_prefix("add ") {
+            g.push(sub.to_string());
+            return ToolResult { tool_call_id: String::new(), content: format!("Added sub-goal #{}: {sub}", g.len()), is_error: false };
+        }
+
+        ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}"), is_error: true }
+    }
+}
+
+// ── Choice tool ──
+// Stores pending choices; the TUI picks them up via UiEvent::Choice
+
+
+static CHOICE_TX: OnceLock<Mutex<Option<tokio::sync::oneshot::Sender<String>>>> = OnceLock::new();
+
+pub fn take_choice_tx() -> Option<tokio::sync::oneshot::Sender<String>> {
+    CHOICE_TX.get_or_init(|| Mutex::new(None)).lock().unwrap().take()
+}
+
+pub struct ChoiceTool;
+
+#[async_trait::async_trait]
+impl Tool for ChoiceTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "choice".into(),
+                description: "Ask the user to pick from options. Choices format: 'single: opt1, opt2, opt3' or 'multi: opt1, opt2'. Blocks until user responds.".into(),
+                parameters: serde_json::json!({
+                    "type": "object", "properties": {
+                        "mode": { "type": "string", "description": "'single' or 'multi' or 'input'" },
+                        "options": { "type": "string", "description": "Comma-separated options (for single/multi), or prompt text (for input)" }
+                    }, "required": ["mode", "options"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let mode = args["mode"].as_str().unwrap_or("single");
+        let options = args["options"].as_str().unwrap_or("");
+
+        // For now, return the choice as plain text (TUI integration needs UiEvent plumbing)
+        if mode == "input" {
+            return ToolResult { tool_call_id: String::new(), content: format!("Prompt: {options}\n(Input not yet supported - reply with your answer)"), is_error: false };
+        }
+
+        let opts: Vec<&str> = options.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        if opts.is_empty() {
+            return ToolResult { tool_call_id: String::new(), content: "No options provided.".into(), is_error: true };
+        }
+
+        let list: String = opts.iter().enumerate().map(|(i, o)| format!("  {}. {}\n", i + 1, o)).collect();
+        let prompt = format!("Choose ({mode}):\n{list}\nReply with the number(s) of your choice.");
+        ToolResult { tool_call_id: String::new(), content: prompt, is_error: false }
     }
 }

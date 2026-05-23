@@ -3,7 +3,7 @@ use crate::types::{AgentMode, SessionConfig};
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::Rect;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // ═══ App ═══
 
