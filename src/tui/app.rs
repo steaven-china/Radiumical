@@ -42,6 +42,7 @@ pub struct App {
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
     pub show_dashboard: bool,
+    pub dashboard_idx: usize,
     pub progress: crate::board::ProgressBoard,
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
@@ -74,7 +75,7 @@ impl App {
             model_picker: crate::board::ListBoard::new(" Models "),
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
-            show_dashboard: false,
+            show_dashboard: false, dashboard_idx: 0,
             progress: crate::board::ProgressBoard::new("Working"),
             plan_board: crate::board::BoardState::new(" Plan ", 30, 8, crate::board::Corner::TopRight),
             available_models: vec![config.model.clone()],
@@ -95,6 +96,7 @@ impl App {
             (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_up(12.0); } }
             (KeyCode::PageDown, _) => { if self.hint_selected.is_some() { let max_page = self.hints.len().saturating_sub(1) / 8; self.hint_page = (self.hint_page + 1).min(max_page); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
             (KeyCode::Up, _) => {
+                if self.show_dashboard { self.dashboard_idx = self.dashboard_idx.saturating_sub(1); return; }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1).min(max));
@@ -109,6 +111,7 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
+                if self.show_dashboard { self.dashboard_idx = (self.dashboard_idx + 1).min(11); return; }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
                     let next = (self.hint_selected.unwrap_or(0) + 1).min(max);
@@ -128,6 +131,7 @@ impl App {
                 if self.input.trim() == "//" { self.show_dashboard = !self.show_dashboard; self.input.clear(); self.cursor = 0; return; }
                 if self.confirm.visible { if self.confirm.yes_selected { if self.confirm.message.contains("Exit") { self.should_quit = true; } else if self.confirm.message.contains("Clear") { self.output.clear(); self.input.clear(); self.cursor = 0; self.hints.clear(); self.scroll = 0.0; self.stick_to_bottom = true; } } self.confirm.visible = false; return; }
                 if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
+                if self.show_dashboard { self.exec_dashboard_item(); return; }
                 // If hint selection active, confirm it instead of submitting
                 if let Some(idx) = self.hint_selected {
                     if let Some((name, _)) = self.hints.get(idx) {
@@ -248,6 +252,16 @@ impl App {
     fn sync_hint_page(&mut self) {
         if let Some(sel) = self.hint_selected {
             self.hint_page = sel / 8;
+        }
+    }
+
+    fn exec_dashboard_item(&mut self) {
+        let actions = ["//", "/help", "/models", "/settings", "/session list", "/think high", "/think max", "/cod on", "/debug blocks"];
+        if let Some(cmd) = actions.get(self.dashboard_idx) {
+            self.show_dashboard = false;
+            let c = cmd.to_string();
+            if c.starts_with('/') { self.input = format!("{c} "); self.cursor = self.input.len(); self.update_hints(); return; }
+            if c == "//" { return; }
         }
     }
 

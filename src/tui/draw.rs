@@ -62,7 +62,11 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     // Progress bar at top-right
     app.progress.render(f, area);
     // Dashboard (// toggle)
-    if app.show_dashboard { draw_dashboard(f, area, app); }
+    if app.show_dashboard {
+        // Scrim background
+        f.render_widget(Paragraph::new("").style(Style::default().bg(Color::Rgb(10, 10, 15))), area);
+        draw_dashboard(f, area, app);
+    }
     // Render confirm dialog
     app.confirm.render(f, area);
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
@@ -174,11 +178,12 @@ fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
         ("Esc", "Cancel / close"),
     ];
     let max_w = entries.iter().map(|(k,_)| k.len()).max().unwrap_or(10);
-    let lines: Vec<Line> = entries.iter().map(|(k, v)| {
+    let lines: Vec<Line> = entries.iter().enumerate().map(|(i, (k, v))| {
+        let bg = if i == app.dashboard_idx { Style::default().bg(Color::Rgb(50, 50, 60)) } else { Style::default() };
         Line::from(vec![
             Span::styled(format!("  {k:<w$}", w = max_w), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::styled(format!("  {v}"), Style::default().fg(Color::Rgb(160, 160, 170))),
-        ])
+        ]).style(bg)
     }).collect();
 
     let block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
