@@ -387,7 +387,7 @@ mod tests {
 
         // Render each block (should not panic)
         for block in &blocks {
-            let lines = block.render(80, 0, &mut md);
+            let lines = block.render(80, 0, &mut md, false);
             assert!(!lines.is_empty(), "block should produce at least one line");
         }
     }
@@ -417,7 +417,7 @@ mod tests {
         }
 
         let mut md = MarkdownRenderer::new();
-        let lines = block.render(80, 0, &mut md);
+        let lines = block.render(80, 0, &mut md, false);
         // Should have: top border + header + sep border + 2 data rows + bottom border = 7 lines
         assert_eq!(lines.len(), 7, "table should render 7 lines (borders + header + sep + 2 data)");
 
@@ -427,8 +427,8 @@ mod tests {
         let bottom = &lines[6].spans[0].content;
         assert!(bottom.contains('└'), "bottom border should start with └, got: {bottom}");
 
-        // Verify data is present
-        let alice_line = &lines[3].spans.iter().map(|s| &*s.content).collect::<String>();
+        // Verify data is present (index 4 = Alice row, index 3 is separator dashes)
+        let alice_line = &lines[4].spans.iter().map(|s| &*s.content).collect::<String>();
         assert!(alice_line.contains("Alice"), "should contain Alice");
         assert!(alice_line.contains("Admin"), "should contain Admin (bold stripped in border but rendered in data)");
     }
@@ -448,7 +448,7 @@ mod tests {
         assert!(matches!(blocks[0].kind, BlockKind::CodeFence { .. }));
 
         let mut md = MarkdownRenderer::new();
-        let lines = blocks[0].render(80, 0, &mut md);
+        let lines = blocks[0].render(80, 0, &mut md, false);
         // label + 3 code lines + closing = 5
         assert_eq!(lines.len(), 5);
     }
@@ -476,7 +476,7 @@ mod tests {
         assert!(matches!(blocks[0].kind, BlockKind::Reasoning));
 
         let mut md = MarkdownRenderer::new();
-        let lines = blocks[0].render(80, 0, &mut md);
+        let lines = blocks[0].render(80, 0, &mut md, false);
         let content = &lines[0].spans[0].content;
         assert!(content.contains("[思考]"), "should contain [思考]");
     }

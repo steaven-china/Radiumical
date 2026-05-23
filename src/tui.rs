@@ -98,7 +98,9 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
     let result = (|| -> anyhow::Result<()> {
         let term_size = terminal.size()?;
         let out_h_init = term_size.height.saturating_sub(5) as usize;
+        let t0 = Instant::now();
         terminal.draw(|f| draw::draw(f, &mut app, out_h_init))?;
+        crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
         loop {
             let timeout = tick_rate.checked_sub(last_tick.elapsed()).unwrap_or(Duration::ZERO);
@@ -117,7 +119,9 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
             let bottom_h = ((input_lines + 2) + hint_count + 1).min(term_size.height.saturating_sub(2) as usize) as u16;
             let out_h = term_size.height.saturating_sub(bottom_h) as usize;
             app.tick(out_h);
+            let t0 = Instant::now();
             terminal.draw(|f| draw::draw(f, &mut app, out_h))?;
+            crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
             last_tick = Instant::now();
             if app.should_quit { break; }

@@ -7,6 +7,7 @@ mod hooks;
 mod layout;
 mod lsp;
 mod markdown;
+mod perf;
 mod pipeline;
 mod provider;
 mod session;

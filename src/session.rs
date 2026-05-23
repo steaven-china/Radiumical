@@ -124,7 +124,9 @@ mod tests {
 
     #[test]
     fn test_sanitize_name_unicode() {
-        assert_eq!(sanitize_name("你好"), "__");
+        // Non-alphanumeric symbols get replaced; CJK characters are alphanumeric in Unicode
+        assert_eq!(sanitize_name("hello@world!"), "hello_world_");
+        assert_eq!(sanitize_name("你好"), "你好"); // CJK is alphanumeric
     }
 
     #[test]

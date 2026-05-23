@@ -1450,4 +1450,203 @@ mod tests {
         assert!(result.is_error);
         assert!(result.content.contains("No options"));
     }
+
+    // ── File I/O tests (with temp directories) ──
+
+    use std::io::Write;
+
+    fn setup_temp_dir(files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("radium_test_{}", uuid_simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, content) in files {
+            let path = dir.join(name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(content.as_bytes()).unwrap();
+        }
+        dir
+    }
+
+    fn uuid_simple() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        format!("{t:x}")
+    }
+
+    fn cleanup(dir: &PathBuf) {
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    // ── ReadFile ──
+
+    #[tokio::test]
+    async fn test_read_file_basic() {
+        let dir = setup_temp_dir(&[("hello.txt", "Hello, world!\nLine 2\n")]);
+        let result = ReadFile.execute(&dir, r#"{"path": "hello.txt"}"#).await;
+        cleanup(&dir);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Hello, world!"));
+        assert!(result.content.contains("Line 2"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_with_line_range() {
+        let dir = setup_temp_dir(&[("lines.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")]);
+        let result = ReadFile.execute(&dir, r#"{"path": "lines.txt", "start_line": 3, "end_line": 5}"#).await;
+        cleanup(&dir);
+        assert!(!result.is_error);
+        // Format is: "    3 | 3", "    4 | 4", "    5 | 5"
+        assert!(result.content.contains("3 | 3") || result.content.contains("3|3"));
+        assert!(!result.content.contains("8 | 8"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_not_found() {
+        let dir = setup_temp_dir(&[]);
+        let result = ReadFile.execute(&dir, r#"{"path": "nonexistent.txt"}"#).await;
+        cleanup(&dir);
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_read_file_invalid_json() {
+        let dir = setup_temp_dir(&[]);
+        let result = ReadFile.execute(&dir, "not json").await;
+        cleanup(&dir);
+        assert!(result.is_error);
+        assert!(result.content.contains("Invalid JSON"));
+    }
+
+    // ── WriteFile ──
+
+    #[tokio::test]
+    async fn test_write_file_new() {
+        let dir = setup_temp_dir(&[]);
+        let result = WriteFile.execute(&dir, r#"{"path": "new.txt", "content": "fresh content"}"#).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Wrote"));
+        assert!(result.content.contains("new.txt"));
+        let contents = std::fs::read_to_string(dir.join("new.txt")).unwrap();
+        assert_eq!(contents, "fresh content");
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_write_file_overwrite() {
+        let dir = setup_temp_dir(&[("existing.txt", "old content")]);
+        let result = WriteFile.execute(&dir, r#"{"path": "existing.txt", "content": "new content"}"#).await;
+        assert!(!result.is_error);
+        let contents = std::fs::read_to_string(dir.join("existing.txt")).unwrap();
+        assert_eq!(contents, "new content");
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_write_file_creates_parent_dirs() {
+        let dir = setup_temp_dir(&[]);
+        let result = WriteFile.execute(&dir, r#"{"path": "sub/deep/nested.txt", "content": "deep"}"#).await;
+        assert!(!result.is_error);
+        let contents = std::fs::read_to_string(dir.join("sub/deep/nested.txt")).unwrap();
+        assert_eq!(contents, "deep");
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_write_file_invalid_json() {
+        let dir = setup_temp_dir(&[]);
+        let result = WriteFile.execute(&dir, "bad json").await;
+        cleanup(&dir);
+        assert!(result.is_error);
+        assert!(result.content.contains("Invalid JSON"));
+    }
+
+    // ── EditFile ──
+
+    #[tokio::test]
+    async fn test_edit_file_basic_replace() {
+        let dir = setup_temp_dir(&[("code.rs", "fn old_name() {\n    println!(\"hi\");\n}\n")]);
+        let result = EditFile.execute(&dir, r#"{"path": "code.rs", "old_text": "old_name", "new_text": "new_name"}"#).await;
+        assert!(!result.is_error, "edit should succeed: {}", result.content);
+        assert!(result.content.contains("OK"));
+        let contents = std::fs::read_to_string(dir.join("code.rs")).unwrap();
+        assert!(contents.contains("new_name"));
+        assert!(!contents.contains("old_name"));
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_not_found() {
+        let dir = setup_temp_dir(&[("code.rs", "some content\n")]);
+        let result = EditFile.execute(&dir, r#"{"path": "code.rs", "old_text": "nothing like this", "new_text": "replacement"}"#).await;
+        assert!(result.is_error);
+        assert!(result.content.contains("not found"));
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_non_unique() {
+        let dir = setup_temp_dir(&[("dup.txt", "x\nx\nx\n")]);
+        let result = EditFile.execute(&dir, r#"{"path": "dup.txt", "old_text": "x", "new_text": "y"}"#).await;
+        assert!(result.is_error);
+        assert!(result.content.contains("matches 3 times"));
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_missing_file() {
+        let dir = setup_temp_dir(&[]);
+        let result = EditFile.execute(&dir, r#"{"path": "nope.txt", "old_text": "a", "new_text": "b"}"#).await;
+        assert!(result.is_error);
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_invalid_json() {
+        let dir = setup_temp_dir(&[]);
+        let result = EditFile.execute(&dir, "garbage").await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Invalid JSON"));
+        cleanup(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_crlf_auto_adjust() {
+        let dir = setup_temp_dir(&[]);
+        let path = dir.join("crlf.txt");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"hello\r\nworld\r\n").unwrap();
+        // Send LF in the edit args — the tool should auto-detect and convert
+        let result = EditFile.execute(&dir, r#"{"path": "crlf.txt", "old_text": "hello\nworld", "new_text": "goodbye\nworld"}"#).await;
+        assert!(!result.is_error, "should auto-adjust CRLF: {}", result.content);
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("goodbye\r\nworld"));
+        cleanup(&dir);
+    }
+
+    // ── Tool registry ──
+
+    #[test]
+    fn test_all_tools_have_unique_names() {
+        let tools = all_tools();
+        let names: Vec<String> = tools.iter().map(|t| t.definition().function.name.clone()).collect();
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(names.len(), unique.len(), "all tool names must be unique");
+    }
+
+    #[test]
+    fn test_all_tools_have_descriptions() {
+        let tools = all_tools();
+        for tool in &tools {
+            let def = tool.definition();
+            assert!(!def.function.description.is_empty(), "{} has no description", def.function.name);
+            assert!(def.function.parameters.is_object(), "{} has invalid parameters", def.function.name);
+        }
+    }
 }

@@ -193,6 +193,7 @@ impl App {
                         self.output.push(String::new());
                         return;
                     }
+                    "/perf" => { self.output.push("> /perf".into()); self.output.push(crate::perf::report()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task.starts_with("/debug") => { let topic = task[6..].trim(); self.show_debug(topic); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task == "/models" => { self.show_model_picker = !self.show_model_picker; self.input.clear(); self.cursor = 0; return; }
                     _ if task == "/cod on" => { self.cod_enabled = true; self.output.push("> /cod on".into()); self.output.push("  Chain of Draft enabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
