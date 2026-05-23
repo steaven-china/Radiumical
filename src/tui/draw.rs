@@ -61,6 +61,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     app.toasts.retain(|t| !t.is_expired());
     // Progress bar at top-right
     app.progress.render(f, area);
+    // Perf overlay at top-right
+    if app.perf_visible { draw_perf_overlay(f, area, app); }
     // Dashboard (// toggle)
     if app.dashboard.visible {
         app.dashboard.render(f, chunks[0]);
@@ -155,6 +157,13 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
 }
 
 
+
+fn draw_perf_overlay(f: &mut Frame, area: Rect, _app: &App) {
+    let report = crate::perf::report();
+    let w = (report.len() + 4).min(area.width as usize - 4) as u16;
+    let r = Rect { x: area.x + area.width - w - 2, y: area.y + 1, width: w, height: 1 };
+    f.render_widget(Paragraph::new(report).style(Style::default().fg(Color::Rgb(100, 100, 110)).bg(Color::Rgb(15, 15, 20))), r);
+}
 
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {
     let bg = if selected { Style::default().bg(Color::Rgb(50, 50, 60)) } else { Style::default() };

@@ -42,6 +42,7 @@ pub struct App {
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
     pub dashboard: crate::dashboard::Dashboard,
+    pub perf_visible: bool,
     pub progress: crate::board::ProgressBoard,
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
@@ -75,6 +76,7 @@ impl App {
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
             dashboard: crate::dashboard::Dashboard::new(),
+            perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),
             plan_board: crate::board::BoardState::new(" Plan ", 30, 8, crate::board::Corner::TopRight),
             available_models: vec![config.model.clone()],
@@ -193,7 +195,7 @@ impl App {
                         self.output.push(String::new());
                         return;
                     }
-                    "/perf" => { self.output.push("> /perf".into()); self.output.push(crate::perf::report()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    "/perf" => { self.perf_visible = !self.perf_visible; self.output.push("> /perf".into()); self.output.push(crate::perf::report()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task.starts_with("/debug") => { let topic = task[6..].trim(); self.show_debug(topic); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task == "/models" => { self.show_model_picker = !self.show_model_picker; self.input.clear(); self.cursor = 0; return; }
                     _ if task == "/cod on" => { self.cod_enabled = true; self.output.push("> /cod on".into()); self.output.push("  Chain of Draft enabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
