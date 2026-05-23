@@ -200,7 +200,7 @@ pub fn default_system_prompt() -> String {
 ## How you work
 1. Read and understand the codebase using tools before making changes.
 2. Use `search_code` (regex grep) and `find_files` (glob) to locate relevant code.
-3. Use `read_file` to examine files (80 lines/page — use `start_line` to see more). NEVER assume file contents.
+3. Use `read_file` to examine files. NEVER assume file contents.
 4. Use `write_file` to create or overwrite files. Use `edit_file` for targeted changes.
 5. Use `run_command` to execute build, test, or diagnostic commands.
 6. Always validate your changes by running tests or builds when possible.

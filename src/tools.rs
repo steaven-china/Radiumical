@@ -56,7 +56,7 @@ impl Tool for ReadFile {
             tool_type: "function".into(),
             function: FunctionDef {
                 name: "read_file".into(),
-                description: "Read file contents with line numbers (80 lines/page, use start_line for more). Always read before editing.".into(),
+                description: "Read the contents of a file. Returns the file content with line numbers. Use this before editing any file.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -119,7 +119,7 @@ impl Tool for ReadFile {
         let start = start.max(1).min(total).min(end);
 
         // Page limit: max 200 lines per read
-        const PAGE_SIZE: usize = 80;
+        const PAGE_SIZE: usize = 200;
         let display_end = (start + PAGE_SIZE - 1).min(end);
         let has_more = display_end < end;
 
