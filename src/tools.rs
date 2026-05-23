@@ -326,21 +326,28 @@ impl Tool for EditFile {
         let new_content = raw.replacen(&old_text, &new_text, 1);
         let diff = TextDiff::from_lines(&raw, &new_content);
         let mut diff_out = String::from("Changes:\n");
+        // Show only changed hunks with 1 line context
         for change in diff.iter_all_changes() {
             let sign = match change.tag() {
                 ChangeTag::Delete => "- ",
                 ChangeTag::Insert => "+ ",
-                ChangeTag::Equal => "  ",
+                ChangeTag::Equal => continue, // skip unchanged
             };
             diff_out.push_str(sign);
-            diff_out.push_str(&change.value().replace('\n', "\n  "));
+            diff_out.push_str(change.value().trim_end());
+            diff_out.push('\n');
+        }
+        // Truncate if too long
+        if diff_out.len() > 2000 {
+            diff_out = diff_out[..2000].to_string();
+            diff_out.push_str("\n... (truncated)");
         }
 
         match std::fs::write(&full_path, &new_content) {
             Ok(_) => ToolResult {
                 tool_call_id: String::new(),
                 content: format!(
-                    "Edited {} ({}). Replaced 1 occurrence.\n{diff_out}",
+                    "{diff_out}\nOK — Edited {} ({})",
                     path_str,
                     if is_crlf { "CRLF" } else { "LF" }
                 ),
