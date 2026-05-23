@@ -96,7 +96,10 @@ impl App {
             (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_up(12.0); } }
             (KeyCode::PageDown, _) => { if self.hint_selected.is_some() { let max_page = self.hints.len().saturating_sub(1) / 8; self.hint_page = (self.hint_page + 1).min(max_page); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
             (KeyCode::Up, _) => {
-                if self.show_dashboard { self.dashboard_idx = self.dashboard_idx.saturating_sub(1); return; }
+                if self.show_dashboard {
+                    if self.dashboard_idx >= 100 { self.dashboard_idx = self.dashboard_idx.saturating_sub(1).max(self.dashboard_idx / 100 * 100); }
+                    return;
+                }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1).min(max));
@@ -111,7 +114,10 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
-                if self.show_dashboard { self.dashboard_idx = (self.dashboard_idx + 1).min(11); return; }
+                if self.show_dashboard {
+                    if self.dashboard_idx >= 100 { self.dashboard_idx = (self.dashboard_idx + 1).min(self.dashboard_idx / 100 * 100 + 4); }
+                    return;
+                }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
                     let next = (self.hint_selected.unwrap_or(0) + 1).min(max);
@@ -217,8 +223,14 @@ impl App {
             }
             (KeyCode::Backspace, _) if self.cursor > 0 => { self.history_idx = None; let prev = self.prev_char_boundary(self.cursor); self.input.drain(prev..self.cursor); self.cursor = prev; self.update_hints(); }
             (KeyCode::Delete, _) if self.cursor < self.input.len() => { self.history_idx = None; let next = self.next_char_boundary(self.cursor); self.input.drain(self.cursor..next); self.update_hints(); }
-            (KeyCode::Left, _) if self.cursor > 0 => { self.history_idx = None; self.cursor = self.prev_char_boundary(self.cursor); }
-            (KeyCode::Right, _) if self.cursor < self.input.len() => { self.history_idx = None; self.cursor = self.next_char_boundary(self.cursor); }
+            (KeyCode::Left, _) => {
+                if self.show_dashboard { self.dashboard_idx = self.dashboard_idx / 100 * 100; return; }
+                if self.cursor > 0 { self.history_idx = None; self.cursor = self.prev_char_boundary(self.cursor); }
+            }
+            (KeyCode::Right, _) => {
+                if self.show_dashboard { self.dashboard_idx = self.dashboard_idx / 100 * 100; return; }
+                if self.cursor < self.input.len() { self.history_idx = None; self.cursor = self.next_char_boundary(self.cursor); }
+            }
             (KeyCode::Home, _) => { self.history_idx = None; self.cursor = 0; }
             (KeyCode::End, _) => { if self.input.is_empty() { self.stick_to_bottom = true; self.scroll = 0.0; } else { self.history_idx = None; self.cursor = self.input.len(); } }
             (KeyCode::Tab, _) => {
