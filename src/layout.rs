@@ -289,7 +289,7 @@ impl Block {
             BlockKind::Reasoning => {
                 let s = &self.source_lines[0];
                 let raw = s[1..].trim_start_matches("[思考] ").trim();
-                let display = if show_full { format!("[思考] {raw}") } else { let preview: String = raw.chars().take(60).collect(); let dots = if raw.chars().count() > 60 { "…" } else { "" }; format!("[思考] {preview}{dots}") };
+                let display = if show_full { format!("[思考] {raw}") } else { let preview: String = raw.chars().take(40).collect(); let dots = if raw.chars().count() > 40 { "…" } else { "" }; format!("[思考] {preview}{dots}") };
                 vec![Line::from(Span::styled(display, Style::default().fg(Color::Rgb(170, 170, 180)).bg(Color::Rgb(35, 35, 42))))]
             }
 
@@ -304,8 +304,8 @@ impl Block {
                     return vec![Line::from(Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)))];
                 }
                 // Truncate long tool output lines, Ctrl+O to expand
-                if !show_full && s.len() > 80 && !s.contains('*') && !s.contains('`') && !s.contains('[') {
-                    let preview: String = s.chars().take(80).collect();
+                if !show_full && s.len() > 40 && !s.contains('*') && !s.contains('`') && !s.contains('[') {
+                    let preview: String = s.chars().take(40).collect();
                     return vec![Line::from(Span::styled(format!("{preview}…"), Style::default().fg(Color::DarkGray)))];
                 }
                 let spans = crate::markdown::render_inline(s);
