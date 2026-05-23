@@ -161,35 +161,50 @@ fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
     let y = (area.height - h) / 2;
     let r = Rect { x: area.x + x, y: area.y + y, width: w, height: h };
 
-    // Clear only dashboard area, preserving surrounding output
     f.render_widget(ratatui::widgets::Clear, r);
 
-    let entries = vec![
-        ("//", "Close dashboard"),
-        ("/help", "Command list"),
-        ("/models", "Switch model"),
-        ("/settings", "View config"),
-        ("/session list", "Saved sessions"),
-        ("/think high", "Light reasoning"),
-        ("/think max", "Deep reasoning"),
-        ("/cod on", "Chain of Draft"),
-        ("/debug blocks", "Layout debug"),
-        ("Ctrl+O", "Toggle thinking"),
-        ("Ctrl+Shift+C", "Copy output"),
-        ("Esc", "Cancel / close"),
+    // Categories and their items
+    let sections: &[(&str, &[&str])] = &[
+        ("Settings", &["Provider", "Model", "Thinking Effort", "Max Iterations", "Heartbeat"]),
+        ("Models", &["Switch Model", "Manage Custom Models"]),
+        ("Session", &["Save Session", "Load Session", "List Sessions"]),
+        ("Tools", &["List All Tools", "Diagnostics"]),
+        ("View", &["Theme", "About Radiumical"]),
     ];
-    let max_w = entries.iter().map(|(k,_)| k.len()).max().unwrap_or(10);
-    let lines: Vec<Line> = entries.iter().enumerate().map(|(i, (k, v))| {
-        let bg = if i == app.dashboard_idx { Style::default().bg(Color::Rgb(50, 50, 60)) } else { Style::default() };
-        Line::from(vec![
-            Span::styled(format!("  {k:<w$}", w = max_w), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("  {v}"), Style::default().fg(Color::Rgb(160, 160, 170))),
-        ]).style(bg)
+
+    // Layout: left nav + right content
+    let chunks = Layout::default().direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)]).split(r);
+
+    // Left: category list
+    let nav_lines: Vec<Line> = sections.iter().enumerate().map(|(i, (cat, _))| {
+        let prefix = if i == app.dashboard_idx / 100 { "* " } else { "  " };
+        let arrow = if i == app.dashboard_idx / 100 { " >" } else { "" };
+        let style = if i == app.dashboard_idx / 100 {
+            Style::default().bg(Color::Rgb(50, 50, 60)).fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else { Style::default().fg(Color::Rgb(160, 160, 170)) };
+        Line::from(Span::styled(format!("{prefix}{cat}{arrow}"), style))
     }).collect();
 
-    let block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-        .title(" Dashboard ").border_style(Style::default().fg(Color::Cyan));
-    f.render_widget(Paragraph::new(Text::from(lines)).block(block), r);
+    let nav_block = RBlock::default().borders(Borders::RIGHT).border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::DarkGray));
+    f.render_widget(Paragraph::new(Text::from(nav_lines)).block(nav_block), chunks[0]);
+
+    // Right: detail for selected category
+    let cat_idx = app.dashboard_idx / 100;
+    if let Some((cat_name, items)) = sections.get(cat_idx) {
+        let item_idx = app.dashboard_idx % 100;
+        let item_lines: Vec<Line> = items.iter().enumerate().map(|(i, item)| {
+            let style = if i == item_idx {
+                Style::default().bg(Color::Rgb(60, 60, 70)).fg(Color::White).add_modifier(Modifier::BOLD)
+            } else { Style::default().fg(Color::Rgb(180, 180, 190)) };
+            Line::from(Span::styled(format!("  {}", item), style))
+        }).collect();
+
+        let detail_block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+            .title(format!(" {cat_name} ")).border_style(Style::default().fg(Color::Cyan));
+        f.render_widget(Paragraph::new(Text::from(item_lines)).block(detail_block), chunks[1]);
+    }
 }
 
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {
