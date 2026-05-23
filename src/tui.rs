@@ -92,23 +92,23 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(cmd_tx, ui_rx, &config);
-    let tick_rate = Duration::from_millis(50);
-    let mut last_tick = Instant::now();
+    let frame_time = Duration::from_nanos(16_666_667); // 60 FPS
+    let mut term_size = terminal.size()?;
 
     let result = (|| -> anyhow::Result<()> {
-        let term_size = terminal.size()?;
         let out_h_init = term_size.height.saturating_sub(6) as usize;
         let t0 = Instant::now();
         terminal.draw(|f| draw::draw(f, &mut app, out_h_init))?;
         crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
+        let mut next_frame = Instant::now() + frame_time;
         loop {
-            let timeout = tick_rate.checked_sub(last_tick.elapsed()).unwrap_or(Duration::ZERO);
-            if crossterm::event::poll(timeout)? {
+            // Drain ALL pending input events (non-blocking batch)
+            while crossterm::event::poll(Duration::ZERO)? {
                 match crossterm::event::read()? {
                     Event::Key(key) => app.handle_key(key),
                     Event::Mouse(m) => app.handle_mouse(m.kind, m.row, m.column, 0),
-                    Event::Resize(_, _) => {}
+                    Event::Resize(w, h) => { term_size = ratatui::layout::Size { width: w, height: h }; }
                     _ => {}
                 }
             }
@@ -117,14 +117,17 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
             let hint_count = app.hints.len().min(8);
             let input_lines = app.input.split('\n').count().max(1).min(5);
             let bottom_h = ((input_lines + 2) + hint_count + 1).min(term_size.height.saturating_sub(2) as usize) as u16;
-            let out_h = term_size.height.saturating_sub(bottom_h + 1) as usize; // +1 safety margin
+            let out_h = term_size.height.saturating_sub(bottom_h + 1) as usize;
             app.tick(out_h);
             let t0 = Instant::now();
             terminal.draw(|f| draw::draw(f, &mut app, out_h))?;
             crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
-            last_tick = Instant::now();
             if app.should_quit { break; }
+            // Sleep to maintain exactly 60 FPS
+            let now = Instant::now();
+            if now < next_frame { std::thread::sleep(next_frame - now); }
+            next_frame = Instant::now() + frame_time;
         }
         Ok(())
     })();
