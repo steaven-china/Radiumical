@@ -3,7 +3,7 @@ use crate::types::{AgentMode, SessionConfig};
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::Rect;
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // ═══ App ═══
 
@@ -38,6 +38,8 @@ pub struct App {
     pub show_full_reasoning: bool,
     pub help_board: crate::board::BoardState,
     pub model_board: crate::board::BoardState,
+    pub model_picker: crate::board::ListBoard,
+    pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
     pub selection: Option<(usize, usize)>,
     pub selecting: bool,
@@ -64,6 +66,8 @@ impl App {
             welcome: true, show_help_overlay: true, show_model_picker: false, cod_enabled: false, full_reasoning: Vec::new(), show_full_reasoning: false,
             help_board: crate::board::BoardState::new(" Help ", 36, 18, crate::board::Corner::BottomRight),
             model_board: crate::board::BoardState::new(" Models ", 30, 10, crate::board::Corner::BottomRight),
+            model_picker: crate::board::ListBoard::new(" Models "),
+            toasts: Vec::new(),
             available_models: vec![config.model.clone()],
             selection: None, selecting: false,
         }
@@ -112,6 +116,7 @@ impl App {
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => { self.history_idx = None; self.input.insert(self.cursor, '\n'); self.cursor += 1; self.update_hints(); }
             (KeyCode::Enter, _) => {
+                if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
                 // If hint selection active, confirm it instead of submitting
                 if let Some(idx) = self.hint_selected {
                     if let Some((name, _)) = self.hints.get(idx) {
@@ -178,7 +183,7 @@ impl App {
                     _ if task == "/models" => { self.show_model_picker = !self.show_model_picker; self.input.clear(); self.cursor = 0; return; }
                     _ if task == "/cod on" => { self.cod_enabled = true; self.output.push("> /cod on".into()); self.output.push("  Chain of Draft enabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task == "/cod off" => { self.cod_enabled = false; self.output.push("> /cod off".into()); self.output.push("  Chain of Draft disabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
-                    _ if task.starts_with("/model ") => { let m = task[7..].trim().to_string(); self.model = m.clone(); self.output.push(format!("> /model {m}")); self.output.push(format!("  Model -> {m}")); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    _ if task.starts_with("/model ") => { let m = task[7..].trim().to_string(); self.model = m.clone(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); self.output.push(format!("> /model {m}")); self.output.push(format!("  Model -> {m}")); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ => {}
                 }
                 self.input.clear(); self.cursor = 0; self.hints.clear(); self.history_idx = None; self.welcome = false; self.show_help_overlay = false;

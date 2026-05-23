@@ -9,7 +9,7 @@ use ratatui::widgets::Paragraph;
 
 // ═══ Draw ═══
 
-pub fn draw(f: &mut Frame, app: &App, out_h: usize) {
+pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     let area = f.area();
     let hint_page_start = app.hint_page * 8;
     let hint_page_end = (hint_page_start + 8).min(app.hints.len());
@@ -40,6 +40,11 @@ pub fn draw(f: &mut Frame, app: &App, out_h: usize) {
     }
     let bottom = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(input_h)].into_iter().chain(std::iter::repeat(Constraint::Length(1)).take(hint_count)).chain(std::iter::once(Constraint::Length(1))).collect::<Vec<_>>()).split(chunks[1]);
     draw_input(f, bottom[0], app);
+    // Render toasts (top-right)
+    for toast in &app.toasts {
+        if !toast.is_expired() { toast.render(f, area); }
+    }
+    app.toasts.retain(|t| !t.is_expired());
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
         let selected = app.hint_selected == Some(hint_page_start + i);
         draw_hint_row(f, bottom[1 + i], n, d, selected);
