@@ -19,7 +19,7 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     let input_h = (input_lines + 2) as u16;
     let bottom_h = (input_h as usize + hint_count + 1).min(area.height.saturating_sub(2) as usize) as u16;
     let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Min(1), Constraint::Length(bottom_h)]).split(area);
-    draw_output(f, chunks[0], app, out_h.min(chunks[0].height as usize));
+    draw_output(f, chunks[0], app, chunks[0].height as usize);
     // Help overlay on welcome screen (bottom-right of output area)
     if app.welcome && app.show_help_overlay && chunks[0].height > 12 {
         let mut stack = crate::board::BoardStack::new();
@@ -70,12 +70,13 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     draw_status(f, bottom[bottom.len() - 1], app);
 }
 
-fn draw_output(f: &mut Frame, area: Rect, app: &App, vis: usize) {
+fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     use crate::layout::measure_blocks;
     use crate::markdown::MarkdownRenderer;
     use ratatui::widgets::Wrap;
     let total = app.output.len(); if total == 0 { return; }
-    let vis = vis.min(area.height as usize);
+    // Always clamp to the actual allocated area — never overflow into bottom section
+    let vis = (area.height as usize).min(_vis);
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
     let blocks = measure_blocks(&app.output);
@@ -101,9 +102,9 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, vis: usize) {
     let mut filled = rendered;
     filled.resize(filled.len().max(vis), Line::from(""));
 
-    // Scrollbar on right edge
+    // Scrollbar on right edge (clamped to output area)
     if total > vis {
-        let sb_h = area.height.saturating_sub(2);
+        let sb_h = area.height.saturating_sub(1);
         let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as u16;
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
