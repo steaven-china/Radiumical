@@ -34,6 +34,7 @@ pub struct App {
     pub show_help_overlay: bool,
     pub show_model_picker: bool,
     pub cod_enabled: bool,
+    pub thinking_effort: String,
     pub full_reasoning: Vec<String>,
     pub show_full_reasoning: bool,
     pub help_board: crate::board::BoardState,
@@ -66,7 +67,7 @@ impl App {
             provider_name: config.provider.name().to_string(),
             cmd_tx, ui_rx, should_quit: false,
             history: Vec::new(), history_idx: None, history_draft: String::new(),
-            welcome: true, show_help_overlay: true, show_model_picker: false, cod_enabled: false, full_reasoning: Vec::new(), show_full_reasoning: false,
+            welcome: true, show_help_overlay: true, show_model_picker: false, cod_enabled: false, thinking_effort: "max".into(), full_reasoning: Vec::new(), show_full_reasoning: false,
             help_board: crate::board::BoardState::new(" Help ", 36, 18, crate::board::Corner::BottomRight),
             model_board: crate::board::BoardState::new(" Models ", 30, 10, crate::board::Corner::BottomRight),
             model_picker: crate::board::ListBoard::new(" Models "),
@@ -190,6 +191,8 @@ impl App {
                     _ if task == "/models" => { self.show_model_picker = !self.show_model_picker; self.input.clear(); self.cursor = 0; return; }
                     _ if task == "/cod on" => { self.cod_enabled = true; self.output.push("> /cod on".into()); self.output.push("  Chain of Draft enabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task == "/cod off" => { self.cod_enabled = false; self.output.push("> /cod off".into()); self.output.push("  Chain of Draft disabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    "/think high" => { self.thinking_effort = "high".into(); self.output.push("> /think high".into()); self.output.push("  Reasoning: high".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    "/think max" | "/think xhigh" => { self.thinking_effort = "max".into(); self.output.push("> /think max".into()); self.output.push("  Reasoning: max".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task.starts_with("/model ") => { let m = task[7..].trim().to_string(); self.model = m.clone(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); self.output.push(format!("> /model {m}")); self.output.push(format!("  Model -> {m}")); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ => {}
                 }
