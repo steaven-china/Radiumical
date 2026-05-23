@@ -303,8 +303,8 @@ impl Block {
                 if let Some(rest) = s.strip_prefix("- ") {
                     return vec![Line::from(Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)))];
                 }
-                // Truncate long tool output lines, Ctrl+O to expand
-                if !show_full && s.len() > 40 && !s.contains('*') && !s.contains('`') && !s.contains('[') {
+                // Truncate read_file output (lines matching "  NNN | ..."), Ctrl+O to expand
+                if !show_full && s.len() > 40 && s.get(7..9) == Some("| ") && s[..6].chars().all(|c| c == ' ' || c.is_ascii_digit()) {
                     let preview: String = s.chars().take(40).collect();
                     return vec![Line::from(Span::styled(format!("{preview}…"), Style::default().fg(Color::DarkGray)))];
                 }
