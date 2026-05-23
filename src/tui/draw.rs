@@ -62,8 +62,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     // Progress bar at top-right
     app.progress.render(f, area);
     // Dashboard (// toggle)
-    if app.show_dashboard {
-        draw_dashboard(f, chunks[0], app);
+    if app.dashboard.visible {
+        app.dashboard.render(f, chunks[0]);
     }
     // Render confirm dialog
     app.confirm.render(f, area);
@@ -154,65 +154,7 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(Paragraph::new(Text::from(spans)).block(block).wrap(Wrap { trim: false }), area);
 }
 
-fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
-    let w = (area.width as f32 * 0.65) as u16;
-    let h = (area.height as f32 * 0.65) as u16;
-    let x = (area.width - w) / 2;
-    let y = (area.height - h) / 2;
-    let r = Rect { x: area.x + x, y: area.y + y, width: w, height: h };
 
-    f.render_widget(ratatui::widgets::Clear, r);
-
-    // Categories and their items
-    let sections: &[(&str, &[&str])] = &[
-        ("Settings", &["Provider", "Model", "Thinking Effort", "Max Iterations", "Heartbeat"]),
-        ("Models", &["Switch Model", "Manage Custom Models"]),
-        ("Session", &["Save Session", "Load Session", "List Sessions"]),
-        ("Tools", &["List All Tools", "Diagnostics"]),
-        ("View", &["Theme", "About Radiumical"]),
-    ];
-
-    // Outer frame first (background)
-    let outer = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-        .title(" Dashboard ").border_style(Style::default().fg(Color::Cyan));
-    // Inner area (accounting for border)
-    let inner = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
-    f.render_widget(Paragraph::new("").block(outer.clone()), r);
-
-    // Layout: left nav + right content
-    let chunks = Layout::default().direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)]).split(inner);
-
-    // Left: category list
-    let nav_lines: Vec<Line> = sections.iter().enumerate().map(|(i, (cat, _))| {
-        let prefix = if i == app.dashboard_idx / 100 { "* " } else { "  " };
-        let arrow = if i == app.dashboard_idx / 100 { " >" } else { "" };
-        let style = if i == app.dashboard_idx / 100 {
-            Style::default().bg(Color::Rgb(50, 50, 60)).fg(Color::Cyan).add_modifier(Modifier::BOLD)
-        } else { Style::default().fg(Color::Rgb(160, 160, 170)) };
-        Line::from(Span::styled(format!("{prefix}{cat}{arrow}"), style))
-    }).collect();
-
-    let nav_block = RBlock::default().borders(Borders::RIGHT).border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
-    f.render_widget(Paragraph::new(Text::from(nav_lines)).block(nav_block), chunks[0]);
-
-    // Right: detail for selected category
-    let cat_idx = app.dashboard_idx / 100;
-    if let Some((cat_name, items)) = sections.get(cat_idx) {
-        let item_idx = app.dashboard_idx % 100;
-        let item_lines: Vec<Line> = items.iter().enumerate().map(|(i, item)| {
-            let style = if i == item_idx {
-                Style::default().bg(Color::Rgb(60, 60, 70)).fg(Color::White).add_modifier(Modifier::BOLD)
-            } else { Style::default().fg(Color::Rgb(180, 180, 190)) };
-            Line::from(Span::styled(format!("  {}", item), style))
-        }).collect();
-
-        let detail_block = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-            .title(format!(" {cat_name} ")).border_style(Style::default().fg(Color::Cyan));
-        f.render_widget(Paragraph::new(Text::from(item_lines)).block(detail_block), chunks[1]);
-    }
-}
 
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {
     let bg = if selected { Style::default().bg(Color::Rgb(50, 50, 60)) } else { Style::default() };
