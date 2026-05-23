@@ -240,3 +240,163 @@ impl Conversation {
         if msgs.is_empty() { None } else { Some(msgs) }
     }
 }
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FunctionCall, ToolCall, ToolResult};
+
+    fn make_tool_call(id: &str, name: &str, args: &str) -> ToolCall {
+        ToolCall {
+            id: id.to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: name.to_string(),
+                arguments: args.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_truncate_tool_content_below_limit() {
+        let short = "hello";
+        let result = Conversation::truncate_tool_content(short, 8000);
+        assert_eq!(result, short);
+    }
+
+    #[test]
+    fn test_truncate_tool_content_above_limit() {
+        let long = "x".repeat(10_000);
+        let result = Conversation::truncate_tool_content(&long, 100);
+        assert!(result.len() <= 200); // generous upper bound due to padding text
+        assert!(result.contains("truncated"));
+        // Should contain both head and tail
+        assert!(result.starts_with("xxx"));
+        let tail_start = result.rfind("xxx").unwrap();
+        assert!(tail_start > 50); // tail is near the end
+    }
+
+    #[test]
+    fn test_truncate_tool_content_exact_limit() {
+        let exact = "x".repeat(8000);
+        let result = Conversation::truncate_tool_content(&exact, 8000);
+        assert_eq!(result.len(), 8000);
+        assert!(!result.contains("truncated"));
+    }
+
+    #[test]
+    fn test_estimated_tokens() {
+        let mut conv = Conversation::new("You are helpful.".into(), None);
+        conv.push_user("Hello, how are you?");
+        conv.push_assistant("I'm fine, thank you!", None, None);
+        // 26 + 21 = 47 chars / 4 ≈ 11 tokens
+        let tokens = conv.estimated_tokens();
+        assert!(tokens > 0);
+    }
+
+    #[test]
+    fn test_clear_history() {
+        let mut conv = Conversation::new("System prompt".into(), None);
+        conv.push_user("Hello");
+        assert_eq!(conv.messages.len(), 1);
+        conv.clear_history();
+        assert_eq!(conv.messages.len(), 0);
+    }
+
+    #[test]
+    fn test_build_context_basic() {
+        let mut conv = Conversation::new("You are Radium.".into(), None);
+        conv.push_user("Previous question");
+        conv.push_assistant("Previous answer", None, None);
+
+        let ctx = conv.build_context("New task");
+        assert_eq!(ctx.len(), 4); // system + user + assistant + new user
+        assert!(matches!(ctx[0].role, Role::System));
+        assert!(matches!(ctx[1].role, Role::User));
+        assert!(matches!(ctx[2].role, Role::Assistant));
+        assert!(matches!(ctx[3].role, Role::User));
+        assert_eq!(match &ctx[3].content {
+            MessageContent::Text(s) => s.as_str(),
+            _ => "",
+        }, "New task");
+    }
+
+    #[test]
+    fn test_build_context_strips_orphan_tool_calls() {
+        let mut conv = Conversation::new("System".into(), None);
+        conv.push_user("Do something");
+        // Assistant with tool calls but NO matching tool results
+        conv.push(Message {
+            role: Role::Assistant,
+            content: MessageContent::Text("Calling tool...".into()),
+            tool_calls: Some(vec![make_tool_call("call_1", "read_file", r#"{"path":"x"}"#)]),
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        });
+
+        let ctx = conv.build_context("Next task");
+        // The orphan assistant message should be stripped
+        let assistant_msgs: Vec<_> = ctx.iter().filter(|m| matches!(m.role, Role::Assistant)).collect();
+        assert!(assistant_msgs.is_empty(), "orphan tool call should be removed");
+    }
+
+    #[test]
+    fn test_build_context_keeps_resolved_tool_calls() {
+        let mut conv = Conversation::new("System".into(), None);
+        conv.push_user("Read a file");
+        let tc = make_tool_call("call_1", "read_file", r#"{"path":"x"}"#);
+        conv.push(Message {
+            role: Role::Assistant,
+            content: MessageContent::Text("Reading...".into()),
+            tool_calls: Some(vec![tc.clone()]),
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        });
+        conv.push_tool_result(&tc, &ToolResult {
+            tool_call_id: "call_1".into(),
+            content: "file contents here".into(),
+            is_error: false,
+        });
+
+        let ctx = conv.build_context("Next task");
+        let tool_msgs: Vec<_> = ctx.iter().filter(|m| matches!(m.role, Role::Tool)).collect();
+        assert_eq!(tool_msgs.len(), 1, "resolved tool result should remain");
+    }
+
+    #[test]
+    fn test_truncate_to_tokens() {
+        let mut conv = Conversation::new("System".into(), None);
+        // Add lots of messages
+        for i in 0..100 {
+            conv.push_user(&format!("Message number {}", i));
+        }
+        let before = conv.messages.len();
+        conv.truncate_to_tokens(50); // ~50 tokens = ~200 chars
+        let after = conv.messages.len();
+        assert!(after < before, "should have truncated some messages");
+        assert!(after >= 1, "should keep at least one message");
+    }
+
+    #[test]
+    fn test_truncate_tool_content_unicode() {
+        let unicode_str = "你好世界".repeat(3000);
+        let result = Conversation::truncate_tool_content(&unicode_str, 100);
+        // Should not panic and truncate correctly
+        assert!(result.chars().count() <= 200); // head + tail + padding
+        assert!(result.contains("truncated"));
+    }
+
+    #[test]
+    fn test_history_len() {
+        let mut conv = Conversation::new("S".into(), None);
+        assert_eq!(conv.history_len(), 0);
+        conv.push_user("a");
+        assert_eq!(conv.history_len(), 1);
+        conv.push_assistant("b", None, None);
+        assert_eq!(conv.history_len(), 2);
+    }
+}

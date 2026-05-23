@@ -69,3 +69,89 @@ fn lf_to_crlf(s: &str) -> String {
 fn crlf_to_lf(s: &str) -> String {
     s.replace("\r\n", "\n")
 }
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FunctionCall, ToolCall, ToolResult};
+
+    fn make_edit_call(old: &str, new: &str) -> ToolCall {
+        ToolCall {
+            id: "call_1".into(),
+            call_type: "function".into(),
+            function: FunctionCall {
+                name: "edit_file".into(),
+                arguments: serde_json::json!({
+                    "path": "test.txt",
+                    "old_text": old,
+                    "new_text": new
+                }).to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_crlf_normalizer_ignores_non_edit() {
+        let normalizer = CRLFNormalizer::new();
+        let call = ToolCall {
+            id: "c1".into(),
+            call_type: "function".into(),
+            function: FunctionCall {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        let result = ToolResult {
+            tool_call_id: "c1".into(),
+            content: "some content".into(),
+            is_error: false,
+        };
+        let out = normalizer.after(&call, result.clone(), &std::path::PathBuf::from("."));
+        assert_eq!(out.content, result.content);
+    }
+
+    #[test]
+    fn test_crlf_normalizer_ignores_success() {
+        let normalizer = CRLFNormalizer::new();
+        let call = make_edit_call("hello", "world");
+        let result = ToolResult {
+            tool_call_id: "call_1".into(),
+            content: "OK".into(),
+            is_error: false,
+        };
+        let out = normalizer.after(&call, result.clone(), &std::path::PathBuf::from("."));
+        assert_eq!(out.content, result.content);
+    }
+
+    #[test]
+    fn test_crlf_normalizer_tries_lf_fallback() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("radium_test_crlf");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join("test.txt");
+
+        // Write a CRLF file with "hello\r\nworld"
+        let mut f = std::fs::File::create(&file_path).unwrap();
+        f.write_all(b"hello\r\nworld\r\n").unwrap();
+
+        let normalizer = CRLFNormalizer::new();
+        // LLM sends LF old_text but file is CRLF
+        let call = make_edit_call("hello\nworld", "goodbye\nworld");
+        let result = ToolResult {
+            tool_call_id: "call_1".into(),
+            content: "old_text not found".into(),
+            is_error: true,
+        };
+        let out = normalizer.after(&call, result, &dir);
+        assert!(!out.is_error, "should have auto-adjusted line endings");
+        assert!(out.content.contains("auto-adjusted"));
+
+        let contents = std::fs::read_to_string(&file_path).unwrap();
+        assert!(contents.contains("goodbye\r\nworld"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

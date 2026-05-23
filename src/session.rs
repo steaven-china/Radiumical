@@ -95,3 +95,40 @@ fn sanitize_name(name: &str) -> String {
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect()
 }
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_name_normal() {
+        assert_eq!(sanitize_name("hello-world_123"), "hello-world_123");
+    }
+
+    #[test]
+    fn test_sanitize_name_spaces() {
+        assert_eq!(sanitize_name("my session name"), "my_session_name");
+    }
+
+    #[test]
+    fn test_sanitize_name_slashes() {
+        assert_eq!(sanitize_name("path/to/session"), "path_to_session");
+    }
+
+    #[test]
+    fn test_sanitize_name_special_chars() {
+        assert_eq!(sanitize_name("hello@world!"), "hello_world_");
+    }
+
+    #[test]
+    fn test_sanitize_name_unicode() {
+        assert_eq!(sanitize_name("你好"), "__");
+    }
+
+    #[test]
+    fn test_sanitize_name_empty() {
+        assert_eq!(sanitize_name(""), "");
+    }
+}

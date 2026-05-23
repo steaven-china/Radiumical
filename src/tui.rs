@@ -37,7 +37,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/models", "Model picker panel"),
     ("/model <n>", "Switch model"),
     ("/session", "Save/load sessions"),
-    ("/cod on/off", "Chain of Draft experiment"),
+    ("/cod on/off", "Chain of Draft experimental"),
     ("/debug <t>", "Debug info"),
     ("/end", "Jump to bottom"),
     ("/clear", "Clear screen"),

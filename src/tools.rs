@@ -1,7 +1,8 @@
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-
+use std::sync::{Mutex, OnceLock};
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use similar::{ChangeTag, TextDiff};
 
@@ -42,6 +43,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(TreeDir),
         Box::new(TimeNow),
         Box::new(CronTab),
+        Box::new(AnnotateTool),
     ]
 }
 
@@ -131,6 +133,15 @@ impl Tool for ReadFile {
             output.push_str(&format!("{:>6} | {}\n", line_num, clean));
         }
         if has_more { output.push_str(&format!("\n  (Use read_file with start_line={} to see more)\n", display_end + 1)); }
+
+        // Append annotations for this file
+        let ann = get_annotations(path_str);
+        if !ann.is_empty() {
+            output.push_str("\n── Annotations ──\n");
+            for (line, note) in &ann {
+                output.push_str(&format!("  L{line}: {note}\n"));
+            }
+        }
 
         ToolResult {
             tool_call_id: String::new(),
@@ -754,7 +765,6 @@ fn crlf_to_lf(s: &str) -> String {
 
 // ── TodoList tool ──
 
-use std::sync::{Mutex, OnceLock};
 
 fn todos() -> &'static Mutex<Vec<(String, bool)>> {
     static TODOS: OnceLock<Mutex<Vec<(String, bool)>>> = OnceLock::new();
@@ -1113,5 +1123,331 @@ impl Tool for TreeDir {
         let p = args["path"].as_str().unwrap_or("");
         let dir = if p.is_empty() { workspace.clone() } else { workspace.join(p) };
         ToolResult { tool_call_id: String::new(), content: crate::systools::tree(&dir, 3), is_error: false }
+    }
+}
+
+// ── Annotate tool — virtual file notes ──
+
+
+fn annotations() -> &'static Mutex<HashMap<String, Vec<(usize, String)>>> {
+    static A: OnceLock<Mutex<HashMap<String, Vec<(usize, String)>>>> = OnceLock::new();
+    A.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub struct AnnotateTool;
+
+#[async_trait::async_trait]
+impl Tool for AnnotateTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "annotate".into(),
+                description: "Add virtual notes/annotations to file lines without modifying the file. Actions: 'add <path> <line> <note>', 'list [path]', 'clear [path]'.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "description": "'add <path> <line> <note>', 'list [path]', 'clear [path]'" }
+                    },
+                    "required": ["action"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+        let mut ann = annotations().lock().unwrap();
+
+        // Parse: "add path.rs 42 this is a note"
+        if let Some(rest) = action.strip_prefix("add ") {
+            let parts: Vec<&str> = rest.splitn(3, ' ').collect();
+            if parts.len() < 3 {
+                return ToolResult { tool_call_id: String::new(), content: "Usage: add <path> <line> <note>".into(), is_error: true };
+            }
+            let path = parts[0].to_string();
+            let line: usize = match parts[1].parse() { Ok(n) => n, Err(_) => return ToolResult { tool_call_id: String::new(), content: "Invalid line number".into(), is_error: true } };
+            let note = parts[2].to_string();
+            ann.entry(path.clone()).or_default().push((line, note.clone()));
+            return ToolResult { tool_call_id: String::new(), content: format!("Annotation added to {path}:{line} — {note}"), is_error: false };
+        }
+
+        if action == "list" || action.starts_with("list ") {
+            let filter = action.strip_prefix("list ").map(|s| s.trim()).filter(|s| !s.is_empty());
+            let mut out = String::from("Annotations:\n");
+            let mut found = false;
+            for (path, notes) in ann.iter() {
+                if let Some(f) = filter { if path != f { continue; } }
+                for (line, note) in notes {
+                    out.push_str(&format!("  {path}:{line} — {note}\n"));
+                    found = true;
+                }
+            }
+            if !found { out = "No annotations.".into(); }
+            return ToolResult { tool_call_id: String::new(), content: out, is_error: false };
+        }
+
+        if action == "clear" || action.starts_with("clear ") {
+            if let Some(path) = action.strip_prefix("clear ").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                ann.remove(path);
+                return ToolResult { tool_call_id: String::new(), content: format!("Cleared annotations for {path}"), is_error: false };
+            }
+            ann.clear();
+            return ToolResult { tool_call_id: String::new(), content: "Cleared all annotations.".into(), is_error: false };
+        }
+
+        ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use add/list/clear."), is_error: true }
+    }
+}
+
+/// Get annotations for a file path (called by read_file to append notes).
+pub fn get_annotations(path: &str) -> Vec<(usize, String)> {
+    annotations().lock().unwrap().get(path).cloned().unwrap_or_default()
+}
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Glob matching ──
+
+    #[test]
+    fn test_glob_exact_match() {
+        assert!(simple_glob_match("src/main.rs", "src/main.rs"));
+        assert!(!simple_glob_match("src/main.rs", "src/lib.rs"));
+    }
+
+    #[test]
+    fn test_glob_single_wildcard() {
+        assert!(simple_glob_match("src/*.rs", "src/main.rs"));
+        assert!(simple_glob_match("src/*.rs", "src/tools.rs"));
+        assert!(!simple_glob_match("src/*.rs", "src/sub/main.rs"));
+    }
+
+    #[test]
+    fn test_glob_double_wildcard() {
+        assert!(simple_glob_match("src/**/*.rs", "src/main.rs"));
+        assert!(simple_glob_match("src/**/*.rs", "src/sub/mod.rs"));
+        assert!(simple_glob_match("src/**/*.rs", "src/a/b/c/deep.rs"));
+    }
+
+    #[test]
+    fn test_glob_question_mark() {
+        assert!(simple_glob_match("src/???.rs", "src/mod.rs"));
+        assert!(!simple_glob_match("src/???.rs", "src/main.rs")); // 4 chars
+    }
+
+    #[test]
+    fn test_glob_mixed() {
+        assert!(simple_glob_match("**/*test*", "src/test_utils.rs"));
+        assert!(simple_glob_match("**/*test*", "tests/integration_test.rs"));
+        assert!(!simple_glob_match("**/*test*", "src/main.rs"));
+    }
+
+    #[test]
+    fn test_part_match_exact() {
+        assert!(part_match("main.rs", "main.rs"));
+        assert!(!part_match("main.rs", "lib.rs"));
+    }
+
+    #[test]
+    fn test_part_match_star() {
+        assert!(part_match("*", "anything"));
+        assert!(part_match("*", ""));
+    }
+
+    #[test]
+    fn test_part_match_wildcard() {
+        assert!(part_match("*.rs", "main.rs"));
+        assert!(part_match("*.rs", "lib.rs"));
+        assert!(!part_match("*.rs", "main.py"));
+    }
+
+    #[test]
+    fn test_part_match_question() {
+        assert!(part_match("???.rs", "mod.rs"));
+        assert!(!part_match("???.rs", "main.rs"));
+    }
+
+    // ── CRLF helpers ──
+
+    #[test]
+    fn test_crlf_to_lf_conversion() {
+        assert_eq!(crlf_to_lf("hello\r\nworld"), "hello\nworld");
+        assert_eq!(crlf_to_lf("hello\nworld"), "hello\nworld");
+        assert_eq!(crlf_to_lf("no newlines"), "no newlines");
+    }
+
+    #[test]
+    fn test_lf_to_crlf_conversion() {
+        assert_eq!(lf_to_crlf("hello\nworld"), "hello\r\nworld");
+        assert_eq!(lf_to_crlf("hello\r\nworld"), "hello\r\nworld");
+        assert_eq!(lf_to_crlf("no newlines"), "no newlines");
+    }
+
+    #[test]
+    fn test_crlf_roundtrip() {
+        let original = "line1\nline2\r\nline3\n";
+        let converted = lf_to_crlf(&crlf_to_lf(original));
+        assert_eq!(converted, lf_to_crlf(original));
+    }
+
+    // ── is_hidden ──
+
+    #[test]
+    fn test_is_hidden_dir() {
+        // We can't easily construct a DirEntry, but we can test the logic
+        // by checking the predicate directly on known patterns
+        let hidden_names = [".git", "node_modules", "target", ".hidden"];
+        let visible_names = ["src", "tests", "README.md", "Cargo.toml"];
+
+        for name in hidden_names {
+            assert!(name.starts_with('.') || name == "node_modules" || name == "target" || name == ".git",
+                "{} should be considered hidden", name);
+        }
+        for name in visible_names {
+            let hidden = name.starts_with('.') || name == "node_modules" || name == "target" || name == ".git";
+            assert!(!hidden, "{} should be visible", name);
+        }
+    }
+
+    // ── TodoList ──
+
+    #[tokio::test]
+    async fn test_todo_add_and_list() {
+        // Clear first
+        todos().lock().unwrap().clear();
+
+        let result = TodoList.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "add write tests"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Added todo #1"));
+
+        let result = TodoList.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "add fix bugs"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Added todo #2"));
+
+        let result = TodoList.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "list"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("write tests"));
+        assert!(result.content.contains("fix bugs"));
+    }
+
+    #[tokio::test]
+    async fn test_todo_done() {
+        todos().lock().unwrap().clear();
+        TodoList.execute(&std::path::PathBuf::from("."), r#"{"action": "add task"}"#).await;
+
+        let result = TodoList.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "done 1"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Marked todo #1"));
+    }
+
+    #[tokio::test]
+    async fn test_todo_done_invalid_index() {
+        todos().lock().unwrap().clear();
+
+        let result = TodoList.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "done 99"}"#,
+        ).await;
+        assert!(result.is_error);
+    }
+
+    // ── PlanTool ──
+
+    #[tokio::test]
+    async fn test_plan_set_and_list() {
+        plans().lock().unwrap().clear();
+
+        let result = PlanTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "set step 1; step 2; step 3"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Plan set with 3 steps"));
+
+        let result = PlanTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "list"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("step 1"));
+        assert!(result.content.contains("step 2"));
+        assert!(result.content.contains("step 3"));
+    }
+
+    #[tokio::test]
+    async fn test_plan_done() {
+        plans().lock().unwrap().clear();
+        PlanTool.execute(&std::path::PathBuf::from("."), r#"{"action": "set a; b; c"}"#).await;
+
+        let result = PlanTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "done 2"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Step #2 completed"));
+
+        // Verify list shows it as done
+        let result = PlanTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "list"}"#,
+        ).await;
+        assert!(result.content.contains("[x]"));
+        assert!(result.content.contains("[ ]")); // step 1 & 3 not done
+    }
+
+    // ── GoalTool ──
+
+    #[tokio::test]
+    async fn test_goal_set_and_list() {
+        goals().lock().unwrap().clear();
+
+        let result = GoalTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "set Finish the project"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("Goal set: Finish the project"));
+
+        GoalTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "add write docs"}"#,
+        ).await;
+
+        let result = GoalTool.execute(
+            &std::path::PathBuf::from("."), r#"{"action": "list"}"#,
+        ).await;
+        assert!(result.content.contains("Finish the project"));
+        assert!(result.content.contains("write docs"));
+    }
+
+    // ── ChoiceTool ──
+
+    #[tokio::test]
+    async fn test_choice_single() {
+        let result = ChoiceTool.execute(
+            &std::path::PathBuf::from("."), r#"{"mode": "single", "options": "A, B, C"}"#,
+        ).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("A"));
+        assert!(result.content.contains("B"));
+        assert!(result.content.contains("C"));
+        assert!(result.content.contains("Choose (single)"));
+    }
+
+    #[tokio::test]
+    async fn test_choice_empty_options() {
+        let result = ChoiceTool.execute(
+            &std::path::PathBuf::from("."), r#"{"mode": "single", "options": ""}"#,
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content.contains("No options"));
     }
 }

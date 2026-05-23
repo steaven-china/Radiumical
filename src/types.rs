@@ -187,11 +187,15 @@ impl Default for SessionConfig {
 }
 
 pub fn default_system_prompt() -> String {
-    // Hot-reload: read from system_prompt.md if it exists
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".into());
+    let os = std::env::consts::OS;
+    let cwd = std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_else(|_| "?".into());
+    let env_info = format!("\n\n## Environment\n- OS: {os}\n- Shell: {shell}\n- Workspace: {cwd}\n- Line endings: LF (use \\n, not \\r\\n)");
+
     if let Ok(content) = std::fs::read_to_string("system_prompt.md") {
-        if !content.trim().is_empty() { return content; }
+        if !content.trim().is_empty() { return content + &env_info; }
     }
-    r#"You are Radiumical, a lean CLI coding agent. Your job is to help the user with software engineering tasks.
+    r#"You are Radiumical, a lean CLI coding agent. Your job is to help the user with software engineering tasks."#.to_string() + &env_info + "\n\n" + r#"
 
 ## How you work
 1. Read and understand the codebase using tools before making changes.
