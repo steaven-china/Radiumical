@@ -32,6 +32,8 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(SearchCode),
         Box::new(FindFiles),
         Box::new(RunCommand),
+        Box::new(TodoList),
+        Box::new(PlanTool),
     ]
 }
 
@@ -720,4 +722,143 @@ fn lf_to_crlf(s: &str) -> String {
 /// Convert CRLF → LF (for matching)
 fn crlf_to_lf(s: &str) -> String {
     s.replace("\r\n", "\n")
+}
+
+// ── TodoList tool ──
+
+use std::sync::{Mutex, OnceLock};
+
+fn todos() -> &'static Mutex<Vec<(String, bool)>> {
+    static TODOS: OnceLock<Mutex<Vec<(String, bool)>>> = OnceLock::new();
+    TODOS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub struct TodoList;
+
+#[async_trait::async_trait]
+impl Tool for TodoList {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "todo_list".into(),
+                description: "Manage a task list. Actions: 'add <task>', 'done <index>', 'list', 'clear'. Use to track progress on multi-step tasks.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "Action: 'add <task>', 'done <index>', 'list', 'clear'"
+                        }
+                    },
+                    "required": ["action"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+        let mut todos = todos().lock().unwrap();
+
+        if action == "list" || action.is_empty() {
+            if todos.is_empty() { return ToolResult { tool_call_id: String::new(), content: "No todos yet.".into(), is_error: false }; }
+            let list: String = todos.iter().enumerate().map(|(i, (t, done))| {
+                format!("  [{}] {} {}\n", if *done { "x" } else { " " }, i + 1, t)
+            }).collect();
+            return ToolResult { tool_call_id: String::new(), content: list, is_error: false };
+        }
+
+        if let Some(task) = action.strip_prefix("add ") {
+            todos.push((task.to_string(), false));
+            return ToolResult { tool_call_id: String::new(), content: format!("Added todo #{}: {task}", todos.len()), is_error: false };
+        }
+
+        if let Some(idx_str) = action.strip_prefix("done ") {
+            if let Ok(idx) = idx_str.trim().parse::<usize>() {
+                if idx > 0 && idx <= todos.len() {
+                    todos[idx - 1].1 = true;
+                    return ToolResult { tool_call_id: String::new(), content: format!("Marked todo #{idx} as done."), is_error: false };
+                }
+            }
+            return ToolResult { tool_call_id: String::new(), content: format!("Invalid index: {idx_str}"), is_error: true };
+        }
+
+        if action == "clear" { todos.clear(); return ToolResult { tool_call_id: String::new(), content: "Cleared all todos.".into(), is_error: false }; }
+
+        ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use add/done/list/clear."), is_error: true }
+    }
+}
+
+// ── Plan tool ──
+
+fn plans() -> &'static Mutex<Vec<(String, bool)>> {
+    static PLANS: OnceLock<Mutex<Vec<(String, bool)>>> = OnceLock::new();
+    PLANS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub struct PlanTool;
+
+#[async_trait::async_trait]
+impl Tool for PlanTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "plan".into(),
+                description: "Create and track a step-by-step plan. Actions: 'set step1; step2; ...', 'done <index>', 'list'. Use before making changes to organize your approach.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "Action: 'set step1; step2', 'done <index>', 'list'"
+                        }
+                    },
+                    "required": ["action"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+        let mut plans = plans().lock().unwrap();
+
+        if action == "list" || action.is_empty() {
+            if plans.is_empty() { return ToolResult { tool_call_id: String::new(), content: "No plan yet.".into(), is_error: false }; }
+            let list: String = plans.iter().enumerate().map(|(i, (t, done))| {
+                format!("  [{}] Step {}: {}\n", if *done { "x" } else { " " }, i + 1, t)
+            }).collect();
+            return ToolResult { tool_call_id: String::new(), content: list, is_error: false };
+        }
+
+        if let Some(steps) = action.strip_prefix("set ") {
+            plans.clear();
+            for step in steps.split(';') {
+                let s = step.trim();
+                if !s.is_empty() { plans.push((s.to_string(), false)); }
+            }
+            let count = plans.len();
+            return ToolResult { tool_call_id: String::new(), content: format!("Plan set with {count} steps."), is_error: false };
+        }
+
+        if let Some(idx_str) = action.strip_prefix("done ") {
+            if let Ok(idx) = idx_str.trim().parse::<usize>() {
+                if idx > 0 && idx <= plans.len() {
+                    plans[idx - 1].1 = true;
+                    return ToolResult { tool_call_id: String::new(), content: format!("Step #{idx} completed."), is_error: false };
+                }
+            }
+            return ToolResult { tool_call_id: String::new(), content: format!("Invalid index: {idx_str}"), is_error: true };
+        }
+
+        ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use set/done/list."), is_error: true }
+    }
 }

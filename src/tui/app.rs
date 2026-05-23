@@ -41,6 +41,7 @@ pub struct App {
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
     pub progress: crate::board::ProgressBoard,
+    pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
     pub selection: Option<(usize, usize)>,
@@ -72,6 +73,7 @@ impl App {
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
             progress: crate::board::ProgressBoard::new("Working"),
+            plan_board: crate::board::BoardState::new(" Plan ", 30, 8, crate::board::Corner::TopRight),
             available_models: vec![config.model.clone()],
             selection: None, selecting: false,
         }
