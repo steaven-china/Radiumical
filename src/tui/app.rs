@@ -130,7 +130,7 @@ impl App {
                 if self.input.trim() == "//" { self.dashboard.toggle(); self.input.clear(); self.cursor = 0; return; }
                 if self.confirm.visible { if self.confirm.yes_selected { if self.confirm.message.contains("Exit") { self.should_quit = true; } else if self.confirm.message.contains("Clear") { self.output.clear(); self.input.clear(); self.cursor = 0; self.hints.clear(); self.scroll = 0.0; self.stick_to_bottom = true; } } self.confirm.visible = false; return; }
                 if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
-                if self.dashboard.visible { if let Some(cmd) = self.dashboard.selected_command() { self.input = format!("{cmd} "); self.cursor = self.input.len(); self.update_hints(); } self.dashboard.visible = false; return; }
+                if self.dashboard.visible { if let Some(action) = self.dashboard.selected_action() { self.dispatch_dash_action(action); self.dashboard.visible = false; } return; }
                 // If hint selection active, confirm it instead of submitting
                 if let Some(idx) = self.hint_selected {
                     if let Some((name, _)) = self.hints.get(idx) {
@@ -260,6 +260,22 @@ impl App {
         }
     }
 
+
+    fn dispatch_dash_action(&mut self, action: crate::dashboard::DashAction) {
+        use crate::dashboard::DashAction::*;
+        match action {
+            ShowModels => self.show_model_picker = true,
+            ShowSettings => { self.output.push("> /settings".into()); self.show_settings(); self.output.push(String::new()); self.stick_to_bottom = true; }
+            ShowHelp => { self.show_help_overlay = true; self.stick_to_bottom = true; }
+            ToggleThinking => { self.show_full_reasoning = !self.show_full_reasoning; self.stick_to_bottom = true; }
+            SaveSession => { self.input = "/session save ".into(); self.cursor = self.input.len(); self.update_hints(); }
+            LoadSession => { self.input = "/session load ".into(); self.cursor = self.input.len(); self.update_hints(); }
+            ListSessions => { self.input = "/session list".into(); self.cursor = self.input.len(); self.update_hints(); }
+            Diagnostics => { self.input = "Run diagnostics on the workspace".into(); self.cursor = self.input.len(); }
+            ShowTools => { self.output.push("  Tools:".into()); for t in crate::tools::all_tools() { self.output.push(format!("  - {}", t.definition().function.name)); } self.output.push(String::new()); self.stick_to_bottom = true; }
+            About => { self.output.push("  Radiumical — lean CLI coding agent".into()); self.output.push("  https://radiumical.dev".into()); self.output.push(String::new()); self.stick_to_bottom = true; }
+        }
+    }
 
     pub fn handle_mouse(&mut self, kind: MouseEventKind, row: u16, _col: u16, output_top: u16) {
         if self.welcome { return; }

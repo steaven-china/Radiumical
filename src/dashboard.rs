@@ -15,6 +15,13 @@ pub struct Dashboard {
     sections: Vec<(&'static str, &'static [&'static str])>,
 }
 
+#[derive(Debug, Clone)]
+pub enum DashAction {
+    ShowModels, ShowSettings, ShowHelp, ToggleThinking,
+    SaveSession, LoadSession, ListSessions,
+    Diagnostics, ShowTools, About,
+}
+
 impl Dashboard {
     pub fn new() -> Self {
         Self {
@@ -23,11 +30,10 @@ impl Dashboard {
             item_idx: 0,
             in_items: false,
             sections: vec![
-                ("Settings", &["Provider", "Model", "Thinking Effort", "Max Iterations", "Heartbeat"] as &[&str]),
-                ("Models", &["Switch Model", "Manage Custom Models"]),
-                ("Session", &["Save Session", "Load Session", "List Sessions"]),
-                ("Tools", &["List All Tools", "Diagnostics"]),
-                ("View", &["Theme", "About Radiumical"]),
+                ("Navigate", &["Models", "Settings", "Help"] as &[&str]),
+                ("Session", &["Save", "Load", "List"]),
+                ("Debug", &["Diagnostics", "Tools", "Thinking"]),
+                ("View", &["About"]),
             ],
         }
     }
@@ -59,22 +65,22 @@ impl Dashboard {
         if !self.in_items { self.in_items = true; self.item_idx = 0; }
     }
 
-    pub fn selected_command(&self) -> Option<String> {
+    pub fn selected_action(&self) -> Option<DashAction> {
         if !self.in_items { return None; }
         let (cat, items) = self.sections.get(self.cat_idx)?;
         let item = items.get(self.item_idx)?;
         Some(match (*cat, *item) {
-            ("Settings", "Provider") => "/provider".into(),
-            ("Settings", "Model") => "/model ".into(),
-            ("Settings", "Thinking Effort") => "/think max".into(),
-            ("Models", "Switch Model") => "/models".into(),
-            ("Session", "Save Session") => "/session save".into(),
-            ("Session", "Load Session") => "/session load".into(),
-            ("Session", "List Sessions") => "/session list".into(),
-            ("Tools", "List All Tools") => "/tools".into(),
-            ("Tools", "Diagnostics") => "/debug blocks".into(),
-            ("View", "About Radiumical") => "/help".into(),
-            _ => format!("/{}", item.to_lowercase()),
+            ("Navigate", "Models") => DashAction::ShowModels,
+            ("Navigate", "Settings") => DashAction::ShowSettings,
+            ("Navigate", "Help") => DashAction::ShowHelp,
+            ("Session", "Save") => DashAction::SaveSession,
+            ("Session", "Load") => DashAction::LoadSession,
+            ("Session", "List") => DashAction::ListSessions,
+            ("Debug", "Diagnostics") => DashAction::Diagnostics,
+            ("Debug", "Tools") => DashAction::ShowTools,
+            ("Debug", "Thinking") => DashAction::ToggleThinking,
+            ("View", "About") => DashAction::About,
+            _ => return None,
         })
     }
 
