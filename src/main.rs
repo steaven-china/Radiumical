@@ -9,6 +9,7 @@ mod markdown;
 mod pipeline;
 mod provider;
 mod session;
+mod systools;
 mod tui;
 mod tools;
 mod types;

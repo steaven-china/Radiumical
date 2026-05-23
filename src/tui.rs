@@ -97,7 +97,7 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
 
     let result = (|| -> anyhow::Result<()> {
         let term_size = terminal.size()?;
-        let out_h_init = term_size.height.saturating_sub(4) as usize;
+        let out_h_init = term_size.height.saturating_sub(5) as usize;
         terminal.draw(|f| draw::draw(f, &mut app, out_h_init))?;
 
         loop {
