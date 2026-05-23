@@ -63,9 +63,7 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     app.progress.render(f, area);
     // Dashboard (// toggle)
     if app.show_dashboard {
-        // Scrim background
-        f.render_widget(Paragraph::new("").style(Style::default().bg(Color::Rgb(10, 10, 15))), area);
-        draw_dashboard(f, area, app);
+        draw_dashboard(f, chunks[0], app);
     }
     // Render confirm dialog
     app.confirm.render(f, area);
@@ -162,6 +160,9 @@ fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
     let x = (area.width - w) / 2;
     let y = (area.height - h) / 2;
     let r = Rect { x: area.x + x, y: area.y + y, width: w, height: h };
+
+    // Clear only dashboard area, preserving surrounding output
+    f.render_widget(ratatui::widgets::Clear, r);
 
     let entries = vec![
         ("//", "Close dashboard"),
