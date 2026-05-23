@@ -303,6 +303,11 @@ impl Block {
                 if let Some(rest) = s.strip_prefix("- ") {
                     return vec![Line::from(Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)))];
                 }
+                // Truncate long tool output lines, Ctrl+O to expand
+                if !show_full && s.len() > 80 && !s.contains('*') && !s.contains('`') && !s.contains('[') {
+                    let preview: String = s.chars().take(80).collect();
+                    return vec![Line::from(Span::styled(format!("{preview}…"), Style::default().fg(Color::DarkGray)))];
+                }
                 let spans = crate::markdown::render_inline(s);
                 if spans.is_empty() { vec![Line::from("")] } else { vec![Line::from(spans)] }
             }
