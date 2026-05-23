@@ -114,15 +114,23 @@ impl Tool for ReadFile {
         let lines: Vec<&str> = content.split('\n').collect();
         let total = lines.len();
         let end = end.min(total);
-        let start = start.max(1).min(total).min(end); // clamp start ≤ end to avoid slice panic
+        let start = start.max(1).min(total).min(end);
 
-        let mut output = format!("File: {path_str} (lines {start}-{end} of {total})\n\n");
-        for (i, line) in lines[start - 1..end].iter().enumerate() {
+        // Page limit: max 200 lines per read
+        const PAGE_SIZE: usize = 200;
+        let display_end = (start + PAGE_SIZE - 1).min(end);
+        let has_more = display_end < end;
+
+        let mut output = format!("File: {path_str} (lines {start}-{display_end} of {total}",);
+        if has_more { output.push_str(&format!(", page of {PAGE_SIZE}")); }
+        output.push_str(")\n\n");
+        for (i, line) in lines[start - 1..display_end].iter().enumerate() {
             let line_num = start + i;
             // Strip trailing \r from CRLF files for clean display
             let clean = line.trim_end_matches('\r');
             output.push_str(&format!("{:>6} | {}\n", line_num, clean));
         }
+        if has_more { output.push_str(&format!("\n  (Use read_file with start_line={} to see more)\n", display_end + 1)); }
 
         ToolResult {
             tool_call_id: String::new(),
