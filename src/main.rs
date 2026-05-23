@@ -11,6 +11,7 @@ mod perf;
 mod pipeline;
 mod provider;
 mod session;
+mod subagent;
 mod systools;
 mod tui;
 mod tools;
@@ -195,6 +196,17 @@ async fn main() -> Result<()> {
                 let _ = ui_tx.send(UiEvent::ThinkingDone);
             }
             BackendCmd::RunTask(text) => {
+                // Check for sub-agent spawn: \x01subagent:id:task
+                if text.starts_with("\x01subagent:") {
+                    let rest = &text[11..];
+                    if let Some((id, task)) = rest.split_once(':') {
+                        let provider = Arc::clone(&provider);
+                        let cfg = config.clone();
+                        crate::subagent::spawn(id.to_string(), task.to_string(), cfg, provider).await;
+                        let _ = ui_tx.send(UiEvent::LlmChunk(format!("Sub-agent '{id}' spawned.\n")));
+                        continue;
+                    }
+                }
                 let _ = cancel_tx.send(false); // reset cancel
                 // Check for slash commands first
                 match cmd_pool.dispatch(&text, &mut config) {

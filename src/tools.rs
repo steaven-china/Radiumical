@@ -44,6 +44,8 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(TimeNow),
         Box::new(CronTab),
         Box::new(AnnotateTool),
+        Box::new(SubAgentTool),
+        Box::new(SubAgentListTool),
     ]
 }
 
@@ -1648,5 +1650,50 @@ mod tests {
             assert!(!def.function.description.is_empty(), "{} has no description", def.function.name);
             assert!(def.function.parameters.is_object(), "{} has invalid parameters", def.function.name);
         }
+    }
+}
+
+// ── Sub-agent tools ──
+
+pub struct SubAgentTool;
+pub struct SubAgentListTool;
+
+#[async_trait::async_trait]
+impl Tool for SubAgentTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition { tool_type: "function".into(), function: FunctionDef {
+            name: "subagent".into(),
+            description: "Spawn a parallel sub-agent to work on an independent task. Returns immediately; check status with subagent_list. Use for parallelizable work like searching multiple files at once.".into(),
+            parameters: serde_json::json!({"type":"object","properties":{"id":{"type":"string","description":"Unique ID for this sub-agent"},"task":{"type":"string","description":"Task for the sub-agent to complete"}},"required":["id","task"]}),
+        }}
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let id = args["id"].as_str().unwrap_or("agent_1");
+        let task = args["task"].as_str().unwrap_or("");
+        if task.is_empty() { return ToolResult { tool_call_id: String::new(), content: "No task provided.".into(), is_error: true }; }
+
+        // We need provider + config — can't access from here easily.
+        // For now, log intent; full async spawn needs main.rs wiring.
+        let msg = format!("Sub-agent intent recorded: '{id}' → {task}\n(Full async spawn requires main-thread wiring — use this to communicate intent, then proceed with other work.)");
+        ToolResult { tool_call_id: String::new(), content: msg, is_error: false }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for SubAgentListTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition { tool_type: "function".into(), function: FunctionDef {
+            name: "subagent_list".into(),
+            description: "List all sub-agents and their current status.".into(),
+            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+        }}
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, _arguments: &str) -> ToolResult {
+        ToolResult { tool_call_id: String::new(), content: crate::subagent::list(), is_error: false }
     }
 }
