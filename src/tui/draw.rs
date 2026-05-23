@@ -172,9 +172,16 @@ fn draw_dashboard(f: &mut Frame, area: Rect, app: &App) {
         ("View", &["Theme", "About Radiumical"]),
     ];
 
+    // Outer frame first (background)
+    let outer = RBlock::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+        .title(" Dashboard ").border_style(Style::default().fg(Color::Cyan));
+    // Inner area (accounting for border)
+    let inner = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
+    f.render_widget(Paragraph::new("").block(outer.clone()), r);
+
     // Layout: left nav + right content
     let chunks = Layout::default().direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)]).split(r);
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)]).split(inner);
 
     // Left: category list
     let nav_lines: Vec<Line> = sections.iter().enumerate().map(|(i, (cat, _))| {
