@@ -82,7 +82,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     use ratatui::widgets::Wrap;
     let total = app.output.len(); if total == 0 { return; }
     // Always clamp to the actual allocated area — never overflow into bottom section
-    let vis = (area.height as usize).min(_vis);
+    let vis = (area.height as usize).saturating_sub(1).min(_vis); // never touch last row
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
     let blocks = measure_blocks(&app.output);

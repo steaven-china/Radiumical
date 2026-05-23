@@ -94,8 +94,8 @@ impl App {
                 if let Ok(mut cb) = arboard::Clipboard::new() { let _ = cb.set_text(&text); self.output.push("  [Copied]".into()); self.stick_to_bottom = true; }
                 self.selection = None;
             }
-            (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_up(12.0); } }
-            (KeyCode::PageDown, _) => { if self.hint_selected.is_some() { let max_page = self.hints.len().saturating_sub(1) / 8; self.hint_page = (self.hint_page + 1).min(max_page); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
+            (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
+            (KeyCode::PageDown, _) => { if self.hint_selected.is_some() { let max_page = self.hints.len().saturating_sub(1) / 8; self.hint_page = (self.hint_page + 1).min(max_page); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_up(12.0); } }
             (KeyCode::Up, _) => {
                 if self.dashboard.visible { self.dashboard.up(); return; }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
@@ -283,8 +283,8 @@ impl App {
     pub fn handle_mouse(&mut self, kind: MouseEventKind, row: u16, _col: u16, output_top: u16) {
         if self.welcome { return; }
         match kind {
-            MouseEventKind::ScrollDown => self.scroll_up(1.0),
-            MouseEventKind::ScrollUp => self.scroll_down(1.0),
+            MouseEventKind::ScrollDown => self.scroll_down(1.0),
+            MouseEventKind::ScrollUp => self.scroll_up(1.0),
             MouseEventKind::Down(_) => {
                 // Check if clicking on help board border for resize
                 if self.help_board.hit_border(row, _col, Rect { x: 0, y: output_top, width: 80, height: 24 }) {
@@ -312,7 +312,12 @@ impl App {
         global_i >= start && global_i < end
     }
 
-    pub fn scroll_up(&mut self, lines: f32) { self.scroll += lines; self.stick_to_bottom = false; self.scroll_velocity = lines; }
+    pub fn scroll_up(&mut self, lines: f32) {
+        let max = (self.output.len().saturating_sub(20)) as f32;
+        self.scroll = (self.scroll + lines).min(max.max(0.0));
+        self.stick_to_bottom = self.scroll <= 0.0;
+        self.scroll_velocity = lines;
+    }
     pub fn scroll_down(&mut self, lines: f32) { self.scroll = (self.scroll - lines).max(0.0); if self.scroll <= 0.0 { self.scroll = 0.0; self.stick_to_bottom = true; } self.scroll_velocity = -lines; }
 
     fn show_help(&mut self) {
