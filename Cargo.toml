@@ -1,0 +1,52 @@
+[package]
+name = "radiumical"
+version = "0.1.0"
+edition = "2021"
+description = "A lean, fast CLI coding agent"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures = "0.3"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Diff & search
+similar = "2"
+regex = "1"
+
+# Markdown parsing
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html", "simd"] }
+
+# File system
+walkdir = "2"
+ignore = "0.4"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Async trait (for tool trait)
+async-trait = "0.1"
+
+# Misc
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+anyhow = "1"
+
+# TUI
+crossterm = "0.28"
+ratatui = { version = "0.28", features = ["crossterm"] }
+
+# Syntax highlighting for diffs
+syntect = "5"
+arboard = "3.6.1"

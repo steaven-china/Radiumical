@@ -1,0 +1,711 @@
+use regex::Regex;
+use std::path::PathBuf;
+use std::process::Command;
+
+use crate::types::{FunctionDef, ToolDefinition, ToolResult};
+
+/// A tool that the agent can call.
+#[async_trait::async_trait]
+pub trait Tool: Send + Sync {
+    fn definition(&self) -> ToolDefinition;
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult;
+}
+
+// ── Tool implementations ──
+
+pub struct ReadFile;
+pub struct WriteFile;
+pub struct EditFile;
+pub struct SearchCode;
+pub struct FindFiles;
+pub struct RunCommand;
+
+// ── Registry ──
+
+/// Returns all tools as Vec.
+pub fn all_tools() -> Vec<Box<dyn Tool>> {
+    vec![
+        Box::new(ReadFile),
+        Box::new(WriteFile),
+        Box::new(EditFile),
+        Box::new(SearchCode),
+        Box::new(FindFiles),
+        Box::new(RunCommand),
+    ]
+}
+
+// ── ReadFile ──
+
+#[async_trait::async_trait]
+impl Tool for ReadFile {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "read_file".into(),
+                description: "Read the contents of a file. Returns the file content with line numbers. Use this before editing any file.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file to read, relative to workspace root"
+                        },
+                        "start_line": {
+                            "type": "integer",
+                            "description": "Optional 1-based start line number"
+                        },
+                        "end_line": {
+                            "type": "integer",
+                            "description": "Optional 1-based end line number (inclusive)"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let path_str = args["path"].as_str().unwrap_or("");
+        let full_path = workspace.join(path_str);
+
+        let content = match std::fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Error reading file {}: {e}", full_path.display()),
+                    is_error: true,
+                }
+            }
+        };
+
+        let start = args["start_line"].as_u64().map(|n| n as usize).unwrap_or(1);
+        let end = args["end_line"]
+            .as_u64()
+            .map(|n| n as usize)
+            .unwrap_or(usize::MAX);
+
+        // Use split('\n') instead of lines() to preserve trailing empty line.
+        // lines() drops the empty string after a final \n, making the last line always missing.
+        let lines: Vec<&str> = content.split('\n').collect();
+        let total = lines.len();
+        let end = end.min(total);
+        let start = start.max(1).min(total).min(end); // clamp start ≤ end to avoid slice panic
+
+        let mut output = format!("File: {path_str} (lines {start}-{end} of {total})\n\n");
+        for (i, line) in lines[start - 1..end].iter().enumerate() {
+            let line_num = start + i;
+            // Strip trailing \r from CRLF files for clean display
+            let clean = line.trim_end_matches('\r');
+            output.push_str(&format!("{:>6} | {}\n", line_num, clean));
+        }
+
+        ToolResult {
+            tool_call_id: String::new(),
+            content: output,
+            is_error: false,
+        }
+    }
+}
+
+// ── WriteFile ──
+
+#[async_trait::async_trait]
+impl Tool for WriteFile {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "write_file".into(),
+                description: "Create a new file or overwrite an existing file with the given content. Use this for creating new files or completely rewriting existing ones.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file, relative to workspace root"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The complete file content"
+                        }
+                    },
+                    "required": ["path", "content"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let path_str = args["path"].as_str().unwrap_or("");
+        let content = args["content"].as_str().unwrap_or("");
+        let full_path = workspace.join(path_str);
+
+        // Ensure parent dir exists
+        if let Some(parent) = full_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Failed to create directory: {e}"),
+                    is_error: true,
+                };
+            }
+        }
+
+        match std::fs::write(&full_path, content) {
+            Ok(_) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!("Wrote {} bytes to {}", content.len(), path_str),
+                is_error: false,
+            },
+            Err(e) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!("Failed to write {}: {e}", path_str),
+                is_error: true,
+            },
+        }
+    }
+}
+
+// ── EditFile (search & replace) ──
+
+#[async_trait::async_trait]
+impl Tool for EditFile {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "edit_file".into(),
+                description: "Make targeted edits by replacing old_text with new_text. Line endings (CRLF/LF) are auto-detected and normalized — you don't need to worry about matching them exactly. The old_text must be unique within the file.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file, relative to workspace root"
+                        },
+                        "old_text": {
+                            "type": "string",
+                            "description": "The exact text to find and replace. Must be unique within the file."
+                        },
+                        "new_text": {
+                            "type": "string",
+                            "description": "The replacement text"
+                        }
+                    },
+                    "required": ["path", "old_text", "new_text"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let path_str = args["path"].as_str().unwrap_or("");
+        let mut old_text = args["old_text"].as_str().unwrap_or("").to_string();
+        let mut new_text = args["new_text"].as_str().unwrap_or("").to_string();
+        let full_path = workspace.join(path_str);
+
+        let raw = match std::fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Error reading {}: {e}", full_path.display()),
+                    is_error: true,
+                }
+            }
+        };
+
+        // Detect line ending: if the file contains \r\n, it's CRLF
+        let is_crlf = raw.contains("\r\n");
+
+        // Convert search/replace strings to match file's line ending
+        if is_crlf {
+            old_text = lf_to_crlf(&old_text);
+            new_text = lf_to_crlf(&new_text);
+        }
+
+        // Count occurrences
+        let count = raw.matches(&old_text).count();
+
+        if count == 0 {
+            // Fallback: normalize both sides to LF, then try matching.
+            // This handles the case where LLM and file use opposing line endings.
+            let old_lf = crlf_to_lf(&old_text);
+            let raw_lf = crlf_to_lf(&raw);
+            let new_lf = crlf_to_lf(&new_text);
+
+            let lf_count = raw_lf.matches(&old_lf).count();
+            if lf_count == 1 {
+                let new_content_lf = raw_lf.replacen(&old_lf, &new_lf, 1);
+                // Restore the original line ending style
+                let new_content = if is_crlf {
+                    lf_to_crlf(&new_content_lf)
+                } else {
+                    new_content_lf
+                };
+                std::fs::write(&full_path, &new_content).ok();
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!(
+                        "Edited {} (auto-adjusted line endings). Replaced 1 occurrence.",
+                        path_str
+                    ),
+                    is_error: false,
+                };
+            }
+
+            return ToolResult {
+                tool_call_id: String::new(),
+                content: format!(
+                    "old_text not found in {}. File has {} line endings.",
+                    path_str,
+                    if is_crlf { "CRLF" } else { "LF" }
+                ),
+                is_error: true,
+            };
+        }
+
+        if count > 1 {
+            return ToolResult {
+                tool_call_id: String::new(),
+                content: format!(
+                    "old_text matches {count} times in {}. Provide more context for unique match.",
+                    path_str
+                ),
+                is_error: true,
+            };
+        }
+
+        let new_content = raw.replacen(&old_text, &new_text, 1);
+
+        match std::fs::write(&full_path, &new_content) {
+            Ok(_) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!(
+                    "Edited {} ({}). Replaced 1 occurrence.",
+                    path_str,
+                    if is_crlf { "CRLF" } else { "LF" }
+                ),
+                is_error: false,
+            },
+            Err(e) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!("Failed to write {}: {e}", path_str),
+                is_error: true,
+            },
+        }
+    }
+}
+
+// ── SearchCode (regex grep) ──
+
+#[async_trait::async_trait]
+impl Tool for SearchCode {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "search_code".into(),
+                description: "Search for a regex pattern across all files in the workspace. Returns file paths and matching lines. Use this to find definitions, usages, or patterns in the codebase.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Regex pattern to search for"
+                        },
+                        "include": {
+                            "type": "string",
+                            "description": "Optional glob pattern to filter files (e.g., '**/*.rs', 'src/**/*.ts')"
+                        },
+                        "case_sensitive": {
+                            "type": "boolean",
+                            "description": "Whether the search is case-sensitive. Default: false"
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let pattern = args["pattern"].as_str().unwrap_or("");
+        let case_sensitive = args["case_sensitive"].as_bool().unwrap_or(false);
+
+        let re = match if case_sensitive {
+            Regex::new(pattern)
+        } else {
+            Regex::new(&format!("(?i){pattern}"))
+        } {
+            Ok(r) => r,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid regex pattern: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let mut output = String::new();
+        let mut total_matches = 0;
+        let max_matches = 100;
+
+        let walker = walkdir::WalkDir::new(workspace)
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e));
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            if total_matches >= max_matches {
+                output.push_str("\n... (truncated, too many matches)\n");
+                break;
+            }
+
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let path = entry.path();
+            let rel_path = match path.strip_prefix(workspace) {
+                Ok(p) => p.display().to_string(),
+                Err(_) => continue,
+            };
+
+            // Check include pattern
+            if let Some(include) = args["include"].as_str() {
+                if !simple_glob_match(include, &rel_path) {
+                    continue;
+                }
+            }
+
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            for (line_num, line) in content.lines().enumerate() {
+                if re.is_match(line) {
+                    if total_matches == 0
+                        || output
+                            .lines()
+                            .last()
+                            .map_or(true, |l| !l.starts_with(&rel_path))
+                    {
+                        output.push_str(&format!("\n{}:\n", rel_path));
+                    }
+                    output.push_str(&format!("  {:>4}: {}\n", line_num + 1, line.trim()));
+                    total_matches += 1;
+                    if total_matches >= max_matches {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if total_matches == 0 {
+            output = format!("No matches found for pattern: {pattern}");
+        } else {
+            output = format!("Found {total_matches} matches for pattern: {pattern}\n{output}");
+        }
+
+        ToolResult {
+            tool_call_id: String::new(),
+            content: output,
+            is_error: false,
+        }
+    }
+}
+
+// ── FindFiles (glob) ──
+
+#[async_trait::async_trait]
+impl Tool for FindFiles {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "find_files".into(),
+                description: "Find files matching a glob pattern. Returns sorted file paths. Use this to locate files by name.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern (e.g., '**/*.rs', 'src/**/*.ts')"
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let pattern = args["pattern"].as_str().unwrap_or("*");
+
+        let mut matches: Vec<String> = Vec::new();
+        let max_results = 200;
+
+        let walker = walkdir::WalkDir::new(workspace)
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e));
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            if matches.len() >= max_results {
+                break;
+            }
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let rel_path = match entry.path().strip_prefix(workspace) {
+                Ok(p) => p.display().to_string(),
+                Err(_) => continue,
+            };
+            if simple_glob_match(pattern, &rel_path) {
+                matches.push(rel_path);
+            }
+        }
+
+        matches.sort();
+
+        let output = if matches.is_empty() {
+            format!("No files found matching: {pattern}")
+        } else {
+            let count = matches.len();
+            let truncated = if count >= max_results {
+                " (truncated)"
+            } else {
+                ""
+            };
+            format!(
+                "Found {count} files{truncated} matching {pattern}:\n{}",
+                matches.join("\n")
+            )
+        };
+
+        ToolResult {
+            tool_call_id: String::new(),
+            content: output,
+            is_error: false,
+        }
+    }
+}
+
+// ── RunCommand ──
+
+#[async_trait::async_trait]
+impl Tool for RunCommand {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "run_command".into(),
+                description: "Execute a shell command in the workspace directory. Use this to run builds, tests, linting, or any shell command. Returns stdout and stderr. Command times out after 120 seconds.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute"
+                        }
+                    },
+                    "required": ["command"]
+                }),
+            },
+        }
+    }
+
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON arguments: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let cmd_str = args["command"].as_str().unwrap_or("");
+
+        // Execute via sh on unix, cmd on windows
+        #[cfg(target_os = "windows")]
+        let (shell, flag) = ("cmd", "/C");
+        #[cfg(not(target_os = "windows"))]
+        let (shell, flag) = ("sh", "-c");
+
+        // Force UTF-8 codepage on Windows to avoid GBK mojibake in output
+        #[cfg(target_os = "windows")]
+        let cmd_str = format!("chcp 65001 > nul && {}", cmd_str);
+
+        let output = match Command::new(shell)
+            .arg(flag)
+            .arg(&cmd_str)
+            .current_dir(workspace)
+            .output()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Failed to execute command: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let exit_code = output.status.code().unwrap_or(-1);
+
+        let mut result = String::new();
+        result.push_str(&format!("Command: {cmd_str}\n"));
+        result.push_str(&format!("Exit code: {exit_code}\n\n"));
+
+        if !stdout.is_empty() {
+            result.push_str(&format!("STDOUT:\n{stdout}\n"));
+        }
+        if !stderr.is_empty() {
+            result.push_str(&format!("STDERR:\n{stderr}\n"));
+        }
+        if stdout.is_empty() && stderr.is_empty() {
+            result.push_str("(no output)\n");
+        }
+
+        ToolResult {
+            tool_call_id: String::new(),
+            content: result,
+            is_error: exit_code != 0,
+        }
+    }
+}
+
+// ── Helpers ──
+
+fn is_hidden(entry: &walkdir::DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.') || s == "node_modules" || s == "target" || s == ".git")
+        .unwrap_or(false)
+}
+
+fn simple_glob_match(pattern: &str, path: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('/').collect();
+    let path_parts: Vec<&str> = path.split('/').collect();
+
+    /// Recursive matching with proper ** backtracking.
+    fn match_from(pi: usize, si: usize, parts: &[&str], path_parts: &[&str]) -> bool {
+        if pi == parts.len() {
+            return si == path_parts.len();
+        }
+
+        if parts[pi] == "**" {
+            // ** matches zero or more path segments — try zero first, then each prefix
+            for next_si in si..=path_parts.len() {
+                if match_from(pi + 1, next_si, parts, path_parts) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        if si >= path_parts.len() {
+            return false;
+        }
+
+        if part_match(parts[pi], path_parts[si]) {
+            return match_from(pi + 1, si + 1, parts, path_parts);
+        }
+
+        false
+    }
+
+    match_from(0, 0, &parts, &path_parts)
+}
+
+fn part_match(pattern: &str, value: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if !pattern.contains('*') && !pattern.contains('?') {
+        return pattern == value;
+    }
+    // Very basic glob matching for single part
+    let re_str = pattern
+        .replace('.', "\\.")
+        .replace('*', ".*")
+        .replace('?', ".");
+    regex::Regex::new(&format!("^{re_str}$")).map_or(false, |re| re.is_match(value))
+}
+
+/// Convert LF → CRLF (for Windows files)
+fn lf_to_crlf(s: &str) -> String {
+    // Normalize to LF first, then convert
+    s.replace("\r\n", "\n").replace("\n", "\r\n")
+}
+
+/// Convert CRLF → LF (for matching)
+fn crlf_to_lf(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
