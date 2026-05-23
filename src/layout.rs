@@ -296,6 +296,13 @@ impl Block {
             BlockKind::Text => {
                 let s = self.source_lines[0].trim();
                 if s.is_empty() { return vec![Line::from("")]; }
+                // Diff highlighting
+                if let Some(rest) = s.strip_prefix("+ ") {
+                    return vec![Line::from(Span::styled(format!("+ {rest}"), Style::default().fg(Color::Green)))];
+                }
+                if let Some(rest) = s.strip_prefix("- ") {
+                    return vec![Line::from(Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)))];
+                }
                 let spans = crate::markdown::render_inline(s);
                 if spans.is_empty() { vec![Line::from("")] } else { vec![Line::from(spans)] }
             }

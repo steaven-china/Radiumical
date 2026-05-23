@@ -1,5 +1,6 @@
 mod board;
 mod commands;
+mod config;
 mod conversation;
 mod hooks;
 mod layout;
@@ -95,7 +96,10 @@ async fn main() -> Result<()> {
         _ => ProviderKind::OpenAI,
     };
 
-    let model = cli.model.unwrap_or_else(|| {
+    let model = cli.model.or_else(|| {
+        let cfg = config::Config::load().ok();
+        cfg.and_then(|c| c.model)
+    }).unwrap_or_else(|| {
         if cli.provider.to_lowercase() == "deepseek" {
             "deepseek-v4-pro".into()
         } else {

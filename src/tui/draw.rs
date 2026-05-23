@@ -77,6 +77,24 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, vis: usize) {
     let content_h = rendered.len();
     let mut filled = rendered;
     filled.resize(filled.len().max(vis), Line::from(""));
+
+    // Scrollbar on right edge
+    if total > vis {
+        let sb_h = area.height.saturating_sub(2);
+        let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as u16;
+        let thumb_y = if app.stick_to_bottom {
+            sb_h.saturating_sub(thumb_h)
+        } else {
+            let progress = app.scroll as f32 / (total - vis).max(1) as f32;
+            (progress * (sb_h - thumb_h) as f32) as u16
+        };
+        let sb_style = Style::default().fg(Color::Rgb(60, 60, 70));
+        for i in 0..sb_h {
+            let ch = if i >= thumb_y && i < thumb_y + thumb_h { '█' } else { '│' };
+            f.render_widget(Paragraph::new(ch.to_string()).style(sb_style), Rect { x: area.x + area.width - 1, y: area.y + 1 + i, width: 1, height: 1 });
+        }
+    }
+
     if app.welcome && content_h < vis && app.scroll <= 0.0 && !filled.is_empty() && filled.iter().any(|l| l.width() > 0) {
         let pad_top = (vis - content_h) / 2;
         let max_w = filled.iter().map(|l| l.width()).max().unwrap_or(0) as u16;

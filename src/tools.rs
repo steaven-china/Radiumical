@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
+use similar::{ChangeTag, TextDiff};
 
 /// A tool that the agent can call.
 #[async_trait::async_trait]
@@ -313,12 +314,23 @@ impl Tool for EditFile {
         }
 
         let new_content = raw.replacen(&old_text, &new_text, 1);
+        let diff = TextDiff::from_lines(&raw, &new_content);
+        let mut diff_out = String::from("Changes:\n");
+        for change in diff.iter_all_changes() {
+            let sign = match change.tag() {
+                ChangeTag::Delete => "- ",
+                ChangeTag::Insert => "+ ",
+                ChangeTag::Equal => "  ",
+            };
+            diff_out.push_str(sign);
+            diff_out.push_str(&change.value().replace('\n', "\n  "));
+        }
 
         match std::fs::write(&full_path, &new_content) {
             Ok(_) => ToolResult {
                 tool_call_id: String::new(),
                 content: format!(
-                    "Edited {} ({}). Replaced 1 occurrence.",
+                    "Edited {} ({}). Replaced 1 occurrence.\n{diff_out}",
                     path_str,
                     if is_crlf { "CRLF" } else { "LF" }
                 ),
