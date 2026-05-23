@@ -221,7 +221,7 @@ impl App {
                 if self.cursor > 0 { self.history_idx = None; self.cursor = self.prev_char_boundary(self.cursor); }
             }
             (KeyCode::Right, _) => {
-                if self.dashboard.visible { self.dashboard.left(); return; }
+                if self.dashboard.visible { self.dashboard.right(); return; }
                 if self.cursor < self.input.len() { self.history_idx = None; self.cursor = self.next_char_boundary(self.cursor); }
             }
             (KeyCode::Home, _) => { self.history_idx = None; self.cursor = 0; }
