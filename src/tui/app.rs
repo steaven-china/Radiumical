@@ -12,6 +12,7 @@ pub struct App {
     pub input: String,
     pub cursor: usize,
     pub thinking: bool,
+    pub thinking_cancelled: bool,
     pub thinking_start: Instant,
     pub thinking_elapsed: u64,
     pub thinking_frame: usize,
@@ -63,7 +64,7 @@ impl App {
         out.push(String::new());
         Self {
             output: out, input: String::new(), cursor: 0,
-            thinking: false, thinking_start: Instant::now(), thinking_elapsed: 0, thinking_frame: 0,
+            thinking: false, thinking_cancelled: false, thinking_start: Instant::now(), thinking_elapsed: 0, thinking_frame: 0,
             hints: Vec::new(), hint_selected: None, hint_page: 0, scroll: 0.0, stick_to_bottom: true, scroll_velocity: 0.0,
             mode: config.mode.clone(), model: config.model.clone(),
             provider_name: config.provider.name().to_string(),
@@ -206,7 +207,7 @@ impl App {
                     _ => {}
                 }
                 self.input.clear(); self.cursor = 0; self.hints.clear(); self.history_idx = None; self.welcome = false; self.show_help_overlay = false;
-                if !task.is_empty() { self.history.push(task.clone()); self.output.push(format!("> {task}")); self.output.push(String::new()); self.stick_to_bottom = true; self.full_reasoning.clear(); self.show_full_reasoning = false;
+                if !task.is_empty() { self.history.push(task.clone()); self.output.push(format!("> {task}")); self.output.push(String::new()); self.stick_to_bottom = true; self.full_reasoning.clear(); self.show_full_reasoning = false; self.thinking_cancelled = false;
                     let final_task = if self.cod_enabled { format!("{task}\n\n[Chain of Draft: think in <=5 word steps, be terse. Output reasoning as brief fragments, then final answer.]") } else { task };
                     let _ = self.cmd_tx.send(BackendCmd::RunTask(final_task)); }
             }
@@ -247,7 +248,7 @@ impl App {
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
-            (KeyCode::Esc, _) => { if self.dashboard.visible { self.dashboard.visible = false; return; } if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
+            (KeyCode::Esc, _) => { if self.dashboard.visible { self.dashboard.visible = false; return; } if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; self.thinking_cancelled = true; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
             _ => {}
         }
     }
@@ -341,7 +342,11 @@ impl App {
         match event {
             UiEvent::LlmChunk(chunk) => { let chunk = chunk.replace("\r\n", "\n").replace('\r', ""); if let Some(last) = self.output.last() { if last.starts_with("\x01") { self.output.push(String::new()); } } for ch in chunk.chars() { if ch == '\n' { self.output.push(String::new()); } else { if self.output.is_empty() { self.output.push(String::new()); } self.output.last_mut().unwrap().push(ch); } } }
             UiEvent::LlmReasoning(rc) => { if let Some(last) = self.output.last_mut() { if last.starts_with("\x01") { last.push_str(&rc); return; } } self.output.push(format!("\x01{}", rc)); }
-            UiEvent::ThinkingTick => { if !self.thinking { self.thinking_start = Instant::now(); } self.thinking = true; }
+            UiEvent::ThinkingTick => {
+                if self.thinking_cancelled { return; }
+                if !self.thinking { self.thinking_start = Instant::now(); }
+                self.thinking = true;
+            }
             UiEvent::LlmDone => { if self.output.last().map_or(true, |l| !l.is_empty()) { self.output.push(String::new()); } }
             UiEvent::ToolStart { name, index, total, args } => {
                 self.progress.visible = true;
@@ -353,6 +358,6 @@ impl App {
         }
     }
 
-    pub fn tick(&mut self, _visible_lines: usize) { if self.thinking { self.thinking_frame += 1; self.thinking_elapsed = self.thinking_start.elapsed().as_secs(); } if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom { self.scroll += self.scroll_velocity; self.scroll = self.scroll.max(0.0); self.scroll_velocity *= 0.85; } if self.stick_to_bottom { self.scroll = 0.0; } if self.output.len() > _visible_lines { let max = (self.output.len() - _visible_lines) as f32; self.scroll = self.scroll.min(max); } }
+    pub fn tick(&mut self, _visible_lines: usize) { if self.thinking { self.thinking_elapsed = self.thinking_start.elapsed().as_secs(); self.thinking_frame = (self.thinking_start.elapsed().as_millis() / 150) as usize; } if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom { self.scroll += self.scroll_velocity; self.scroll = self.scroll.max(0.0); self.scroll_velocity *= 0.85; } if self.stick_to_bottom { self.scroll = 0.0; } if self.output.len() > _visible_lines { let max = (self.output.len() - _visible_lines) as f32; self.scroll = self.scroll.min(max); } }
 }
 
