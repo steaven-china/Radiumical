@@ -261,11 +261,7 @@ use crate::types::ProviderKind;
 pub fn create_provider(kind: &ProviderKind, api_base: Option<&str>, api_key: &str, model: &str) -> Arc<dyn Provider> {
     let base = api_base.unwrap_or_else(|| kind.default_base());
     match kind {
-        ProviderKind::OpenAI | ProviderKind::Ollama => {
-            Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
-        }
-        ProviderKind::Anthropic => {
-            // TODO: implement Anthropic provider
+        ProviderKind::OpenAI | ProviderKind::Ollama | ProviderKind::Anthropic => {
             Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
         }
     }
