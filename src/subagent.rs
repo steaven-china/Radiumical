@@ -1,6 +1,4 @@
 //! Sub-agent system — spawn parallel workers for independent tasks.
-use crate::tui::UiEvent;
-use crate::conversation::Conversation;
 use crate::pipeline::PipelineRunner;
 use crate::provider::Provider;
 use crate::types::SessionConfig;
@@ -9,6 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone)]
 pub struct SubAgentResult {
+    #[allow(dead_code)]
     pub id: String,
     pub task: String,
     pub output: String,
@@ -65,6 +64,7 @@ pub fn list() -> String {
 }
 
 /// Get result of a specific sub-agent.
+#[allow(dead_code)]
 pub fn get(id: &str) -> Option<SubAgentResult> {
     registry().lock().unwrap().get(id).cloned()
 }

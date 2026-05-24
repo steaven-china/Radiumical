@@ -84,6 +84,7 @@ pub struct OpenAICompatibleProvider {
 }
 
 impl OpenAICompatibleProvider {
+    #[allow(dead_code)]
     pub fn set_reasoning(&mut self, effort: Option<String>) {
         self.reasoning_effort = effort;
     }
@@ -158,12 +159,27 @@ impl Provider for OpenAICompatibleProvider {
                 buffer = buffer[line_end + 1..].to_string();
 
                 let data = line.strip_prefix("data: ").unwrap_or("");
-                if data.is_empty() || data == "[DONE]" {
-                    if data == "[DONE]" {
-                        // Stream finished
-                        break;
-                    }
+                if data.is_empty() {
                     continue;
+                }
+                if data == "[DONE]" {
+                    // Flush any accumulated tool calls before finishing
+                    if !tool_call_acc.is_empty() {
+                        let tool_calls: Vec<ToolCall> = tool_call_acc
+                            .iter()
+                            .map(|acc| ToolCall {
+                                id: acc.id.clone().unwrap_or_default(),
+                                call_type: acc.call_type.clone().unwrap_or_else(|| "function".into()),
+                                function: crate::types::FunctionCall {
+                                    name: acc.name.clone().unwrap_or_default(),
+                                    arguments: acc.arguments.clone().unwrap_or_default(),
+                                },
+                            })
+                            .collect();
+                        let _ = tx.send(ProviderEvent::ToolCalls(tool_calls));
+                    }
+                    let _ = tx.send(ProviderEvent::Done);
+                    return Ok(());
                 }
 
                 let chunk: ChatChunk = match serde_json::from_str(data) {
@@ -258,11 +274,36 @@ use std::sync::Arc;
 
 use crate::types::ProviderKind;
 
+/// Stub provider that returns a clear error for unsupported providers.
+struct UnsupportedProvider {
+    name: String,
+}
+
+#[async_trait::async_trait]
+impl Provider for UnsupportedProvider {
+    async fn chat(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        tx: mpsc::UnboundedSender<ProviderEvent>,
+    ) -> Result<()> {
+        let _ = tx.send(ProviderEvent::Error(format!(
+            "Provider '{}' is not yet supported. Use openai, deepseek, or ollama.",
+            self.name
+        )));
+        let _ = tx.send(ProviderEvent::Done);
+        Ok(())
+    }
+}
+
 pub fn create_provider(kind: &ProviderKind, api_base: Option<&str>, api_key: &str, model: &str) -> Arc<dyn Provider> {
     let base = api_base.unwrap_or_else(|| kind.default_base());
     match kind {
-        ProviderKind::OpenAI | ProviderKind::Ollama | ProviderKind::Anthropic => {
+        ProviderKind::OpenAI | ProviderKind::Ollama => {
             Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
+        }
+        ProviderKind::Anthropic => {
+            Arc::new(UnsupportedProvider { name: "anthropic".into() })
         }
     }
 }

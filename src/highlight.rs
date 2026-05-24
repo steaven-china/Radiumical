@@ -21,4 +21,5 @@ pub fn highlight_code(code: &str, lang: &str) -> String {
 }
 
 /// Quick check: is syntect available and can highlight?
+#[allow(dead_code)]
 pub fn available() -> bool { true }

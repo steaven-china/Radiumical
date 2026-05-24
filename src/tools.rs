@@ -365,7 +365,12 @@ impl Tool for EditFile {
             diff_out.push('\n');
         }
         if diff_out.len() > 3000 {
-            diff_out.truncate(3000);
+            // Truncate at char boundary to avoid panicking on multi-byte UTF-8
+            let mut end = 3000.min(diff_out.len());
+            while end > 0 && !diff_out.is_char_boundary(end) {
+                end -= 1;
+            }
+            diff_out.truncate(end);
             diff_out.push_str("\n... (truncated)");
         }
 
@@ -970,8 +975,10 @@ impl Tool for GoalTool {
 // Stores pending choices; the TUI picks them up via UiEvent::Choice
 
 
+#[allow(dead_code)]
 static CHOICE_TX: OnceLock<Mutex<Option<tokio::sync::oneshot::Sender<String>>>> = OnceLock::new();
 
+#[allow(dead_code)]
 pub fn take_choice_tx() -> Option<tokio::sync::oneshot::Sender<String>> {
     CHOICE_TX.get_or_init(|| Mutex::new(None)).lock().unwrap().take()
 }
@@ -1167,7 +1174,7 @@ impl Tool for AnnotateTool {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
         };

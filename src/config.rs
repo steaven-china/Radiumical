@@ -34,6 +34,7 @@ impl Config {
         }
     }
 
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
         let data = toml::to_string_pretty(self)?;
         fs::write(Self::path(), data)?;
@@ -41,6 +42,7 @@ impl Config {
     }
 
     /// Apply config over CLI args (CLI takes priority)
+    #[allow(dead_code)]
     pub fn apply(&self, model: &mut String, _provider: &mut String) {
         if let Some(ref m) = self.model { *model = m.clone(); }
     }

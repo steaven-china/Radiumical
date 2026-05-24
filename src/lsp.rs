@@ -99,6 +99,6 @@ fn run_go_vet(workspace: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stderr).to_string())
 }
 
-fn run_clang_tidy(workspace: &Path) -> Result<String, String> {
+fn run_clang_tidy(_workspace: &Path) -> Result<String, String> {
     Err("clang-tidy integration not yet implemented".into())
 }

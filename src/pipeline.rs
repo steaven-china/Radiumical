@@ -113,20 +113,9 @@ impl PipelineRunner {
 
             let _ = ui_tx.send(UiEvent::LlmDone);
 
-            match chat_handle.await {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => {
-                    let _ = ui_tx.send(UiEvent::Error(e.to_string()));
-                    return Err(e);
-                }
-                Err(join_err) => {
-                    let msg = format!("Provider panicked: {join_err}");
-                    let _ = ui_tx.send(UiEvent::Error(msg.clone()));
-                    return Err(anyhow::anyhow!("{msg}"));
-                }
-            }
-
             if timed_out {
+                // Abort the stuck provider task instead of awaiting it
+                chat_handle.abort();
                 let explain = format!(
                     "⚠️ LLM request timed out after {}s (iteration {}).",
                     self.config.llm_timeout_secs,
@@ -135,6 +124,23 @@ impl PipelineRunner {
                 let _ = ui_tx.send(UiEvent::Error(explain.clone()));
                 messages.push(user_msg(&explain));
                 continue;
+            }
+
+            match chat_handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    let _ = ui_tx.send(UiEvent::Error(e.to_string()));
+                    return Err(e);
+                }
+                Err(join_err) => {
+                    // If aborted, we already handled it above; this arm is for panics
+                    if join_err.is_cancelled() {
+                        continue;
+                    }
+                    let msg = format!("Provider panicked: {join_err}");
+                    let _ = ui_tx.send(UiEvent::Error(msg.clone()));
+                    return Err(anyhow::anyhow!("{msg}"));
+                }
             }
 
             // ── 2. Tool execution ──

@@ -48,6 +48,7 @@ pub struct App {
     pub perf_visible: bool,
     pub output_vis: usize,
     pub progress: crate::board::ProgressBoard,
+    #[allow(dead_code)]
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
@@ -344,6 +345,7 @@ impl App {
     }
 
     /// Check if a global line index is within the visible output window.
+    #[allow(dead_code)]
     pub fn inside_window(&self, global_i: usize, vis: usize) -> bool {
         let total = self.output.len();
         let start = if self.stick_to_bottom { total.saturating_sub(vis) } else { (self.scroll as usize).min(total.saturating_sub(1)) };
