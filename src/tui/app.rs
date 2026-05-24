@@ -217,6 +217,19 @@ impl App {
                         return;
                     }
                     "/perf" => { self.perf_visible = !self.perf_visible; self.output.push("> /perf".into()); self.output.push(crate::perf::report()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    _ if task.starts_with("/remember ") => {
+                        let rest = task[10..].trim();
+                        let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                        let tier = parts.get(0).copied().unwrap_or("short");
+                        let content = parts.get(1).copied().unwrap_or("");
+                        match crate::memory::Memory::load().and_then(|mut m| { m.add(tier, content)?; m.save() }) {
+                            Ok(()) => self.output.push(format!("  [{tier}] Remembered: {content}")),
+                            Err(e) => self.output.push(format!("  Memory error: {e}")),
+                        }
+                        self.input.clear(); self.cursor = 0; self.stick_to_bottom = true;
+                        self.output.push(String::new());
+                        return;
+                    }
                     _ if task.starts_with("/debug") => { let topic = task[6..].trim(); self.show_debug(topic); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task == "/models" => { self.show_model_picker = !self.show_model_picker; self.input.clear(); self.cursor = 0; return; }
                     _ if task == "/cod on" => { self.cod_enabled = true; self.output.push("> /cod on".into()); self.output.push("  Chain of Draft enabled".into()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }

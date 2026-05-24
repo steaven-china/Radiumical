@@ -46,6 +46,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(AnnotateTool),
         Box::new(SubAgentTool),
         Box::new(SubAgentListTool),
+        Box::new(MemoryTool),
     ]
 }
 
@@ -1712,5 +1713,58 @@ impl Tool for SubAgentListTool {
 
     async fn execute(&self, _workspace: &PathBuf, _arguments: &str) -> ToolResult {
         ToolResult { tool_call_id: String::new(), content: crate::subagent::list(), is_error: false }
+    }
+}
+
+// ── Memory tool ──
+
+pub struct MemoryTool;
+
+#[async_trait::async_trait]
+impl Tool for MemoryTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition { tool_type: "function".into(), function: FunctionDef {
+            name: "memory".into(),
+            description: "Manage persistent memory across sessions. Actions: 'add <core|mino|short> <content>', 'list [tier]'. Core memory is always in context, mino is recent, short is session summaries.".into(),
+            parameters: serde_json::json!({"type":"object","properties":{"action":{"type":"string","description":"'add core <text>', 'add mino <text>', 'add short <text>', 'list', 'list core', 'list mino', 'list short'"}},"required":["action"]}),
+        }}
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+
+        if let Some(rest) = action.strip_prefix("add ") {
+            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+            let tier = parts.get(0).copied().unwrap_or("short");
+            let content = parts.get(1).copied().unwrap_or("");
+            if content.is_empty() { return ToolResult { tool_call_id: String::new(), content: "No content provided.".into(), is_error: true }; }
+            match crate::memory::Memory::load().and_then(|mut m| { m.add(tier, content)?; m.save() }) {
+                Ok(()) => ToolResult { tool_call_id: String::new(), content: format!("[{tier}] Remembered."), is_error: false },
+                Err(e) => ToolResult { tool_call_id: String::new(), content: format!("Error: {e}"), is_error: true },
+            }
+        } else if action == "list" || action.starts_with("list ") {
+            let mem = crate::memory::Memory::load().unwrap_or_default();
+            let tier = action.strip_prefix("list ").unwrap_or("all");
+            let mut out = String::from("Memory:\n");
+            let mut show = |label: &str, entries: &[crate::memory::MemoryEntry]| {
+                if entries.is_empty() { return; }
+                out.push_str(&format!("  [{label}]\n"));
+                for e in entries.iter().rev().take(10) {
+                    out.push_str(&format!("    - {}\n", e.content));
+                }
+            };
+            match tier {
+                "core" | "all" => show("core", &mem.core),
+                "mino" | "all" => show("mino", &mem.mino),
+                "short" | "all" => show("short", &mem.short),
+                _ => return ToolResult { tool_call_id: String::new(), content: format!("Unknown tier: {tier}"), is_error: true },
+            }
+            ToolResult { tool_call_id: String::new(), content: out, is_error: false }
+        } else {
+            ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use 'add <tier> <content>' or 'list [tier]'."), is_error: true }
+        }
     }
 }
