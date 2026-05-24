@@ -121,3 +121,33 @@ pub fn cron_info() -> String {
         "crontab not available".into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_sysinfo_returns_string() {
+        let info = sysinfo();
+        assert!(!info.is_empty());
+    }
+
+    #[test]
+    fn test_time_now_returns_date() {
+        let t = time_now();
+        assert!(t.contains("202")); // any year in 202x
+    }
+
+    #[test]
+    fn test_list_dir_current() {
+        let result = list_dir(&PathBuf::from("."));
+        assert!(result.contains("Cargo.toml") || result.contains("src"));
+    }
+
+    #[test]
+    fn test_tree_shallow() {
+        let result = tree(&PathBuf::from("src"), 1);
+        assert!(result.contains("main.rs") || result.contains("tui"));
+    }
+}

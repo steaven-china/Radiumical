@@ -426,3 +426,36 @@ impl ProgressBoard {
         f.render_widget(Paragraph::new(bar).block(block), r);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_boardstack_push() {
+        let mut s = BoardStack::new();
+        let area = Rect { x: 0, y: 0, width: 80, height: 24 };
+        let r1 = s.push(Corner::BottomRight, 30, 10, area);
+        let r2 = s.push(Corner::BottomRight, 30, 8, area);
+        // r2 should be above r1 (stacked)
+        assert!(r2.y < r1.y);
+    }
+
+    #[test]
+    fn test_boardstate_new() {
+        let b = BoardState::new("Test", 30, 10, Corner::BottomRight);
+        assert!(b.visible);
+        assert_eq!(b.title, "Test");
+    }
+
+    #[test]
+    fn test_listboard_nav() {
+        let mut lb = ListBoard::new("Test");
+        lb.set_items(vec!["a".into(), "b".into(), "c".into()]);
+        assert_eq!(lb.current(), Some("a"));
+        lb.select_next();
+        assert_eq!(lb.current(), Some("b"));
+        lb.select_prev();
+        assert_eq!(lb.current(), Some("a"));
+    }
+}

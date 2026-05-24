@@ -56,3 +56,35 @@ pub fn render_inline(text: &str) -> Vec<Span<'static>> {
     }
     spans
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bold() {
+        let spans = render_inline("hello **world**!");
+        assert_eq!(spans.len(), 3);
+        assert!(spans[1].style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn test_code() {
+        let spans = render_inline("use `foo` bar");
+        let text: String = spans.iter().map(|s| s.to_string()).collect();
+        assert!(text.contains("`foo`"));
+    }
+
+    #[test]
+    fn test_link() {
+        let spans = render_inline("[text](url)");
+        let text: String = spans.iter().map(|s| s.to_string()).collect();
+        assert!(text.contains("text"));
+    }
+
+    #[test]
+    fn test_nested() {
+        let spans = render_inline("**bold *italic***");
+        assert!(spans.len() > 1);
+    }
+}

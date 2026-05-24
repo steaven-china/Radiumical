@@ -80,3 +80,41 @@ impl Session {
         if path.exists() { fs::remove_file(&path)?; Ok(true) } else { Ok(false) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_name_deterministic() {
+        let a = hash_name("test");
+        let b = hash_name("test");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_hash_name_different() {
+        let a = hash_name("hello");
+        let b = hash_name("world");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_list_empty() {
+        // Session dir might not exist — should return empty
+        let result = Session::list();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_save_delete_cycle() {
+        let result = Session::save("_test_session", "{\"test\":1}", "test-model");
+        assert!(result.is_ok());
+        let loaded = Session::load("_test_session").unwrap();
+        assert!(loaded.is_some());
+        let deleted = Session::delete("_test_session").unwrap();
+        assert!(deleted);
+        let gone = Session::load("_test_session").unwrap();
+        assert!(gone.is_none());
+    }
+}
