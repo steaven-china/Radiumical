@@ -212,6 +212,14 @@ fn find_md_single(chars: &[char], start: usize, d: char) -> Option<usize> {
 // ── Pass 2: render blocks ──
 
 impl Block {
+    /// Render only lines [skip..skip+take] for efficient viewport rendering.
+    pub fn render_range(&self, area_width: u16, frame: usize, markdown: &mut crate::markdown::MarkdownRenderer, show_full: bool, skip: usize, take: usize) -> Vec<Line<'static>> {
+        let all = self.render(area_width, frame, markdown, show_full);
+        let start = skip.min(all.len());
+        let end = (start + take).min(all.len());
+        all[start..end].to_vec()
+    }
+
     pub fn render(&self, _area_width: u16, _frame: usize, _markdown: &mut crate::markdown::MarkdownRenderer, show_full: bool) -> Vec<Line<'static>> {
         match &self.kind {
             BlockKind::Logo => {

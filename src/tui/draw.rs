@@ -96,17 +96,18 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     for block in &blocks {
         let block_end = line_offset + block.height;
         if block_end > start && line_offset < end {
-            let block_lines = block.render(area.width, app.thinking_frame, &mut md, app.show_full_reasoning);
+            let skip = if line_offset < start { start - line_offset } else { 0 };
+            let take = vis.saturating_sub(rendered.len());
+            let block_lines = block.render_range(area.width, app.thinking_frame, &mut md, app.show_full_reasoning, skip, take);
             for (li, bline) in block_lines.iter().enumerate() {
-                let global_li = line_offset + li;
-                if app.inside_window(global_li, vis) {
-                    let mut line = bline.clone();
-                    if let Some((sel_start, sel_end)) = app.selection { if global_li >= sel_start && global_li <= sel_end { line = line.style(Style::default().bg(Color::Rgb(60, 60, 70))); } }
-                    rendered.push(line);
-                }
+                let global_li = line_offset + li + skip;
+                let mut line = bline.clone();
+                if let Some((sel_start, sel_end)) = app.selection { if global_li >= sel_start && global_li <= sel_end { line = line.style(Style::default().bg(Color::Rgb(60, 60, 70))); } }
+                rendered.push(line);
             }
         }
         line_offset = block_end;
+        if rendered.len() >= vis { break; }
     }
     let content_h = rendered.len();
     let mut filled = rendered;
