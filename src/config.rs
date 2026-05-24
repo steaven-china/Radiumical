@@ -13,6 +13,7 @@ pub struct Config {
     pub heartbeat_secs: Option<u64>,
     pub llm_timeout_secs: Option<u64>,
     pub max_iterations: Option<usize>,
+    pub reasoning_effort: Option<String>,
 }
 
 impl Config {
@@ -28,7 +29,7 @@ impl Config {
         } else {
             Ok(Config {
                 model: None, provider: None, api_key: None, api_base: None,
-                heartbeat_secs: None, llm_timeout_secs: None, max_iterations: None,
+                heartbeat_secs: None, llm_timeout_secs: None, max_iterations: None, reasoning_effort: None,
             })
         }
     }

@@ -84,6 +84,10 @@ pub struct OpenAICompatibleProvider {
 }
 
 impl OpenAICompatibleProvider {
+    pub fn set_reasoning(&mut self, effort: Option<String>) {
+        self.reasoning_effort = effort;
+    }
+
     pub fn new(api_base: &str, api_key: &str, model: &str) -> Self {
         let reasoning = if model.contains("deepseek") || model.contains("v4") {
             Some("max".to_string())
