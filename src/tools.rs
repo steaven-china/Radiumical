@@ -641,29 +641,39 @@ impl Tool for RunCommand {
             }
         };
 
-        let cmd_str = args["command"].as_str().unwrap_or("");
+        let cmd_str = args["command"].as_str().unwrap_or("").to_string();
 
         // Execute via sh on unix, cmd on windows
         #[cfg(target_os = "windows")]
-        let (shell, flag) = ("cmd", "/C");
+        let (shell, flag): (String, String) = ("cmd".into(), "/C".into());
         #[cfg(not(target_os = "windows"))]
-        let (shell, flag) = ("sh", "-c");
+        let (shell, flag): (String, String) = ("sh".into(), "-c".into());
 
         // Force UTF-8 codepage on Windows to avoid GBK mojibake in output
         #[cfg(target_os = "windows")]
         let cmd_str = format!("chcp 65001 > nul && {}", cmd_str);
 
-        let output = match Command::new(shell)
-            .arg(flag)
-            .arg(&cmd_str)
-            .current_dir(workspace)
-            .output()
-        {
-            Ok(o) => o,
-            Err(e) => {
+        let ws_clone = workspace.clone();
+        let cmd = cmd_str.clone();
+        let output = match tokio::task::spawn_blocking(move || {
+            Command::new(&shell)
+                .arg(&flag)
+                .arg(&cmd)
+                .current_dir(&ws_clone)
+                .output()
+        }).await {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => {
                 return ToolResult {
                     tool_call_id: String::new(),
                     content: format!("Failed to execute command: {e}"),
+                    is_error: true,
+                }
+            }
+            Err(je) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Command panicked: {je}"),
                     is_error: true,
                 }
             }
