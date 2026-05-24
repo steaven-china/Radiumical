@@ -44,6 +44,7 @@ pub struct App {
     pub confirm: crate::board::ConfirmBoard,
     pub dashboard: crate::dashboard::Dashboard,
     pub perf_visible: bool,
+    pub output_vis: usize,
     pub progress: crate::board::ProgressBoard,
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
@@ -79,6 +80,7 @@ impl App {
             dashboard: crate::dashboard::Dashboard::new(),
             perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),
+            output_vis: 20,
             plan_board: crate::board::BoardState::new(" Plan ", 30, 8, crate::board::Corner::TopRight),
             available_models: vec![config.model.clone()],
             selection: None, selecting: false,
@@ -92,7 +94,7 @@ impl App {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => self.should_quit = true,
             (KeyCode::Char('C'), mods) if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) => {
                 let text = if let Some((s, e)) = self.selection { self.output[s..=e].join("\n") } else { self.output.join("\n") };
-                if let Ok(mut cb) = arboard::Clipboard::new() { let _ = cb.set_text(&text); self.output.push("  [Copied]".into()); self.stick_to_bottom = true; }
+                if let Ok(mut cb) = arboard::Clipboard::new() { let _ = cb.set_text(&text); self.output.push("  [Copied]".into()); } else { self.output.push("  [Clipboard unavailable]".into()); }
                 self.selection = None;
             }
             (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
@@ -303,7 +305,13 @@ impl App {
             _ => {}
         }
     }
-    fn screen_to_output(&self, screen_row: u16, output_top: u16) -> usize { let rel = screen_row.saturating_sub(output_top) as usize; let total = self.output.len(); let vis = 20; let start = if self.stick_to_bottom { total.saturating_sub(vis) } else { (self.scroll as usize).min(total.saturating_sub(1)) }; (start + rel).min(total.saturating_sub(1)) }
+    fn screen_to_output(&self, screen_row: u16, output_top: u16) -> usize {
+        let rel = screen_row.saturating_sub(output_top) as usize;
+        let total = self.output.len();
+        let vis = self.output_vis;
+        let start = if self.stick_to_bottom { total.saturating_sub(vis) } else { (self.scroll as usize).min(total.saturating_sub(1)) };
+        (start + rel).min(total.saturating_sub(1))
+    }
 
     /// Check if a global line index is within the visible output window.
     pub fn inside_window(&self, global_i: usize, vis: usize) -> bool {
@@ -360,6 +368,6 @@ impl App {
 
     pub fn load_output(&mut self, lines: Vec<String>) { self.output = lines; self.welcome = false; self.stick_to_bottom = true; }
 
-    pub fn tick(&mut self, _visible_lines: usize) { if self.thinking { self.thinking_elapsed = self.thinking_start.elapsed().as_secs(); self.thinking_frame = (self.thinking_start.elapsed().as_millis() / 150) as usize; } if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom { self.scroll += self.scroll_velocity; self.scroll = self.scroll.max(0.0); self.scroll_velocity *= 0.85; } if self.stick_to_bottom { self.scroll = 0.0; } if self.output.len() > _visible_lines { let max = (self.output.len() - _visible_lines) as f32; self.scroll = self.scroll.min(max); } }
+    pub fn tick(&mut self, _visible_lines: usize) { self.output_vis = _visible_lines; if self.thinking { self.thinking_elapsed = self.thinking_start.elapsed().as_secs(); self.thinking_frame = (self.thinking_start.elapsed().as_millis() / 150) as usize; } if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom { self.scroll += self.scroll_velocity; self.scroll = self.scroll.max(0.0); self.scroll_velocity *= 0.85; } if self.stick_to_bottom { self.scroll = 0.0; } let max = (self.output.len().saturating_sub(_visible_lines)) as f32; self.scroll = self.scroll.clamp(0.0, max.max(0.0)); }
 }
 

@@ -101,7 +101,7 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
     let mut term_size = terminal.size()?;
 
     let result = (|| -> anyhow::Result<()> {
-        let out_h_init = term_size.height.saturating_sub(6) as usize;
+        let out_h_init = term_size.height.saturating_sub(7) as usize;
         let t0 = Instant::now();
         terminal.draw(|f| draw::draw(f, &mut app, out_h_init))?;
         crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
@@ -122,7 +122,7 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
             let hint_count = app.hints.len().min(8);
             let input_lines = app.input.split('\n').count().max(1).min(5);
             let bottom_h = ((input_lines + 2) + hint_count + 1).min(term_size.height.saturating_sub(2) as usize) as u16;
-            let out_h = term_size.height.saturating_sub(bottom_h + 1) as usize;
+            let out_h = term_size.height.saturating_sub(bottom_h + 2) as usize;
             app.tick(out_h);
             let t0 = Instant::now();
             terminal.draw(|f| draw::draw(f, &mut app, out_h))?;
