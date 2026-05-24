@@ -230,11 +230,12 @@ impl Block {
             }
 
             BlockKind::CodeFence { lang } => {
-                let label = format!(" {lang} ");
-                let label = if lang.is_empty() { "─".into() } else { label };
+                let label = if lang.is_empty() { "─".into() } else { format!(" {lang} ") };
                 let mut lines: Vec<Line> = vec![Line::from(Span::styled(label, Style::default().fg(DIM)))];
-                for line in &self.source_lines[1..self.source_lines.len()-1] {
-                    lines.push(Line::from(Span::styled(line.clone(), Style::default().fg(Color::Rgb(140, 140, 150)))));
+                let code: String = self.source_lines[1..self.source_lines.len()-1].join("\n");
+                let highlighted = crate::highlight::highlight_code(&code, lang);
+                for line in highlighted.lines() {
+                    lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(180, 180, 190)))));
                 }
                 lines.push(Line::from(Span::styled("─".to_string(), Style::default().fg(DIM))));
                 lines

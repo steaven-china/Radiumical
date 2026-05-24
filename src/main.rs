@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod conversation;
 mod dashboard;
+mod highlight;
 mod hooks;
 mod layout;
 mod lsp;
