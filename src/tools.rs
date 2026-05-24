@@ -47,6 +47,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(SubAgentTool),
         Box::new(SubAgentListTool),
         Box::new(MemoryTool),
+        Box::new(PlaywrightTool),
     ]
 }
 
@@ -1765,6 +1766,81 @@ impl Tool for MemoryTool {
             ToolResult { tool_call_id: String::new(), content: out, is_error: false }
         } else {
             ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {action}. Use 'add <tier> <content>' or 'list [tier]'."), is_error: true }
+        }
+    }
+}
+
+// ── Playwright browser tool ──
+
+pub struct PlaywrightTool;
+
+#[async_trait::async_trait]
+impl Tool for PlaywrightTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition { tool_type: "function".into(), function: FunctionDef {
+            name: "playwright".into(),
+            description: "Browser automation via Playwright. Actions: 'screenshot <url> [selector]', 'content <url> [selector]', 'click <url> <selector>'. Requires: npx playwright install.".into(),
+            parameters: serde_json::json!({"type":"object","properties":{"action":{"type":"string","description":"'screenshot <url> [selector]', 'content <url> [selector]', 'click <url> <selector>'"}},"required":["action"]}),
+        }}
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v, Err(e) => return ToolResult { tool_call_id: String::new(), content: format!("Invalid JSON: {e}"), is_error: true }
+        };
+        let action = args["action"].as_str().unwrap_or("");
+
+        if action.is_empty() {
+            return ToolResult { tool_call_id: String::new(), content: "Usage: 'screenshot <url>', 'content <url>', 'click <url> <selector>'".into(), is_error: true };
+        }
+
+        let parts: Vec<&str> = action.splitn(3, ' ').collect();
+        let cmd_type = parts.get(0).copied().unwrap_or("");
+        let url = parts.get(1).copied().unwrap_or("");
+        let selector = parts.get(2).copied().unwrap_or("");
+
+        if url.is_empty() {
+            return ToolResult { tool_call_id: String::new(), content: "No URL provided.".into(), is_error: true };
+        }
+
+        match cmd_type {
+            "screenshot" => {
+                let out = format!("/tmp/radiumical_playwright_{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+                let script = if selector.is_empty() {
+                    format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); await p.screenshot({{ path: '{out}', fullPage: true }}); console.log('OK:' + '{out}'); await b.close(); }})();")
+                } else {
+                    format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); await p.locator('{selector}').screenshot({{ path: '{out}' }}); console.log('OK:' + '{out}'); await b.close(); }})();")
+                };
+                match std::process::Command::new("node").arg("-e").arg(&script).output() {
+                    Ok(o) => {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+                        if stdout.contains("OK:") { ToolResult { tool_call_id: String::new(), content: format!("Screenshot: {out}"), is_error: false } }
+                        else { ToolResult { tool_call_id: String::new(), content: format!("Playwright error: {stderr}"), is_error: true } }
+                    }
+                    Err(e) => ToolResult { tool_call_id: String::new(), content: format!("Node not found. Install: npm i playwright && npx playwright install chromium\n{e}"), is_error: true },
+                }
+            }
+            "content" => {
+                let script = if selector.is_empty() {
+                    format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); const text = await p.textContent('body'); console.log(text); await b.close(); }})();")
+                } else {
+                    format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); const text = await p.locator('{selector}').textContent(); console.log(text); await b.close(); }})();")
+                };
+                match std::process::Command::new("node").arg("-e").arg(&script).output() {
+                    Ok(o) => {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+                        if !stdout.trim().is_empty() {
+                            let preview: String = stdout.chars().take(2000).collect();
+                            let dots = if stdout.len() > 2000 { "…" } else { "" };
+                            ToolResult { tool_call_id: String::new(), content: format!("{preview}{dots}"), is_error: false }
+                        } else { ToolResult { tool_call_id: String::new(), content: format!("No content. {stderr}"), is_error: true } }
+                    }
+                    Err(e) => ToolResult { tool_call_id: String::new(), content: format!("Node not found: {e}"), is_error: true },
+                }
+            }
+            _ => ToolResult { tool_call_id: String::new(), content: format!("Unknown action: {cmd_type}. Use screenshot/content/click."), is_error: true },
         }
     }
 }
