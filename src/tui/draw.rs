@@ -81,8 +81,10 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
 fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     use crate::layout::measure_blocks;
     use crate::markdown::MarkdownRenderer;
-    use ratatui::widgets::Wrap;
+    use ratatui::widgets::{Clear, Wrap};
     let total = app.output.len(); if total == 0 { return; }
+    // Clear stale cells before rendering
+    f.render_widget(Clear, area);
     // Always clamp to actual area height (the ultimate source of truth)
     let vis = (area.height as usize).saturating_sub(2).min(_vis);
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
