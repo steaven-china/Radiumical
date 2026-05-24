@@ -92,6 +92,11 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(cmd_tx, ui_rx, &config);
+    // Auto-load previous session if available
+    if let Ok(Some(session)) = crate::session::Session::load("autosave") {
+        let lines: Vec<String> = session.messages_jsonl.lines().map(|s| s.to_string()).collect();
+        if !lines.is_empty() { app.load_output(lines); }
+    }
     let frame_time = Duration::from_nanos(16_666_667); // 60 FPS
     let mut term_size = terminal.size()?;
 

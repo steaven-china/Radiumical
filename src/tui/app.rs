@@ -358,6 +358,8 @@ impl App {
         }
     }
 
+    pub fn load_output(&mut self, lines: Vec<String>) { self.output = lines; self.welcome = false; self.stick_to_bottom = true; }
+
     pub fn tick(&mut self, _visible_lines: usize) { if self.thinking { self.thinking_elapsed = self.thinking_start.elapsed().as_secs(); self.thinking_frame = (self.thinking_start.elapsed().as_millis() / 150) as usize; } if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom { self.scroll += self.scroll_velocity; self.scroll = self.scroll.max(0.0); self.scroll_velocity *= 0.85; } if self.stick_to_bottom { self.scroll = 0.0; } if self.output.len() > _visible_lines { let max = (self.output.len() - _visible_lines) as f32; self.scroll = self.scroll.min(max); } }
 }
 
