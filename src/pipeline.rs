@@ -55,7 +55,7 @@ impl PipelineRunner {
         workspace: PathBuf,
         _hb_cancel: Option<tokio::sync::mpsc::UnboundedSender<()>>,
         ui_tx: mpsc::Sender<UiEvent>,
-        cancel_rx: tokio::sync::watch::Receiver<bool>,
+        mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let llm_timeout = Duration::from_secs(self.config.llm_timeout_secs);
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
@@ -77,20 +77,17 @@ impl PipelineRunner {
             let mut timed_out = false;
 
             loop {
-                // Check cancellation
-                if *cancel_rx.borrow() {
-                    return Ok(());
-                }
                 let event = if !timed_out {
                     tokio::select! {
                         e = rx.recv() => e,
-                        _ = tokio::time::sleep(llm_timeout) => {
-                            timed_out = true;
-                            None
-                        }
+                        _ = tokio::time::sleep(llm_timeout) => { timed_out = true; None }
+                        _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return Ok(()); } else { continue; } }
                     }
                 } else {
-                    rx.recv().await
+                    tokio::select! {
+                        e = rx.recv() => e,
+                        _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return Ok(()); } else { continue; } }
+                    }
                 };
 
                 match event {
