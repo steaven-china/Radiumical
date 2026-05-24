@@ -117,8 +117,8 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {
-            let progress = app.scroll as f32 / (total - vis).max(1) as f32;
-            (progress * (sb_h - thumb_h) as f32) as u16
+            let progress = (app.scroll as f32 / (total - vis).max(1) as f32).clamp(0.0, 1.0);
+            ((progress * sb_h.saturating_sub(thumb_h) as f32) as u16).min(sb_h.saturating_sub(1))
         };
         let sb_style = Style::default().fg(Color::Rgb(60, 60, 70));
         for i in 0..sb_h {
