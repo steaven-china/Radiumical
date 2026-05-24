@@ -43,6 +43,8 @@ pub struct App {
     pub model_picker: crate::board::ListBoard,
     pub confirm: crate::board::ConfirmBoard,
     pub dashboard: crate::dashboard::Dashboard,
+    pub session_list_visible: bool,
+    pub session_list: crate::board::ListBoard,
     pub perf_visible: bool,
     pub output_vis: usize,
     pub progress: crate::board::ProgressBoard,
@@ -78,6 +80,8 @@ impl App {
             toasts: Vec::new(),
             confirm: crate::board::ConfirmBoard::new("Are you sure?"),
             dashboard: crate::dashboard::Dashboard::new(),
+            session_list_visible: false,
+            session_list: crate::board::ListBoard::new(" Sessions "),
             perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),
             output_vis: 20,
@@ -100,6 +104,7 @@ impl App {
             (KeyCode::PageUp, _) => { if self.hint_selected.is_some() { self.hint_page = self.hint_page.saturating_sub(1); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_down(12.0); } }
             (KeyCode::PageDown, _) => { if self.hint_selected.is_some() { let max_page = self.hints.len().saturating_sub(1) / 8; self.hint_page = (self.hint_page + 1).min(max_page); self.hint_selected = Some(0); } else if !self.welcome { self.scroll_up(12.0); } }
             (KeyCode::Up, _) => {
+                if self.session_list_visible { self.session_list.select_prev(); return; }
                 if self.dashboard.visible { self.dashboard.up(); return; }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
@@ -115,6 +120,7 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
+                if self.session_list_visible { self.session_list.select_next(); return; }
                 if self.dashboard.visible { self.dashboard.down(); return; }
                 if self.input.starts_with('/') && self.hint_selected.is_some() {
                     let max = self.hints.len().saturating_sub(1);
@@ -132,6 +138,17 @@ impl App {
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => { self.history_idx = None; self.input.insert(self.cursor, '\n'); self.cursor += 1; self.update_hints(); }
             (KeyCode::Enter, _) => {
+                if self.session_list_visible {
+                    if let Some(selected) = self.session_list.current() {
+                        let name = selected.split(" (").next().unwrap_or(selected);
+                        if let Ok(Some(s)) = crate::session::Session::load(name) {
+                            let lines: Vec<String> = s.messages_jsonl.lines().map(|l| l.to_string()).collect();
+                            if !lines.is_empty() { self.output = lines; self.welcome = false; self.stick_to_bottom = true; }
+                        }
+                    }
+                    self.session_list_visible = false;
+                    return;
+                }
                 if self.input.trim() == "//" { self.dashboard.toggle(); self.input.clear(); self.cursor = 0; return; }
                 if self.confirm.visible { if self.confirm.yes_selected { if self.confirm.message.contains("Exit") { self.should_quit = true; } else if self.confirm.message.contains("Clear") { self.output.clear(); self.input.clear(); self.cursor = 0; self.hints.clear(); self.scroll = 0.0; self.stick_to_bottom = true; } } self.confirm.visible = false; return; }
                 if self.show_model_picker { if let Some(m) = self.model_picker.current() { self.model = m.to_string(); self.toasts.push(crate::board::Toast::new(format!("Model: {m}"), crate::board::ToastLevel::Info, std::time::Duration::from_secs(3))); } self.show_model_picker = false; return; }
@@ -250,7 +267,7 @@ impl App {
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
-            (KeyCode::Esc, _) => { if self.dashboard.visible { self.dashboard.visible = false; return; } if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; self.thinking_cancelled = true; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
+            (KeyCode::Esc, _) => { if self.session_list_visible { self.session_list_visible = false; return; } if self.dashboard.visible { self.dashboard.visible = false; return; } if self.confirm.visible { self.confirm.visible = false; return; } if self.thinking { let _ = self.cmd_tx.send(BackendCmd::Cancel); self.thinking = false; self.thinking_cancelled = true; } self.show_help_overlay = false; self.show_model_picker = false; self.hint_selected = None; self.hint_page = 0; self.help_board.visible = false; self.model_board.visible = false; }
             _ => {}
         }
     }
@@ -275,8 +292,19 @@ impl App {
             ShowHelp => { self.show_help_overlay = true; self.stick_to_bottom = true; }
             ToggleThinking => { self.show_full_reasoning = !self.show_full_reasoning; self.stick_to_bottom = true; }
             SessionNew => { self.output.clear(); self.output.push(String::new()); self.stick_to_bottom = true; self.welcome = true; }
-            SessionSave => { self.input = "/session save ".into(); self.cursor = self.input.len(); self.update_hints(); }
-            SessionLoad => { self.input = "/session load ".into(); self.cursor = self.input.len(); self.update_hints(); }
+            SessionSave => {
+                let summary = self.history.first().cloned().unwrap_or_else(|| "session".into());
+                self.input = format!("/session save {summary}");
+                self.cursor = self.input.len();
+                self.update_hints();
+            }
+            SessionLoad => {
+                if let Ok(sessions) = crate::session::Session::list() {
+                    let names: Vec<String> = sessions.iter().map(|s| format!("{} ({} msgs, {})", s.name, s.message_count, s.created)).collect();
+                    self.session_list.set_items(names);
+                    self.session_list_visible = true;
+                }
+            }
             SessionList => { self.input = "/session list".into(); self.cursor = self.input.len(); self.update_hints(); }
             SessionDelete => { self.input = "/session delete ".into(); self.cursor = self.input.len(); self.update_hints(); }
             Diagnostics => { self.input = "Run diagnostics on the workspace".into(); self.cursor = self.input.len(); }

@@ -67,6 +67,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     if app.dashboard.visible {
         app.dashboard.render(f, chunks[0]);
     }
+    // Session list popup
+    if app.session_list_visible { app.session_list.render(f, chunks[0]); }
     // Render confirm dialog
     app.confirm.render(f, area);
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
