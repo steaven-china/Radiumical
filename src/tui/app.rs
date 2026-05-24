@@ -274,9 +274,11 @@ impl App {
             ShowSettings => { self.output.push("> /settings".into()); self.show_settings(); self.output.push(String::new()); self.stick_to_bottom = true; }
             ShowHelp => { self.show_help_overlay = true; self.stick_to_bottom = true; }
             ToggleThinking => { self.show_full_reasoning = !self.show_full_reasoning; self.stick_to_bottom = true; }
-            SaveSession => { self.input = "/session save ".into(); self.cursor = self.input.len(); self.update_hints(); }
-            LoadSession => { self.input = "/session load ".into(); self.cursor = self.input.len(); self.update_hints(); }
-            ListSessions => { self.input = "/session list".into(); self.cursor = self.input.len(); self.update_hints(); }
+            SessionNew => { self.output.clear(); self.output.push(String::new()); self.stick_to_bottom = true; self.welcome = true; }
+            SessionSave => { self.input = "/session save ".into(); self.cursor = self.input.len(); self.update_hints(); }
+            SessionLoad => { self.input = "/session load ".into(); self.cursor = self.input.len(); self.update_hints(); }
+            SessionList => { self.input = "/session list".into(); self.cursor = self.input.len(); self.update_hints(); }
+            SessionDelete => { self.input = "/session delete ".into(); self.cursor = self.input.len(); self.update_hints(); }
             Diagnostics => { self.input = "Run diagnostics on the workspace".into(); self.cursor = self.input.len(); }
             ShowTools => { self.output.push("  Tools:".into()); for t in crate::tools::all_tools() { self.output.push(format!("  - {}", t.definition().function.name)); } self.output.push(String::new()); self.stick_to_bottom = true; }
             About => { self.output.push("  Radiumical — lean CLI coding agent".into()); self.output.push("  https://radiumical.dev".into()); self.output.push(String::new()); self.stick_to_bottom = true; }

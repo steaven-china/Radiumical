@@ -18,7 +18,7 @@ pub struct Dashboard {
 #[derive(Debug, Clone)]
 pub enum DashAction {
     ShowModels, ShowSettings, ShowHelp, ToggleThinking,
-    SaveSession, LoadSession, ListSessions,
+    SessionNew, SessionSave, SessionLoad, SessionList, SessionDelete,
     Diagnostics, ShowTools, About,
 }
 
@@ -31,7 +31,7 @@ impl Dashboard {
             in_items: false,
             sections: vec![
                 ("Navigate", &["Models", "Settings", "Help"] as &[&str]),
-                ("Session", &["Save", "Load", "List"]),
+                ("Session", &["New", "Save", "Load", "List", "Delete"]),
                 ("Debug", &["Diagnostics", "Tools", "Thinking"]),
                 ("View", &["About"]),
             ],
@@ -73,9 +73,11 @@ impl Dashboard {
             ("Navigate", "Models") => DashAction::ShowModels,
             ("Navigate", "Settings") => DashAction::ShowSettings,
             ("Navigate", "Help") => DashAction::ShowHelp,
-            ("Session", "Save") => DashAction::SaveSession,
-            ("Session", "Load") => DashAction::LoadSession,
-            ("Session", "List") => DashAction::ListSessions,
+            ("Session", "New") => DashAction::SessionNew,
+            ("Session", "Save") => DashAction::SessionSave,
+            ("Session", "Load") => DashAction::SessionLoad,
+            ("Session", "List") => DashAction::SessionList,
+            ("Session", "Delete") => DashAction::SessionDelete,
             ("Debug", "Diagnostics") => DashAction::Diagnostics,
             ("Debug", "Tools") => DashAction::ShowTools,
             ("Debug", "Thinking") => DashAction::ToggleThinking,
