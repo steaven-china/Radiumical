@@ -9,7 +9,7 @@ use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph};
 
 // ═══ Draw ═══
 
-pub fn draw(f: &mut Frame, app: &mut App, _out_h: usize) {
+pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     let area = f.area();
     let hint_page_start = app.hint_page * 8;
     let hint_page_end = (hint_page_start + 8).min(app.hints.len());
@@ -83,73 +83,41 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     use crate::markdown::MarkdownRenderer;
     use ratatui::widgets::Wrap;
     let total = app.output.len(); if total == 0 { return; }
+    // Always clamp to actual area height (the ultimate source of truth)
     let vis = (area.height as usize).saturating_sub(2).min(_vis);
-    let avail_w = area.width.saturating_sub(2) as usize; // leave margin for scrollbar
-
+    let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
+    let end = (start + vis).min(total);
     let blocks = measure_blocks(&app.output);
     let mut md = MarkdownRenderer::new(); md.tick_frame();
-
-    // ── Build flat list of pre-wrapped visual lines ──
-    let mut visual_lines: Vec<(usize, Line)> = Vec::new(); // (logical_line_index, line)
-    let mut logical_to_visual: Vec<usize> = Vec::new(); // logical_line -> first visual line
-    let mut line_offset = 0usize;
-
-    for block in &blocks {
-        let block_lines = block.render(area.width, app.thinking_frame, &mut md, app.show_full_reasoning);
-        for (li, bline) in block_lines.iter().enumerate() {
-            let logical_li = line_offset + li;
-            // Pre-wrap each logical line to fit within avail_w
-            let wrapped = wrap_line_to_width(bline, avail_w);
-            if logical_to_visual.len() <= logical_li {
-                logical_to_visual.resize(logical_li + 1, visual_lines.len());
-            }
-            logical_to_visual[logical_li] = visual_lines.len();
-            for wline in wrapped {
-                visual_lines.push((logical_li, wline));
-            }
-        }
-        line_offset += block.height;
-    }
-
-    let total_visual = visual_lines.len();
-    // Clamp vis to actual visual line count
-    let vis = vis.min(total_visual.max(1));
-
-    // Compute start visual line based on stick_to_bottom / scroll
-    let start_visual = if app.stick_to_bottom {
-        total_visual.saturating_sub(vis)
-    } else {
-        // Convert logical scroll to visual scroll proportionally
-        let max_logical = total.saturating_sub(1).max(1) as f32;
-        let frac = (app.scroll as f32 / max_logical).clamp(0.0, 1.0);
-        ((frac * (total_visual.saturating_sub(vis)) as f32) as usize).min(total_visual.saturating_sub(1))
-    };
-    let end_visual = (start_visual + vis).min(total_visual);
-
-    // Build the rendered slice
     let mut rendered: Vec<Line> = Vec::with_capacity(vis);
-    for i in start_visual..end_visual {
-        let (logical_li, line) = &visual_lines[i];
-        let mut display_line = line.clone();
-        if let Some((sel_start, sel_end)) = app.selection {
-            if *logical_li >= sel_start && *logical_li <= sel_end {
-                display_line = display_line.style(Style::default().bg(Color::Rgb(60, 60, 70)));
+    let mut line_offset = 0usize;
+    for block in &blocks {
+        let block_end = line_offset + block.height;
+        if block_end > start && line_offset < end {
+            let block_lines = block.render(area.width, app.thinking_frame, &mut md, app.show_full_reasoning);
+            for (li, bline) in block_lines.iter().enumerate() {
+                let global_li = line_offset + li;
+                if app.inside_window(global_li, vis) {
+                    let mut line = bline.clone();
+                    if let Some((sel_start, sel_end)) = app.selection { if global_li >= sel_start && global_li <= sel_end { line = line.style(Style::default().bg(Color::Rgb(60, 60, 70))); } }
+                    rendered.push(line);
+                }
             }
         }
-        rendered.push(display_line);
+        line_offset = block_end;
     }
     let content_h = rendered.len();
     let mut filled = rendered;
     filled.resize(filled.len().max(vis), Line::from(""));
 
-    // ── Scrollbar (visual-line aware) ──
-    if total_visual > vis {
+    // Scrollbar on right edge (clamped to output area)
+    if total > vis {
         let sb_h = area.height.saturating_sub(1);
-        let thumb_h = ((vis as f32 / total_visual as f32) * sb_h as f32).max(1.0) as u16;
+        let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as u16;
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {
-            let progress = start_visual as f32 / (total_visual - vis).max(1) as f32;
+            let progress = app.scroll as f32 / (total - vis).max(1) as f32;
             (progress * (sb_h - thumb_h) as f32) as u16
         };
         let sb_style = Style::default().fg(Color::Rgb(60, 60, 70));
@@ -169,107 +137,6 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     } else { f.render_widget(Paragraph::new(Text::from(filled)).wrap(Wrap { trim: false }), area); }
 }
 
-/// Clone a borrowed Line into an owned Line<'static>.
-fn clone_line_to_static(line: &Line) -> Line<'static> {
-    let spans: Vec<Span<'static>> = line.spans.iter().map(|s| {
-        Span::styled(s.content.to_string(), s.style)
-    }).collect();
-    Line::from(spans)
-}
-
-/// Split a Line into multiple Lines, each ≤ max_width display columns.
-/// Preserves span styling across wrapped segments.
-fn wrap_line_to_width(line: &Line, max_width: usize) -> Vec<Line<'static>> {
-    if max_width == 0 { return vec![clone_line_to_static(line)]; }
-    if line.width() <= max_width { return vec![clone_line_to_static(line)]; }
-
-    let mut result: Vec<Line<'static>> = Vec::new();
-    let mut cur_spans: Vec<Span<'static>> = Vec::new();
-    let mut cur_w: usize = 0;
-
-    for span in &line.spans {
-        let text = span.content.as_ref();
-        let style = span.style;
-
-        // Split this span's text into chunks that fit
-        let mut remaining = text;
-        while !remaining.is_empty() {
-            if cur_w >= max_width {
-                result.push(Line::from(std::mem::take(&mut cur_spans)));
-                cur_w = 0;
-            }
-            let room = max_width - cur_w;
-            // Find longest prefix of `remaining` that fits in `room`
-            let (chunk, rest) = split_str_at_width(remaining, room);
-            if chunk.is_empty() {
-                // Single char wider than room -> start new line
-                if cur_w > 0 {
-                    result.push(Line::from(std::mem::take(&mut cur_spans)));
-                    cur_w = 0;
-                }
-                let (force_chunk, force_rest) = split_str_at_width(remaining, max_width);
-                let force = if force_chunk.is_empty() {
-                    // At least one char
-                    if let Some(c) = remaining.chars().next() {
-                        let c_str = &remaining[..c.len_utf8()];
-                        remaining = &remaining[c.len_utf8()..];
-                        c_str
-                    } else { remaining = ""; "" }
-                } else { remaining = force_rest; force_chunk };
-                if !force.is_empty() {
-                    let w = Line::from(force.to_string()).width();
-                    cur_spans.push(Span::styled(force.to_string(), style));
-                    cur_w += w;
-                }
-            } else {
-                let w = Line::from(chunk.to_string()).width();
-                cur_spans.push(Span::styled(chunk.to_string(), style));
-                cur_w += w;
-                remaining = rest;
-            }
-        }
-    }
-
-    if !cur_spans.is_empty() {
-        result.push(Line::from(cur_spans));
-    }
-
-    if result.is_empty() {
-        result.push(Line::from(""));
-    }
-    result
-}
-
-/// Split a &str at the longest prefix whose display width ≤ max_width.
-/// Returns (prefix, suffix). Guarantees char-boundary safety.
-fn split_str_at_width(s: &str, max_width: usize) -> (&str, &str) {
-    if s.is_empty() || max_width == 0 { return ("", s); }
-    // Binary search for the longest fitting prefix
-    let mut lo = 0;
-    let mut hi = s.len();
-    while lo < hi {
-        let mid = (lo + hi + 1) / 2;
-        // Find nearest char boundary ≤ mid
-        let mut bound = mid;
-        while bound > 0 && !s.is_char_boundary(bound) { bound -= 1; }
-        if bound == 0 { lo = mid; break; } // mid was in first char
-        let candidate = &s[..bound];
-        let w = Line::from(candidate.to_string()).width();
-        if w <= max_width { lo = bound; } else { hi = bound.saturating_sub(1); }
-    }
-    let split_at = if lo > 0 { lo } else {
-        // Ensure we take at least one char if possible
-        s.chars().next().map(|c| c.len_utf8()).unwrap_or(0)
-    };
-    // Security: ensure char boundary
-    let split_at = if s.is_char_boundary(split_at) { split_at } else {
-        let mut b = split_at;
-        while b > 0 && !s.is_char_boundary(b) { b -= 1; }
-        b
-    };
-    (&s[..split_at], &s[split_at..])
-}
-
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::widgets::{Block as RBlock, BorderType, Borders, Wrap};
     let lines: Vec<&str> = app.input.split('\n').collect();
@@ -280,26 +147,10 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
         let mut row: Vec<Span> = Vec::new();
         row.push(Span::styled(if li == 0 { "> " } else { "  " }, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
         if li == cursor_line {
-            if cursor_col < line.len() {
-                // Cursor within line: highlight the character at cursor
-                let before = &line[..cursor_col];
-                let ch = line[cursor_col..].chars().next().unwrap_or(' ');
-                let after = &line[cursor_col + ch.len_utf8()..];
-                row.push(Span::raw(before));
-                row.push(Span::styled(ch.to_string(), Style::default().bg(Color::White).fg(Color::Black)));
-                row.push(Span::raw(after));
-            } else if !line.is_empty() {
-                // Cursor at end of non-empty line: highlight last char as block cursor
-                let last_char_start = line.char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
-                let before = &line[..last_char_start];
-                let last_ch = &line[last_char_start..];
-                row.push(Span::raw(before));
-                row.push(Span::styled(last_ch.to_string(), Style::default().bg(Color::White).fg(Color::Black)));
-            } else {
-                // Cursor on empty line: show highlighted space as cursor placeholder
-                row.push(Span::raw(""));
-                row.push(Span::styled(" ".to_string(), Style::default().bg(Color::White).fg(Color::Black)));
-            }
+            let before = &line[..cursor_col.min(line.len())];
+            let ch = if cursor_col < line.len() { line[cursor_col..].chars().next().unwrap_or(' ') } else { ' ' };
+            let after = if cursor_col < line.len() { &line[cursor_col + ch.len_utf8()..] } else { "" };
+            row.push(Span::raw(before)); row.push(Span::styled(ch.to_string(), Style::default().bg(Color::White).fg(Color::Black))); row.push(Span::raw(after));
         } else { row.push(Span::raw(*line)); }
         spans.push(Line::from(row));
     }
