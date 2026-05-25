@@ -86,6 +86,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     f.render_widget(Clear, area);
     // Always clamp to actual area height (the ultimate source of truth)
     let vis = (area.height as usize).saturating_sub(2).min(_vis);
+    let text_area = Rect { x: area.x, y: area.y, width: area.width.saturating_sub(1), height: area.height };
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
     // P0: Cache blocks — only recompute when output changes
@@ -106,7 +107,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         if block_end > start && line_offset < end {
             let skip = if line_offset < start { start - line_offset } else { 0 };
             let take = vis.saturating_sub(rendered.len());
-            let block_lines = block.render_range(area.width, app.thinking_frame, &mut app.markdown, app.show_full_reasoning, skip, take);
+            let block_lines = block.render_range(text_area.width, app.thinking_frame, &mut app.markdown, app.show_full_reasoning, skip, take);
             for (li, bline) in block_lines.iter().enumerate() {
                 let global_li = line_offset + li + skip;
                 let mut line = bline.clone();
@@ -139,14 +140,15 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     }
 
     let content_h = filled.iter().filter(|l| l.width() > 0).count();
+    // Render text into area minus scrollbar column
     if app.welcome && content_h < vis && app.scroll <= 0.0 && content_h > 0 {
         let pad_top = (vis - content_h) / 2;
         let max_w = filled.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
         let pad_left = (area.width.saturating_sub(max_w) / 2) as usize;
         let mut padded: Vec<Line> = Vec::new(); padded.resize(pad_top, Line::from(""));
         for line in filled { let line_w = line.width() as u16; let extra = (max_w.saturating_sub(line_w) / 2) as usize; let mut spans = vec![Span::raw(" ".repeat(pad_left + extra))]; spans.extend(line.spans.into_iter()); padded.push(Line::from(spans)); }
-        f.render_widget(Paragraph::new(Text::from(padded)).wrap(Wrap { trim: false }), area);
-    } else { f.render_widget(Paragraph::new(Text::from(filled)).wrap(Wrap { trim: false }), area); }
+        f.render_widget(Paragraph::new(Text::from(padded)).wrap(Wrap { trim: false }), text_area);
+    } else { f.render_widget(Paragraph::new(Text::from(filled)).wrap(Wrap { trim: false }), text_area); }
 }
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
