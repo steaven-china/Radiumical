@@ -117,9 +117,8 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         line_offset = block_end;
         if rendered.len() >= vis { break; }
     }
-    let content_h = rendered.len();
     let mut filled = rendered;
-    filled.resize(filled.len().max(vis), Line::from(""));
+    filled.resize(vis, Line::from("")); // exact vis lines: truncate or pad
 
     // P1: Scrollbar as single pre-built column
     if total > vis {
@@ -139,7 +138,8 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         f.render_widget(Paragraph::new(bar).style(Style::default().fg(Color::Rgb(60, 60, 70))), Rect { x: area.x + area.width - 1, y: area.y + 1, width: 1, height: sb_h as u16 });
     }
 
-    if app.welcome && content_h < vis && app.scroll <= 0.0 && !filled.is_empty() && filled.iter().any(|l| l.width() > 0) {
+    let content_h = filled.iter().filter(|l| l.width() > 0).count();
+    if app.welcome && content_h < vis && app.scroll <= 0.0 && content_h > 0 {
         let pad_top = (vis - content_h) / 2;
         let max_w = filled.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
         let pad_left = (area.width.saturating_sub(max_w) / 2) as usize;
