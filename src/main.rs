@@ -17,6 +17,7 @@ mod subagent;
 mod systools;
 mod tui;
 mod tools;
+mod test_table_full;
 mod types;
 
 use anyhow::Result;

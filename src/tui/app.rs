@@ -45,7 +45,7 @@ pub struct App {
     pub dashboard: crate::dashboard::Dashboard,
     pub session_list_visible: bool,
     pub session_list: crate::board::ListBoard,
-    pub block_cache: Option<(usize, Vec<crate::layout::Block>)>,
+    pub block_cache: Option<(usize, u16, Vec<crate::layout::Block>)>,
     pub markdown: crate::markdown::MarkdownRenderer,
     pub perf_visible: bool,
     pub output_vis: usize,
@@ -394,7 +394,7 @@ impl App {
         self.output.push(String::new());
     }
     fn show_settings(&mut self) { self.output.push("".into()); self.output.push(format!("  Provider : {}", self.provider_name)); self.output.push(format!("  Model    : {}", self.model)); self.output.push(format!("  Mode     : {:?}", self.mode)); self.output.push(format!("  History  : {} items", self.history.len())); self.output.push(String::new()); }
-    fn show_debug(&mut self, topic: &str) { self.output.push(format!("> /debug {topic}")); self.output.push(String::new()); match topic { "logo" => { for line in LOGO { self.output.push(format!("  [{:>2}] {line}", line.chars().count())); } } "output" => { self.output.push(format!("  Lines: {} | Scroll: {:.1} | Stick: {}", self.output.len(), self.scroll, self.stick_to_bottom)); } "blocks" => { let blocks = crate::layout::measure_blocks(&self.output); self.output.push(format!("  Blocks: {}", blocks.len())); for (i, b) in blocks.iter().enumerate() { self.output.push(format!("    [{i}] {:?} h={}", b.kind, b.height)); } } "" | "help" => { self.output.push("  logo | output | blocks".into()); } _ => { self.output.push(format!("  Unknown: {topic}").into()); } } self.output.push(String::new()); }
+    fn show_debug(&mut self, topic: &str) { self.output.push(format!("> /debug {topic}")); self.output.push(String::new()); match topic { "logo" => { for line in LOGO { self.output.push(format!("  [{:>2}] {line}", line.chars().count())); } } "output" => { self.output.push(format!("  Lines: {} | Scroll: {:.1} | Stick: {}", self.output.len(), self.scroll, self.stick_to_bottom)); } "blocks" => { let blocks = crate::layout::measure_blocks(&self.output, 80); self.output.push(format!("  Blocks: {}", blocks.len())); for (i, b) in blocks.iter().enumerate() { self.output.push(format!("    [{i}] {:?} h={}", b.kind, b.height)); } } "" | "help" => { self.output.push("  logo | output | blocks".into()); } _ => { self.output.push(format!("  Unknown: {topic}").into()); } } self.output.push(String::new()); }
 
     pub fn handle_ui_event(&mut self, event: UiEvent) {
         match event {

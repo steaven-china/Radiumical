@@ -6,6 +6,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
 };
+use unicode_width::UnicodeWidthStr;
 
 const DIM: Color = Color::Rgb(100, 100, 110);
 const BORDER: Color = Color::Rgb(80, 80, 90);
@@ -19,7 +20,7 @@ pub enum BlockKind {
     /// Code fence block
     CodeFence { lang: String },
     /// Table (buffered, fully measured)
-    Table { rows: Vec<Vec<String>>, widths: Vec<usize> },
+    Table { rows: Vec<Vec<String>>, widths: Vec<usize>, sep_idx: Option<usize> },
     /// Regular text (markdown)
     Text,
     /// Heading
@@ -45,7 +46,7 @@ pub struct Block {
 
 // ── Pass 1: measure ──
 
-pub fn measure_blocks(output: &[String]) -> Vec<Block> {
+pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
     let mut i = 0;
 
@@ -89,9 +90,26 @@ pub fn measure_blocks(output: &[String]) -> Vec<Block> {
             let start = i;
             while i < output.len() && output[i].trim().starts_with('|') { i += 1; }
             let source = output[start..i].to_vec();
-            let (rows, widths) = measure_table(&source);
+            let (rows, widths, sep_idx) = measure_table(&source);
             let total_w = widths.iter().sum::<usize>() + widths.len() * 3 + 1;
-            blocks.push(Block { kind: BlockKind::Table { rows, widths }, source_lines: source, width: total_w, height: i - start + 2 });
+            let avail_width = (area_width as usize).saturating_sub(4).max(1);
+            let adjusted_widths = fit_table_widths(&widths, avail_width);
+            let sep_count = sep_idx.map(|_| 1).unwrap_or(0);
+            let data_rows = rows.len() - sep_count;
+            let mut extra_lines = 0usize;
+            for (ri, row) in rows.iter().enumerate() {
+                if sep_idx == Some(ri) { continue; }
+                let mut row_max_lines = 1usize;
+                for (ci, cell) in row.iter().enumerate() {
+                    let col_w = adjusted_widths.get(ci).copied().unwrap_or(3);
+                    let stripped = strip_markdown(cell);
+                    let wrapped = wrap_text_to_width(&stripped, col_w);
+                    row_max_lines = row_max_lines.max(wrapped.len());
+                }
+                extra_lines += row_max_lines.saturating_sub(1);
+            }
+            let height = data_rows + 2 + sep_count + extra_lines;
+            blocks.push(Block { kind: BlockKind::Table { rows, widths, sep_idx }, source_lines: source, width: total_w, height });
             continue;
         }
 
@@ -150,22 +168,27 @@ pub fn measure_blocks(output: &[String]) -> Vec<Block> {
     blocks
 }
 
-fn measure_table(source: &[String]) -> (Vec<Vec<String>>, Vec<usize>) {
+fn measure_table(source: &[String]) -> (Vec<Vec<String>>, Vec<usize>, Option<usize>) {
     let rows: Vec<Vec<String>> = source.iter()
         .map(|line| line.trim().trim_matches('|').split('|').map(|c| c.trim().to_string()).collect())
         .collect();
     let col_count = rows.iter().map(|r| r.len()).max().unwrap_or(1);
     let mut widths = vec![3; col_count];
-    for row in &rows {
+    // Identify Markdown separator row: every non-empty cell contains only '-' and/or ':'
+    let sep_idx = rows.iter().position(|r| {
+        r.iter().all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':'))
+    });
+    for (ri, row) in rows.iter().enumerate() {
+        if sep_idx == Some(ri) { continue; }
         for (ci, cell) in row.iter().enumerate() {
             if ci < col_count {
                 let stripped = strip_markdown(cell);
-                let w = stripped.chars().count().max(3).min(50);
+                let w = stripped.width().max(3);
                 widths[ci] = widths[ci].max(w);
             }
         }
     }
-    (rows, widths)
+    (rows, widths, sep_idx)
 }
 
 fn strip_markdown(text: &str) -> String {
@@ -209,6 +232,85 @@ fn find_md_single(chars: &[char], start: usize, d: char) -> Option<usize> {
     chars[start..].iter().position(|&c| c == d).map(|p| start + p)
 }
 
+// ── Table width fitting ──
+
+fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
+    let total: usize = widths.iter().sum::<usize>() + widths.len() * 3 + 1;
+    if total <= avail || avail == 0 {
+        return widths.to_vec();
+    }
+    let scale = avail as f32 / total as f32;
+    let mut result: Vec<usize> = widths.iter().map(|&w| ((w as f32 * scale).max(3.0) as usize).min(w)).collect();
+    // Ensure we don't exceed avail after rounding
+    let result_total = result.iter().sum::<usize>() + result.len() * 3 + 1;
+    if result_total > avail && !result.is_empty() {
+        let excess = result_total - avail;
+        let max_idx = result.iter().enumerate().max_by_key(|(_, &w)| w).map(|(i, _)| i).unwrap_or(0);
+        result[max_idx] = result[max_idx].saturating_sub(excess).max(3);
+    }
+    result
+}
+
+fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
+    if text.is_empty() || max_width == 0 {
+        return vec!["".to_string()];
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0usize;
+
+    for word in text.split_whitespace() {
+        let word_width = word.width();
+        let space_width = if current.is_empty() { 0 } else { 1 };
+
+        if word_width > max_width {
+            if !current.is_empty() {
+                lines.push(current);
+                current = String::new();
+                current_width = 0;
+            }
+            let mut w = String::new();
+            let mut w_width = 0usize;
+            for ch in word.chars() {
+                let ch_w = ch.to_string().width();
+                if w_width + ch_w > max_width {
+                    if !w.is_empty() {
+                        lines.push(w);
+                    }
+                    w = ch.to_string();
+                    w_width = ch_w;
+                } else {
+                    w.push(ch);
+                    w_width += ch_w;
+                }
+            }
+            if !w.is_empty() {
+                current = w;
+                current_width = w_width;
+            }
+        } else if current_width + space_width + word_width > max_width {
+            lines.push(current);
+            current = word.to_string();
+            current_width = word_width;
+        } else {
+            if !current.is_empty() {
+                current.push(' ');
+                current_width += 1;
+            }
+            current.push_str(word);
+            current_width += word_width;
+        }
+    }
+
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push("".to_string());
+    }
+    lines
+}
+
 // ── Pass 2: render blocks ──
 
 impl Block {
@@ -240,26 +342,68 @@ impl Block {
             BlockKind::CodeFence { lang } => {
                 let label = if lang.is_empty() { "─".into() } else { format!(" {lang} ") };
                 let mut lines: Vec<Line> = vec![Line::from(Span::styled(label, Style::default().fg(DIM)))];
-                let code: String = self.source_lines[1..self.source_lines.len()-1].join("\n");
-                let highlighted = crate::highlight::highlight_code(&code, lang);
-                for line in highlighted.lines() {
-                    lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(180, 180, 190)))));
+                // Safety: only render code content if fence has enough lines
+                if self.source_lines.len() > 2 {
+                    let code: String = self.source_lines[1..self.source_lines.len().saturating_sub(1)].join("\n");
+                    let highlighted = crate::highlight::highlight_code(&code, lang);
+                    for line in highlighted.lines() {
+                        lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(180, 180, 190)))));
+                    }
                 }
                 lines.push(Line::from(Span::styled("─".to_string(), Style::default().fg(DIM))));
                 lines
             }
 
-            BlockKind::Table { rows, widths } => {
+            BlockKind::Table { rows, widths, sep_idx } => {
                 let mut lines = Vec::new();
-                lines.push(border_line("┌", "┬", "┐", "─", widths));
-                let sep_idx = rows.iter().position(|r| r.iter().all(|c| c.is_empty())).unwrap_or(1).min(1);
+                let avail_width = (_area_width as usize).saturating_sub(4).max(1);
+                let adjusted_widths = fit_table_widths(widths, avail_width);
+                lines.push(border_line("┌", "┬", "┐", "─", &adjusted_widths));
                 for (i, row) in rows.iter().enumerate() {
-                    if i == sep_idx && i > 0 {
-                        lines.push(border_line("├", "┼", "┤", "─", widths));
+                    if *sep_idx == Some(i) {
+                        lines.push(border_line("├", "┼", "┤", "─", &adjusted_widths));
+                        continue;
                     }
-                    lines.push(data_line(row, widths));
+                    // Wrap each cell to its column width and render multi-line rows
+                    let mut cell_lines: Vec<Vec<String>> = Vec::new();
+                    let mut max_lines = 1usize;
+                    for (ci, cell) in row.iter().enumerate() {
+                        let col_w = adjusted_widths.get(ci).copied().unwrap_or(3);
+                        let stripped = strip_markdown(cell);
+                        let wrapped = wrap_text_to_width(&stripped, col_w);
+                        max_lines = max_lines.max(wrapped.len());
+                        cell_lines.push(wrapped);
+                    }
+                    for li in 0..max_lines {
+                        let mut spans = vec![Span::raw("  "), Span::styled("│", Style::default().fg(BORDER))];
+                        for (ci, cell_wrapped) in cell_lines.iter().enumerate() {
+                            let col_w = adjusted_widths.get(ci).copied().unwrap_or(3);
+                            let cell_text = cell_wrapped.get(li).map(|s| s.as_str()).unwrap_or("");
+                            let cell_spans = crate::markdown::render_inline(cell_text);
+                            spans.push(Span::raw(" "));
+                            let mut remaining = col_w;
+                            for cs in cell_spans {
+                                let cw = cs.width();
+                                if cw <= remaining {
+                                    spans.push(cs);
+                                    remaining -= cw;
+                                } else {
+                                    break;
+                                }
+                            }
+                            if remaining > 0 {
+                                spans.push(Span::raw(" ".repeat(remaining)));
+                            }
+                            spans.push(Span::raw(" "));
+                            if ci < adjusted_widths.len() - 1 {
+                                spans.push(Span::styled("│", Style::default().fg(BORDER)));
+                            }
+                        }
+                        spans.push(Span::styled("│", Style::default().fg(BORDER)));
+                        lines.push(Line::from(spans));
+                    }
                 }
-                lines.push(border_line("└", "┴", "┘", "─", widths));
+                lines.push(border_line("└", "┴", "┘", "─", &adjusted_widths));
                 lines
             }
 
@@ -387,7 +531,7 @@ mod tests {
             "1. Ordered item".to_string(),
         ];
 
-        let blocks = measure_blocks(&input);
+        let blocks = measure_blocks(&input, 80);
         let mut md = MarkdownRenderer::new();
 
         // Verify block kinds
@@ -415,34 +559,35 @@ mod tests {
             "| Bob | *Viewer* | ❌ inactive |".to_string(),
         ];
 
-        let blocks = measure_blocks(&input);
+        let blocks = measure_blocks(&input, 80);
         assert_eq!(blocks.len(), 1);
         let block = &blocks[0];
 
         match &block.kind {
-            BlockKind::Table { rows, widths } => {
+            BlockKind::Table { rows, widths, sep_idx: _ } => {
                 assert_eq!(rows.len(), 4, "4 table rows");
                 assert_eq!(widths.len(), 3, "3 columns");
                 // Check that widths account for markdown stripping
                 assert!(widths[0] >= 5, "Name column should be >= width 5 (Alice)");
                 assert!(widths[1] >= 4, "Role column should be >= width 4 (Viewer stripped)");
+                println!("test_table widths: {:?}", widths);
             }
             _ => panic!("expected Table block"),
         }
 
         let mut md = MarkdownRenderer::new();
         let lines = block.render(80, 0, &mut md, false);
-        // Should have: top border + header + sep border + 2 data rows + bottom border = 7 lines
-        assert_eq!(lines.len(), 7, "table should render 7 lines (borders + header + sep + 2 data)");
+        // Should have: top border + header + sep border + 2 data rows + bottom border = 6 lines
+        assert_eq!(lines.len(), 6, "table should render 6 lines (borders + header + sep + 2 data)");
 
         // Verify border characters
         let top = &lines[0].spans[0].content;
         assert!(top.contains('┌'), "top border should start with ┌, got: {top}");
-        let bottom = &lines[6].spans[0].content;
+        let bottom = &lines[5].spans[0].content;
         assert!(bottom.contains('└'), "bottom border should start with └, got: {bottom}");
 
-        // Verify data is present (index 4 = Alice row, index 3 is separator dashes)
-        let alice_line = &lines[4].spans.iter().map(|s| &*s.content).collect::<String>();
+        // Verify data is present (index 3 = Alice row)
+        let alice_line = &lines[3].spans.iter().map(|s| &*s.content).collect::<String>();
         assert!(alice_line.contains("Alice"), "should contain Alice");
         assert!(alice_line.contains("Admin"), "should contain Admin (bold stripped in border but rendered in data)");
     }
@@ -457,7 +602,7 @@ mod tests {
             "```".to_string(),
         ];
 
-        let blocks = measure_blocks(&input);
+        let blocks = measure_blocks(&input, 80);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::CodeFence { .. }));
 
@@ -473,7 +618,7 @@ mod tests {
             "██╔══██╗██╔══██╗██╔══██╗██║██║   ██║████╗ ████║██║██╔════╝██╔══██╗██║     ".to_string(),
         ];
 
-        let blocks = measure_blocks(&input);
+        let blocks = measure_blocks(&input, 80);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::Logo));
     }
@@ -484,7 +629,7 @@ mod tests {
             "\x01[思考] Analyzing code structure...".to_string(),
         ];
 
-        let blocks = measure_blocks(&input);
+        let blocks = measure_blocks(&input, 80);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::Reasoning));
 
@@ -492,6 +637,29 @@ mod tests {
         let lines = blocks[0].render(80, 0, &mut md, false);
         let content = &lines[0].spans[0].content;
         assert!(content.contains("[思考]"), "should contain [思考]");
+    }
+
+    #[test]
+    fn test_wrap_cjk() {
+        let w1 = wrap_text_to_width("持久记忆与上下文", 16);
+        println!("wrap(16): {:?}", w1);
+        assert_eq!(w1.len(), 1, "should fit in 16 cols");
+        let w2 = wrap_text_to_width("持久记忆与上下文", 12);
+        println!("wrap(12): {:?}", w2);
+        let w3 = wrap_text_to_width("持久记忆与上下文", 10);
+        println!("wrap(10): {:?}", w3);
+        let s = strip_markdown("持久记忆与上下文");
+        println!("strip: '{}' width={}", s, s.width());
+        let input = vec![
+            "| 能力 | 说明 |".to_string(),
+            "|------|------|".to_string(),
+            "| 持久记忆与上下文 | 跨会话的记忆系统（核心/次要/短期三层） |".to_string(),
+        ];
+        let (rows, widths, sep_idx) = measure_table(&input);
+        println!("rows[2][0]='{}' w={}", rows[2][0], rows[2][0].width());
+        println!("widths: {:?}", widths);
+        let fitted = fit_table_widths(&widths, 76);
+        println!("fitted(76): {:?}", fitted);
     }
 
     #[test]

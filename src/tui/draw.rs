@@ -90,12 +90,12 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
     // P0: Cache blocks — only recompute when output changes
-    let blocks = if app.block_cache.as_ref().map_or(true, |(len, _)| *len != total) {
-        let b = measure_blocks(&app.output);
-        app.block_cache = Some((total, b));
-        app.block_cache.as_ref().unwrap().1.clone()
+    let blocks = if app.block_cache.as_ref().map_or(true, |(len, w, _)| *len != total || *w != text_area.width) {
+        let b = measure_blocks(&app.output, text_area.width);
+        app.block_cache = Some((total, text_area.width, b));
+        app.block_cache.as_ref().unwrap().2.clone()
     } else {
-        app.block_cache.as_ref().unwrap().1.clone()
+        app.block_cache.as_ref().unwrap().2.clone()
     };
 
     // P1: Reuse markdown renderer across frames
