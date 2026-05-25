@@ -27,7 +27,7 @@ pub async fn spawn(
     config: SessionConfig,
     provider: Arc<dyn Provider>,
 ) {
-    let (ui_tx, _ui_rx) = std::sync::mpsc::channel::<crate::tui::UiEvent>();
+    let (ui_tx, _ui_rx) = std::sync::mpsc::channel::<crate::types::UiEvent>();
     let mut runner = PipelineRunner::new(config.clone(), provider);
     let workspace = std::env::current_dir().unwrap_or_default();
 

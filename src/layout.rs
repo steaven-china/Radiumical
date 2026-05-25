@@ -664,6 +664,91 @@ mod tests {
     }
 
     #[test]
+    fn test_help_content_blocks_not_eaten() {
+        // Simulate the exact output produced by App::show_help()
+        let output = vec![
+            "  Commands:".to_string(),
+            "  /help      Show this help".to_string(),
+            "  /plan      Read-only mode".to_string(),
+            "  /exec      Write mode".to_string(),
+            "  /auto      Full auto mode".to_string(),
+            "  /review    Self-review changes".to_string(),
+            "  /tools     List available tools".to_string(),
+            "  /settings  Show configuration".to_string(),
+            "  /models    Model picker panel".to_string(),
+            "  /model     Switch model".to_string(),
+            "  /session   Save/load sessions".to_string(),
+            "  /cod on/off Chain of Draft experimental".to_string(),
+            "  /debug     Debug info".to_string(),
+            "  /end       Jump to bottom".to_string(),
+            "  /clear     Clear screen".to_string(),
+            "  /exit      Quit".to_string(),
+            "".to_string(),
+            "  Keys:".to_string(),
+            "  PgUp/PgDn  Scroll | Up/Down  History".to_string(),
+            "  Ctrl+W     Del word | Shift+Enter  Newline".to_string(),
+            "  End        Jump to bottom (empty input)".to_string(),
+            "  Mouse drag Select | Ctrl+Shift+C  Copy".to_string(),
+            "  Ctrl+C     Quit".to_string(),
+            "".to_string(),
+        ];
+
+        let blocks = measure_blocks(&output, 80);
+        let total_h: usize = blocks.iter().map(|b| b.height).sum();
+        // For text-only output, total block height must equal raw line count
+        assert_eq!(total_h, output.len(), "block height sum ({}) must equal output line count ({})", total_h, output.len());
+
+        // Every line must produce exactly one block (no accidental merging)
+        assert_eq!(blocks.len(), output.len(), "each line should be its own block, got {} blocks for {} lines", blocks.len(), output.len());
+
+        // Simulate draw_output viewport logic (stick_to_bottom)
+        let vis = 15usize; // small terminal
+        let total = output.len();
+        let start = total.saturating_sub(vis);
+        let end = (start + vis).min(total);
+
+        let mut rendered = 0usize;
+        let mut line_offset = 0usize;
+        for block in &blocks {
+            let block_end = line_offset + block.height;
+            if block_end > start && line_offset < end {
+                let skip = if line_offset < start { start - line_offset } else { 0 };
+                let take = vis.saturating_sub(rendered);
+                let block_lines = block.render_range(80, 0, &mut crate::markdown::MarkdownRenderer::new(), false, skip, take);
+                rendered += block_lines.len();
+            }
+            line_offset = block_end;
+            if rendered >= vis { break; }
+        }
+
+        // We should have rendered exactly 'vis' lines (or all remaining if fewer)
+        let expected = vis.min(total.saturating_sub(start));
+        assert_eq!(rendered, expected, "viewport should render {} lines but got {}", expected, rendered);
+
+        // Specifically: render every text block and make sure nothing disappears
+        let mut md = crate::markdown::MarkdownRenderer::new();
+        for (i, block) in blocks.iter().enumerate() {
+            let lines = block.render(80, 0, &mut md, false);
+            assert!(!lines.is_empty(), "block {} (source: {:?}) should render at least one line", i, block.source_lines);
+        }
+    }
+
+    #[test]
+    fn test_render_inline_pipe_preserves_text() {
+        // Keys lines contain '|' — make sure pulldown-cmark doesn't eat them
+        let spans = crate::markdown::render_inline("PgUp/PgDn  Scroll | Up/Down  History");
+        let text: String = spans.iter().map(|s| s.to_string()).collect();
+        assert!(text.contains("PgUp/PgDn"), "render_inline ate text before pipe: {}", text);
+        assert!(text.contains("History"), "render_inline ate text after pipe: {}", text);
+        assert!(text.contains("|"), "render_inline dropped pipe character: {}", text);
+
+        let spans2 = crate::markdown::render_inline("Mouse drag Select | Ctrl+Shift+C  Copy");
+        let text2: String = spans2.iter().map(|s| s.to_string()).collect();
+        assert!(text2.contains("Mouse drag"), "render_inline ate 'Mouse drag': {}", text2);
+        assert!(text2.contains("Copy"), "render_inline ate 'Copy': {}", text2);
+    }
+
+    #[test]
     fn test_strip_markdown() {
         assert_eq!(strip_markdown("**bold**"), "bold");
         assert_eq!(strip_markdown("*italic*"), "italic");

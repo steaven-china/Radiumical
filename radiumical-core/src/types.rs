@@ -217,3 +217,23 @@ pub fn default_system_prompt() -> String {
 - Report what you changed and why when done.
 "#.into()
 }
+pub enum UiEvent {
+    LlmChunk(String),
+    LlmReasoning(String),
+    ThinkingTick,
+    LlmDone,
+    ToolStart { name: String, index: usize, total: usize, args: String },
+    ToolDone,
+    Error(String),
+    ThinkingDone,
+}
+
+#[derive(Debug, Clone)]
+pub enum BackendCmd {
+    RunTask(String),
+    Cancel,
+}
+
+// ═══ Slash hints ═══
+
+// copied

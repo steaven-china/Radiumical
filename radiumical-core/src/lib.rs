@@ -1,13 +1,9 @@
-pub mod board;
 pub mod commands;
 pub mod config;
 pub mod conversation;
-pub mod dashboard;
 pub mod highlight;
 pub mod hooks;
-pub mod layout;
 pub mod lsp;
-pub mod markdown;
 pub mod memory;
 pub mod perf;
 pub mod pipeline;

@@ -6,7 +6,7 @@ use crate::types::{
     Message, MessageContent, ProviderEvent, Role, SessionConfig, ToolCall, ToolDefinition,
     ToolResult,
 };
-use crate::{provider::Provider, tui::UiEvent};
+use crate::{provider::Provider, types::UiEvent};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
