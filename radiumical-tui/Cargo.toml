@@ -1,0 +1,21 @@
+[package]
+name = "radiumical"
+version = "0.1.0"
+edition = "2021"
+description = "Radiumical — lean CLI coding agent (TUI)"
+
+[[bin]]
+name = "radiumical"
+path = "src/main.rs"
+
+[dependencies]
+radiumical-core = { path = "../radiumical-core" }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+arboard = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

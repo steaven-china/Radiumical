@@ -1,0 +1,25 @@
+[package]
+name = "radiumical-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+regex = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+similar = { workspace = true }
+pulldown-cmark = { workspace = true }
+walkdir = { workspace = true }
+syntect = { workspace = true }
+reqwest = { workspace = true }
+arboard = { workspace = true }
+toml = { workspace = true }
+
+[lib]
+name = "radiumical_core"
+path = "src/lib.rs"
