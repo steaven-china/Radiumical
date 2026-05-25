@@ -16,7 +16,7 @@ async fn run_task(
     app: tauri::AppHandle,
     task: String,
 ) -> Result<String, String> {
-    let workspace = std::env::current_dir().unwrap_or_default();
+    let workspace = std::env::current_dir().unwrap_or_default().parent().map(|p| p.to_path_buf()).unwrap_or_default();
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<radiumical_core::types::UiEvent>();
     let (_, cancel_rx) = tokio::sync::watch::channel(false);
 

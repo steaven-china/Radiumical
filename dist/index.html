@@ -34,7 +34,31 @@ if (!invoke) { document.getElementById('output').innerHTML += '<div class="err">
 const out = document.getElementById('output');
 const cmd = document.getElementById('cmd');
 const think = document.getElementById('think-status');
-function add(text, cls) { const d = document.createElement('div'); d.className = 'line '+(cls||''); d.textContent = text; out.appendChild(d); out.scrollTop = out.scrollHeight; }
+let buf = { current: '' };
+function add(text, cls) {
+  buf.current += text;
+  // Flush completed lines (split by \n)
+  while (buf.current.includes('\n')) {
+    const idx = buf.current.indexOf('\n');
+    const line = buf.current.slice(0, idx);
+    buf.current = buf.current.slice(idx + 1);
+    const d = document.createElement('div');
+    d.className = 'line ' + (cls || '');
+    d.textContent = line;
+    out.appendChild(d);
+  }
+  out.scrollTop = out.scrollHeight;
+}
+function flush() {
+  if (buf.current) {
+    const d = document.createElement('div');
+    d.className = 'line';
+    d.textContent = buf.current;
+    out.appendChild(d);
+    buf.current = '';
+    out.scrollTop = out.scrollHeight;
+  }
+}
 cmd.onkeydown = async e => {
   if (e.key === 'Enter' && cmd.value.trim()) {
     const t = cmd.value.trim(); cmd.value = '';
@@ -49,12 +73,16 @@ cmd.onkeydown = async e => {
   }
 };
 
-// Listen for streaming events from backend
-if (window.__TAURI__) {
-  window.__TAURI__.event.listen('llm-chunk', (e) => { add(e.payload, ''); });
-  window.__TAURI__.event.listen('tool-start', (e) => { add(e.payload, 'tool'); });
-  window.__TAURI__.event.listen('llm-error', (e) => { add(e.payload, 'err'); });
-}
+// Listen for streaming events from backend (Tauri v2)
+(async () => {
+  const { listen } = window.__TAURI__?.event || {};
+  if (listen) {
+    await listen('llm-chunk', (e) => { add(e.payload, ''); });
+    await listen('tool-start', (e) => { flush(); add(e.payload, 'tool'); });
+    await listen('llm-done', () => { flush(); });
+    await listen('llm-error', (e) => { flush(); add(e.payload, 'err'); });
+  }
+})();
 </script>
 </body>
 </html>
