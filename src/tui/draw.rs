@@ -85,7 +85,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     // Clear stale cells before rendering
     f.render_widget(Clear, area);
     // Always clamp to actual area height (the ultimate source of truth)
-    let vis = (area.height as usize).saturating_sub(2).min(_vis);
+    let vis = (area.height as usize).saturating_sub(2).min(_vis).max(1);
     let text_area = Rect { x: area.x, y: area.y, width: area.width.saturating_sub(1), height: area.height };
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
@@ -122,9 +122,9 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     filled.resize(vis, Line::from("")); // exact vis lines: truncate or pad
 
     // P1: Scrollbar as single pre-built column
-    if total > vis {
+    if total > vis && vis > 0 {
         let sb_h = area.height.saturating_sub(1) as usize;
-        let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as usize;
+        let thumb_h = ((vis as f32 / total as f32).min(1.0) * sb_h as f32).max(1.0) as usize;
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {

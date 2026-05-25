@@ -51,3 +51,4 @@ ratatui = { version = "0.28", features = ["crossterm"] }
 # Syntax highlighting for diffs
 syntect = "5"
 arboard = "3.6.1"
+unicode-width = "0.2.2"
