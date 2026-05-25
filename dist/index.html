@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radiumical</title>
+<style>
+:root { --bg: #1a1a2e; --panel: #16213e; --text: #e0e0e0; --accent: #00d4ff; --dim: #555; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI', monospace; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+#output { flex:1; overflow-y:auto; padding:1rem; white-space:pre-wrap; font-size:13px; line-height:1.5; }
+#output .thinking { background:#1a1a30; color:#888; padding:2px 6px; border-radius:3px; }
+#output .tool { color:#888; font-size:11px; }
+#output .error { color:#f66; }
+#input-bar { display:flex; padding:8px; background:var(--panel); border-top:1px solid #333; }
+#input-bar input { flex:1; background:transparent; border:none; color:var(--text); font:inherit; font-size:14px; outline:none; }
+#input-bar input::placeholder { color:var(--dim); }
+#status { padding:4px 8px; font-size:11px; color:var(--dim); background:#111; display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+<div id="output"></div>
+<div id="input-bar"><span style="color:var(--accent);font-weight:bold;padding:0 6px;">></span><input id="cmd" placeholder="Type a task or /help..." autofocus></div>
+<div id="status"><span id="thinking"></span><span id="model"></span></div>
+<script>
+const output = document.getElementById('output');
+const cmd = document.getElementById('cmd');
+const thinking = document.getElementById('thinking');
+
+function append(text, cls) {
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.textContent = text;
+    output.appendChild(div);
+    output.scrollTop = output.scrollHeight;
+}
+
+cmd.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && cmd.value.trim()) {
+        const task = cmd.value.trim();
+        cmd.value = '';
+        append('> ' + task);
+        try { await window.__TAURI__.invoke('run_task', { task }); } catch(err) { append('Error: ' + err, 'error'); }
+    }
+});
+
+append('Radiumical Tauri Edition');
+append('Type a task to begin.', 'tool');
+</script>
+</body>
+</html>

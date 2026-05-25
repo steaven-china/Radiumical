@@ -52,3 +52,4 @@ ratatui = { version = "0.28", features = ["crossterm"] }
 syntect = "5"
 arboard = "3.6.1"
 unicode-width = "0.2.2"
+tauri = { version = "2", features = ["devtools"] }
