@@ -15,6 +15,8 @@ mod provider;
 mod session;
 mod subagent;
 mod systools;
+#[cfg(test)]
+mod tests;
 mod tui;
 mod tools;
 mod test_table_full;
