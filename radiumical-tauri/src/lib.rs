@@ -1,41 +1,84 @@
 use radiumical_core::pipeline::PipelineRunner;
-use radiumical_core::provider;
+use radiumical_core::provider::create_provider;
 use radiumical_core::types::{ProviderKind, SessionConfig};
+use std::sync::Mutex;
+use tauri::Emitter;
+use tokio::sync::Mutex as TokioMutex;
 use tauri::Manager;
 
 struct AppState {
-    runner: std::sync::Mutex<PipelineRunner>,
+    runner: TokioMutex<PipelineRunner>,
 }
 
 #[tauri::command]
 async fn run_task(
     state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
     task: String,
 ) -> Result<String, String> {
     let workspace = std::env::current_dir().unwrap_or_default();
-    let (ui_tx, _) = std::sync::mpsc::channel();
+    let (ui_tx, ui_rx) = std::sync::mpsc::channel::<radiumical_core::types::UiEvent>();
     let (_, cancel_rx) = tokio::sync::watch::channel(false);
-    
-    let mut runner = state.runner.lock().map_err(|e| e.to_string())?;
-    // Create a fresh runner for this task
-    Ok(format!("Task received: {task} (pipeline not yet wired for Tauri)"))
+
+    // Spawn pipeline in background, emit events to frontend
+    let handle = app.clone();
+    tokio::spawn(async move {
+        while let Ok(event) = ui_rx.recv() {
+            match event {
+                radiumical_core::types::UiEvent::LlmChunk(chunk) => {
+                    let _ = handle.emit("llm-chunk", chunk);
+                }
+                radiumical_core::types::UiEvent::LlmDone => {
+                    let _ = handle.emit("llm-done", "");
+                }
+                radiumical_core::types::UiEvent::ToolStart { name, index, total, .. } => {
+                    let _ = handle.emit("tool-start", format!("[{}/{}] {name}", index + 1, total));
+                }
+                radiumical_core::types::UiEvent::ToolDone => {
+                    let _ = handle.emit("tool-done", "");
+                }
+                radiumical_core::types::UiEvent::Error(e) => {
+                    let _ = handle.emit("llm-error", e);
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let mut runner = state.runner.lock().await;
+    let result = runner.run(task, workspace, None, ui_tx, cancel_rx).await;
+    drop(runner);
+    result.map_err(|e| e.to_string())?;
+    Ok("Done.".into())
+}
+
+#[tauri::command]
+fn get_config() -> Result<String, String> {
+    Ok(format!("Model: deepseek-v4-pro\nThinking: max"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let config = SessionConfig::default();
-    let provider = provider::create_provider(
+    let api_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
+    let provider = create_provider(
         &ProviderKind::OpenAI,
         Some("https://api.deepseek.com/v1"),
-        &std::env::var("DEEPSEEK_API_KEY").unwrap_or_default(),
+        &api_key,
         "deepseek-v4-pro",
     );
+    let config = SessionConfig {
+        provider: ProviderKind::OpenAI,
+        model: "deepseek-v4-pro".into(),
+        api_key,
+        api_base: Some("https://api.deepseek.com/v1".into()),
+        ..Default::default()
+    };
     let runner = PipelineRunner::new(config, provider);
-    
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(AppState { runner: std::sync::Mutex::new(runner) })
-        .invoke_handler(tauri::generate_handler![run_task])
+        .manage(AppState { runner: TokioMutex::new(runner) })
+        .invoke_handler(tauri::generate_handler![run_task, get_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

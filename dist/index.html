@@ -40,13 +40,21 @@ cmd.onkeydown = async e => {
     const t = cmd.value.trim(); cmd.value = '';
     add('> ' + t, 'cmd');
     try {
-      const result = await invoke('run_task', { task: t });
-      add(result, '');
+      add('', ''); // spacing
+      await invoke('run_task', { task: t });
+      add('', '');
     } catch(err) {
       add('Error: ' + (typeof err === 'string' ? err : JSON.stringify(err)), 'err');
     }
   }
 };
+
+// Listen for streaming events from backend
+if (window.__TAURI__) {
+  window.__TAURI__.event.listen('llm-chunk', (e) => { add(e.payload, ''); });
+  window.__TAURI__.event.listen('tool-start', (e) => { add(e.payload, 'tool'); });
+  window.__TAURI__.event.listen('llm-error', (e) => { add(e.payload, 'err'); });
+}
 </script>
 </body>
 </html>
