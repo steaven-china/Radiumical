@@ -13,7 +13,7 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     let area = f.area();
     let hint_page_start = app.hint_page * 8;
     let hint_page_end = (hint_page_start + 8).min(app.hints.len());
-    let visible_hints: Vec<&(String, String)> = app.hints[hint_page_start..hint_page_end].iter().collect();
+    let visible_hints: Vec<(String, String)> = app.hints[hint_page_start..hint_page_end].iter().cloned().collect();
     let hint_count = visible_hints.len();
     let input_lines = app.input.split('\n').count().max(1).min(5);
     let input_h = (input_lines + 2) as u16;
@@ -78,9 +78,8 @@ pub fn draw(f: &mut Frame, app: &mut App, out_h: usize) {
     draw_status(f, bottom[bottom.len() - 1], app);
 }
 
-fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
+fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     use crate::layout::measure_blocks;
-    use crate::markdown::MarkdownRenderer;
     use ratatui::widgets::{Clear, Wrap};
     let total = app.output.len(); if total == 0 { return; }
     // Clear stale cells before rendering
@@ -89,8 +88,17 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     let vis = (area.height as usize).saturating_sub(2).min(_vis);
     let start = if app.stick_to_bottom { total.saturating_sub(vis) } else { (app.scroll as usize).min(total.saturating_sub(1)) };
     let end = (start + vis).min(total);
-    let blocks = measure_blocks(&app.output);
-    let mut md = MarkdownRenderer::new(); md.tick_frame();
+    // P0: Cache blocks — only recompute when output changes
+    let blocks = if app.block_cache.as_ref().map_or(true, |(len, _)| *len != total) {
+        let b = measure_blocks(&app.output);
+        app.block_cache = Some((total, b));
+        app.block_cache.as_ref().unwrap().1.clone()
+    } else {
+        app.block_cache.as_ref().unwrap().1.clone()
+    };
+
+    // P1: Reuse markdown renderer across frames
+    app.markdown.tick_frame();
     let mut rendered: Vec<Line> = Vec::with_capacity(vis);
     let mut line_offset = 0usize;
     for block in &blocks {
@@ -98,7 +106,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
         if block_end > start && line_offset < end {
             let skip = if line_offset < start { start - line_offset } else { 0 };
             let take = vis.saturating_sub(rendered.len());
-            let block_lines = block.render_range(area.width, app.thinking_frame, &mut md, app.show_full_reasoning, skip, take);
+            let block_lines = block.render_range(area.width, app.thinking_frame, &mut app.markdown, app.show_full_reasoning, skip, take);
             for (li, bline) in block_lines.iter().enumerate() {
                 let global_li = line_offset + li + skip;
                 let mut line = bline.clone();
@@ -113,21 +121,22 @@ fn draw_output(f: &mut Frame, area: Rect, app: &App, _vis: usize) {
     let mut filled = rendered;
     filled.resize(filled.len().max(vis), Line::from(""));
 
-    // Scrollbar on right edge (clamped to output area)
+    // P1: Scrollbar as single pre-built column
     if total > vis {
-        let sb_h = area.height.saturating_sub(1);
-        let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as u16;
+        let sb_h = area.height.saturating_sub(1) as usize;
+        let thumb_h = ((vis as f32 / total as f32) * sb_h as f32).max(1.0) as usize;
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {
             let progress = (app.scroll as f32 / (total - vis).max(1) as f32).clamp(0.0, 1.0);
-            ((progress * sb_h.saturating_sub(thumb_h) as f32) as u16).min(sb_h.saturating_sub(1))
+            ((progress * sb_h.saturating_sub(thumb_h) as f32) as usize).min(sb_h.saturating_sub(1))
         };
-        let sb_style = Style::default().fg(Color::Rgb(60, 60, 70));
+        let mut bar = String::with_capacity(sb_h * 4);
         for i in 0..sb_h {
-            let ch = if i >= thumb_y && i < thumb_y + thumb_h { '█' } else { '│' };
-            f.render_widget(Paragraph::new(ch.to_string()).style(sb_style), Rect { x: area.x + area.width - 1, y: area.y + 1 + i, width: 1, height: 1 });
+            bar.push(if i >= thumb_y && i < thumb_y + thumb_h { '█' } else { '│' });
+            bar.push('\n');
         }
+        f.render_widget(Paragraph::new(bar).style(Style::default().fg(Color::Rgb(60, 60, 70))), Rect { x: area.x + area.width - 1, y: area.y + 1, width: 1, height: sb_h as u16 });
     }
 
     if app.welcome && content_h < vis && app.scroll <= 0.0 && !filled.is_empty() && filled.iter().any(|l| l.width() > 0) {
