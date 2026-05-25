@@ -221,6 +221,7 @@ impl App {
                         return;
                     }
                     "/perf" => { self.perf_visible = !self.perf_visible; self.output.push("> /perf".into()); self.output.push(crate::perf::report()); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
+                    "/debug linevis" => { self.output.push("> /debug linevis".into()); self.output.push(format!("  total: {} | vis: {} | scroll: {:.0} | stick: {}", self.output.len(), self.output_vis, self.scroll, self.stick_to_bottom)); self.output.push(String::new()); self.input.clear(); self.cursor = 0; self.stick_to_bottom = true; return; }
                     _ if task.starts_with("/remember ") => {
                         let rest = task[10..].trim();
                         let parts: Vec<&str> = rest.splitn(2, ' ').collect();
