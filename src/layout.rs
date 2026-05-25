@@ -90,10 +90,10 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
             let start = i;
             while i < output.len() && output[i].trim().starts_with('|') { i += 1; }
             let source = output[start..i].to_vec();
-            let (rows, widths, sep_idx) = measure_table(&source);
-            let total_w = widths.iter().sum::<usize>() + widths.len() * 3 + 1;
+            let (rows, widths, sep_idx) = measure_table(&source, area_width);
             let avail_width = (area_width as usize).saturating_sub(4).max(1);
             let adjusted_widths = fit_table_widths(&widths, avail_width);
+            let width = if widths.is_empty() { 0 } else { widths.iter().sum::<usize>() + widths.len() * 3 + 1 };
             let sep_count = sep_idx.map(|_| 1).unwrap_or(0);
             let data_rows = rows.len() - sep_count;
             let mut extra_lines = 0usize;
@@ -109,7 +109,7 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
                 extra_lines += row_max_lines.saturating_sub(1);
             }
             let height = data_rows + 2 + sep_count + extra_lines;
-            blocks.push(Block { kind: BlockKind::Table { rows, widths, sep_idx }, source_lines: source, width: total_w, height });
+            blocks.push(Block { kind: BlockKind::Table { rows, widths, sep_idx }, source_lines: source, width, height });
             continue;
         }
 
@@ -168,7 +168,7 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
     blocks
 }
 
-fn measure_table(source: &[String]) -> (Vec<Vec<String>>, Vec<usize>, Option<usize>) {
+fn measure_table(source: &[String], _area_width: u16) -> (Vec<Vec<String>>, Vec<usize>, Option<usize>) {
     let rows: Vec<Vec<String>> = source.iter()
         .map(|line| line.trim().trim_matches('|').split('|').map(|c| c.trim().to_string()).collect())
         .collect();
@@ -478,6 +478,7 @@ fn border_line(left: &str, mid: &str, right: &str, fill: &str, cols: &[usize]) -
     Line::from(Span::styled(format!("  {s}"), Style::default().fg(BORDER)))
 }
 
+#[allow(dead_code)]
 fn data_line(cells: &[String], cols: &[usize]) -> Line<'static> {
     let edge = Span::styled("│", Style::default().fg(BORDER));
     let mut spans = vec![Span::raw("  "), edge.clone()];
@@ -655,7 +656,7 @@ mod tests {
             "|------|------|".to_string(),
             "| 持久记忆与上下文 | 跨会话的记忆系统（核心/次要/短期三层） |".to_string(),
         ];
-        let (rows, widths, sep_idx) = measure_table(&input);
+        let (rows, widths, _sep_idx) = measure_table(&input, 80);
         println!("rows[2][0]='{}' w={}", rows[2][0], rows[2][0].width());
         println!("widths: {:?}", widths);
         let fitted = fit_table_widths(&widths, 76);

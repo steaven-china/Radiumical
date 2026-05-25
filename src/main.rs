@@ -19,7 +19,6 @@ mod systools;
 mod tests;
 mod tui;
 mod tools;
-mod test_table_full;
 mod types;
 
 use anyhow::Result;
