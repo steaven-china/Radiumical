@@ -1,0 +1,3 @@
+[submodule "providers-record"]
+	path = providers-record
+	url = https://github.com/steaven-china/providers-record.git
