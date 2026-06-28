@@ -1,5 +1,5 @@
 [workspace]
-members = ["radiumical-core", "radiumical-tui", "radiumical-tauri"]
+members = ["radiumical-core", "radiumical-tui", "radiumical-tauri", "tools/csv-to-jsonl"]
 resolver = "2"
 
 [workspace.dependencies]

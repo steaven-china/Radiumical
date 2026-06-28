@@ -1,0 +1,21 @@
+{"provider":"openai","name":"OpenAI","api_type":"openai-chat","api_base":"https://api.openai.com/v1","key_env":"OPENAI_API_KEY","models_endpoint":"/models","models":["gpt-4o","gpt-4o-mini"]}
+{"provider":"anthropic","name":"Anthropic","api_type":"anthropic","api_base":"https://api.anthropic.com/v1","key_env":"ANTHROPIC_API_KEY","models_endpoint":"/models","models":["claude-sonnet-4-20250514"]}
+{"provider":"google","name":"Google Gemini","api_type":"google","api_base":"https://generativelanguage.googleapis.com/v1beta","key_env":"GOOGLE_API_KEY","models_endpoint":"/models"}
+{"provider":"cohere","name":"Cohere","api_type":"cohere","api_base":"https://api.cohere.ai/v1","key_env":"COHERE_API_KEY","models_endpoint":"/models"}
+{"provider":"deepseek","name":"DeepSeek","api_type":"openai-chat","api_base":"https://api.deepseek.com/v1","key_env":"DEEPSEEK_API_KEY","models_endpoint":"/models"}
+{"provider":"mistral","name":"Mistral AI","api_type":"openai-chat","api_base":"https://api.mistral.ai/v1","key_env":"MISTRAL_API_KEY","models_endpoint":"/models"}
+{"provider":"groq","name":"Groq","api_type":"openai-chat","api_base":"https://api.groq.com/openai/v1","key_env":"GROQ_API_KEY","models_endpoint":"/models"}
+{"provider":"perplexity","name":"Perplexity AI","api_type":"perplexity","api_base":"https://api.perplexity.ai","key_env":"PERPLEXITY_API_KEY","models_endpoint":"/models"}
+{"provider":"together","name":"Together AI","api_type":"openai-chat","api_base":"https://api.together.xyz/v1","key_env":"TOGETHER_API_KEY","models_endpoint":"/models"}
+{"provider":"openrouter","name":"OpenRouter","api_type":"openai-chat","api_base":"https://openrouter.ai/api/v1","key_env":"OPENROUTER_API_KEY","models_endpoint":"/models"}
+{"provider":"ai21","name":"AI21 Labs","api_type":"ai21","api_base":"https://api.ai21.com/studio/v1","key_env":"AI21_API_KEY","models_endpoint":"/models"}
+{"provider":"replicate","name":"Replicate","api_type":"replicate","api_base":"https://api.replicate.com/v1","key_env":"REPLICATE_API_KEY","models_endpoint":"/models"}
+{"provider":"fireworks","name":"Fireworks AI","api_type":"openai-chat","api_base":"https://api.fireworks.ai/v1","key_env":"FIREWORKS_API_KEY","models_endpoint":"/models"}
+{"provider":"octo","name":"OctoAI","api_type":"openai-chat","api_base":"https://octoai.cloud/v1","key_env":"OCTOAI_API_KEY","models_endpoint":"/models"}
+{"provider":"lepton","name":"Lepton AI","api_type":"openai-chat","api_base":"https://api.lepton.ai/v1","key_env":"LEPTON_API_KEY","models_endpoint":"/models"}
+{"provider":"anyscale","name":"Anyscale","api_type":"openai-chat","api_base":"https://api.anyscale.com/v1","key_env":"ANYSCALE_API_KEY","models_endpoint":"/models"}
+{"provider":"nlpcloud","name":"NLP Cloud","api_type":"nlpcloud","api_base":"https://api.nlpcloud.io/v1","key_env":"NLPCLOUD_API_KEY","models_endpoint":"/models"}
+{"provider":"cerebras","name":"Cerebras","api_type":"openai-chat","api_base":"https://api.cerebras.ai/v1","key_env":"CEREBRAS_API_KEY","models_endpoint":"/models"}
+{"provider":"sambanova","name":"SambaNova","api_type":"openai-chat","api_base":"https://api.sambanova.ai/v1","key_env":"SAMBANOVA_API_KEY","models_endpoint":"/models"}
+{"provider":"deepinfra","name":"DeepInfra","api_type":"openai-chat","api_base":"https://api.deepinfra.com/v1","key_env":"DEEPINFRA_API_KEY","models_endpoint":"/models"}
+{"provider":"ollama","name":"本地 Ollama","api_type":"openai-chat","api_base":"http://localhost:11434/v1","models_endpoint":"/api/tags","models":["qwen2.5:14b","llama3.2"]}

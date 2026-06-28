@@ -10,6 +10,7 @@ pub mod orchestrator;
 pub mod perf;
 pub mod pipeline;
 pub mod provider;
+pub mod providers;
 pub mod session;
 pub mod subagent;
 pub mod systools;
