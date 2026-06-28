@@ -23,6 +23,7 @@ impl App {
                 self.help_board.visible = false;
                 self.model_board.visible = false;
                 self.blocks.clear();
+                self.session_items.clear();
                 self.render_cache.clear();
                 self.markdown = crate::markdown::MarkdownRenderer::new();
                 self.full_reasoning.clear();
@@ -120,10 +121,9 @@ impl App {
                     "save" => {
                         let name = parts.next().unwrap_or("default");
                         let desc = parts.next();
-                        let jsonl = self.output.join("\n");
                         match radiumical_core::session::Session::save(
                             name,
-                            &jsonl,
+                            &self.session_items,
                             &self.model,
                             desc,
                         ) {
@@ -134,13 +134,10 @@ impl App {
                     "load" => {
                         let name = parts.next().unwrap_or("default");
                         match radiumical_core::session::Session::load(name) {
-                            Ok(Some((_, lines))) => {
-                                self.output.clear();
-                                for line in lines {
-                                    self.output.push(line);
-                                }
+                            Ok(Some((_, items))) => {
+                                self.session_items = items;
+                                self.render_session_items_to_output();
                                 self.output.push(format!("  Loaded: {name}"));
-                                self.stick_to_bottom = true;
                             }
                             Ok(None) => self.output.push(format!("  Session not found: {name}")),
                             Err(e) => self.output.push(format!("  Load failed: {e}")),
@@ -311,6 +308,10 @@ impl App {
         self.show_help_overlay = false;
         if !task.is_empty() {
             self.history.push(task.to_string());
+            self.session_items
+                .push(radiumical_core::session::SessionItem::User {
+                    content: task.to_string(),
+                });
             self.output.push(format!("> {task}"));
             self.output.push(String::new());
             self.stick_to_bottom = true;
@@ -322,7 +323,7 @@ impl App {
             } else {
                 task.to_string()
             };
-            let _ = self.cmd_tx.send(BackendCmd::RunTask(final_task));
+            let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(final_task));
         }
     }
 }

@@ -1,11 +1,12 @@
 use std::path::PathBuf;
+use std::sync::mpsc;
 
-use crate::types::{ToolDefinition, ToolResult};
+use crate::types::{ToolDefinition, ToolResult, UiEvent};
 
 mod agent;
 mod command;
 mod file;
-mod interact;
+pub mod interact;
 mod search;
 mod system;
 mod task;
@@ -18,11 +19,25 @@ pub use search::{FindFiles, SearchCode};
 pub use system::{CronTab, ListDir, LspDiagnostics, SysInfo, TimeNow, TreeDir};
 pub use task::{GoalTool, OrchestrateTool, TodoList};
 
+/// Context passed to tools that need to interact with the UI.
+pub struct ToolContext {
+    pub ui_tx: mpsc::Sender<UiEvent>,
+}
+
 /// A tool that the agent can call.
 #[async_trait::async_trait]
 pub trait Tool: Send + Sync {
     fn definition(&self) -> ToolDefinition;
     async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult;
+
+    async fn execute_with_context(
+        &self,
+        workspace: &PathBuf,
+        arguments: &str,
+        _ctx: &ToolContext,
+    ) -> ToolResult {
+        self.execute(workspace, arguments).await
+    }
 }
 
 /// Returns all tools as Vec.

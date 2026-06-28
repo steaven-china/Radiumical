@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
 
     // ── Channels for frontend ↔ backend communication ──
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>();
-    let (cmd_tx, cmd_rx) = mpsc::channel::<BackendCmd>();
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<BackendCmd>(8);
 
     // ── Non-interactive mode (--task) ──
     if let Some(task) = cli.task {
@@ -172,89 +172,93 @@ async fn main() -> Result<()> {
         }
     });
 
-    // ── Create runner ONCE (persistent conversation across turns) ──
-    let mut runner = PipelineRunner::new(config.clone(), Arc::clone(&provider));
-
     // ── Backend loop (this tokio thread) ──
+    let runner = Arc::new(tokio::sync::Mutex::new(PipelineRunner::new(
+        config.clone(),
+        Arc::clone(&provider),
+    )));
     let cmd_pool = CommandPool::new();
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+
     loop {
-        let cmd = match cmd_rx.recv() {
-            Ok(c) => c,
-            Err(_) => break, // TUI closed
-        };
-
-        match cmd {
-            BackendCmd::Cancel => {
-                let _ = cancel_tx.send(true);
-                let _ = ui_tx.send(UiEvent::ThinkingDone);
-            }
-            BackendCmd::RunTask(text) => {
-                // Check for sub-agent spawn: \x01subagent:id:task
-                if text.starts_with("\x01subagent:") {
-                    let rest = &text[11..];
-                    if let Some((id, task)) = rest.split_once(':') {
-                        let provider = Arc::clone(&provider);
-                        let cfg = config.clone();
-                        radiumical_core::subagent::spawn(
-                            id.to_string(),
-                            task.to_string(),
-                            None,
-                            cfg,
-                            provider,
-                        )
-                        .await;
-                        let _ =
-                            ui_tx.send(UiEvent::LlmChunk(format!("Sub-agent '{id}' spawned.\n")));
-                        continue;
-                    }
-                }
-                let _ = cancel_tx.send(false); // reset cancel
-                                               // Check for slash commands first
-                match cmd_pool.dispatch(&text, &mut config) {
-                    CommandOutcome::Exit => {
-                        break;
-                    }
-                    CommandOutcome::Continue => {
-                        continue;
-                    }
-                    CommandOutcome::Agent(task) => {
-                        let heartbeat_interval = config.heartbeat_interval_secs;
-                        let hb_cancel = if heartbeat_interval > 0 {
-                            let (hb_tx, mut hb_rx) = tokio::sync::mpsc::unbounded_channel();
-                            let ui_tx_hb = ui_tx.clone();
-                            tokio::spawn(async move {
-                                let mut interval = tokio::time::interval(
-                                    std::time::Duration::from_secs(heartbeat_interval),
-                                );
-                                loop {
-                                    tokio::select! {
-                                        _ = interval.tick() => {
-                                            let _ = ui_tx_hb.send(UiEvent::ThinkingTick);
-                                        }
-                                        _ = hb_rx.recv() => break,
-                                    }
-                                }
-                            });
-                            Some(hb_tx)
-                        } else {
-                            None
-                        };
-
-                        if let Err(e) = runner
-                            .run(
-                                task,
-                                workspace.clone(),
-                                hb_cancel,
-                                ui_tx.clone(),
-                                cancel_rx.clone(),
-                            )
-                            .await
-                        {
-                            let _ = ui_tx.send(UiEvent::Error(e.to_string()));
-                        }
+        tokio::select! {
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(BackendCmd::Cancel) => {
+                        let _ = cancel_tx.send(true);
                         let _ = ui_tx.send(UiEvent::ThinkingDone);
                     }
+                    Some(BackendCmd::ChoiceResponse { id: _, value }) => {
+                        if let Some(tx) = radiumical_core::tools::interact::take_choice_tx() {
+                            let _ = tx.send(value);
+                        }
+                    }
+                    Some(BackendCmd::RunTask(text)) => {
+                        if text.starts_with("\x01subagent:") {
+                            let rest = &text[11..];
+                            if let Some((id, task)) = rest.split_once(':') {
+                                let provider = Arc::clone(&provider);
+                                let cfg = config.clone();
+                                radiumical_core::subagent::spawn(
+                                    id.to_string(),
+                                    task.to_string(),
+                                    None,
+                                    cfg,
+                                    provider,
+                                )
+                                .await;
+                                let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+                                    "Sub-agent '{id}' spawned.\n"
+                                )));
+                                continue;
+                            }
+                        }
+                        let _ = cancel_tx.send(false);
+                        match cmd_pool.dispatch(&text, &mut config) {
+                            CommandOutcome::Exit => break,
+                            CommandOutcome::Continue => continue,
+                            CommandOutcome::Agent(task) => {
+                                let heartbeat_interval = config.heartbeat_interval_secs;
+                                let hb_cancel = if heartbeat_interval > 0 {
+                                    let (hb_tx, mut hb_rx) =
+                                        tokio::sync::mpsc::unbounded_channel();
+                                    let ui_tx_hb = ui_tx.clone();
+                                    tokio::spawn(async move {
+                                        let mut interval = tokio::time::interval(
+                                            std::time::Duration::from_secs(heartbeat_interval),
+                                        );
+                                        loop {
+                                            tokio::select! {
+                                                _ = interval.tick() => {
+                                                    let _ = ui_tx_hb.send(UiEvent::ThinkingTick);
+                                                }
+                                                _ = hb_rx.recv() => break,
+                                            }
+                                        }
+                                    });
+                                    Some(hb_tx)
+                                } else {
+                                    None
+                                };
+
+                                let runner = Arc::clone(&runner);
+                                let ui_tx = ui_tx.clone();
+                                let cancel_rx = cancel_rx.clone();
+                                let workspace = workspace.clone();
+                                tokio::spawn(async move {
+                                    let mut runner = runner.lock().await;
+                                    if let Err(e) = runner
+                                        .run(task, workspace, hb_cancel, ui_tx.clone(), cancel_rx)
+                                        .await
+                                    {
+                                        let _ = ui_tx.send(UiEvent::Error(e.to_string()));
+                                    }
+                                    let _ = ui_tx.send(UiEvent::ThinkingDone);
+                                });
+                            }
+                        }
+                    }
+                    None => break,
                 }
             }
         }

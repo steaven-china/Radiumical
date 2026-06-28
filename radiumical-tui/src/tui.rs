@@ -86,7 +86,7 @@ use self::app::App;
 // ═══ TUI runner ═══
 
 pub fn run(
-    cmd_tx: mpsc::Sender<BackendCmd>,
+    cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
     ui_rx: mpsc::Receiver<UiEvent>,
     config: SessionConfig,
 ) -> anyhow::Result<()> {
@@ -115,9 +115,10 @@ pub fn run(
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(cmd_tx, ui_rx, &config);
     // Auto-load previous session if available
-    if let Ok(Some((_, lines))) = radiumical_core::session::Session::load("autosave") {
-        if !lines.is_empty() {
-            app.load_output(lines);
+    if let Ok(Some((_, items))) = radiumical_core::session::Session::load("autosave") {
+        if !items.is_empty() {
+            app.session_items = items;
+            app.render_session_items_to_output();
         }
     }
     let frame_time = Duration::from_nanos(16_666_667); // 60 FPS
@@ -175,11 +176,10 @@ pub fn run(
         Ok(())
     })();
 
-    let jsonl = app.output.join("\n");
     let desc = app.history.first().cloned();
     let _ = radiumical_core::session::Session::save(
         "autosave",
-        &jsonl,
+        &app.session_items,
         &app.model,
         desc.as_deref(),
     );

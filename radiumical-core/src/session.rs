@@ -1,4 +1,5 @@
-//! Session management — stored in ~/.radi/session/ as custom JSONL.
+//! Session management — stored in ~/.radi/session/ as semantic JSONL.
+//! Each line is a typed record: meta / user / assistant / reasoning / tool / raw.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -15,11 +16,9 @@ pub struct SessionMeta {
     pub message_count: usize,
 }
 
-pub struct Session;
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-enum SessionRecord {
+pub enum SessionItem {
     #[serde(rename = "meta")]
     Meta {
         name: String,
@@ -28,9 +27,25 @@ enum SessionRecord {
         description: String,
         message_count: usize,
     },
-    #[serde(rename = "output")]
-    Output { line: String },
+    #[serde(rename = "user")]
+    User { content: String },
+    #[serde(rename = "assistant")]
+    Assistant { content: String },
+    #[serde(rename = "reasoning")]
+    Reasoning { content: String },
+    #[serde(rename = "tool")]
+    Tool {
+        id: String,
+        name: String,
+        args: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
+    },
+    #[serde(rename = "raw")]
+    Raw { lines: Vec<String> },
 }
+
+pub struct Session;
 
 fn hash_name(name: &str) -> String {
     let mut h = DefaultHasher::new();
@@ -58,7 +73,7 @@ impl Session {
             if path.extension().map_or(false, |e| e == "jsonl") {
                 if let Ok(data) = fs::read_to_string(&path) {
                     if let Some(first) = data.lines().next() {
-                        if let Ok(SessionRecord::Meta {
+                        if let Ok(SessionItem::Meta {
                             name,
                             created,
                             model,
@@ -84,7 +99,7 @@ impl Session {
 
     pub fn save(
         name: &str,
-        messages_jsonl: &str,
+        items: &[SessionItem],
         model: &str,
         description: Option<&str>,
     ) -> Result<()> {
@@ -93,28 +108,26 @@ impl Session {
         let path = dir.join(format!("{}.jsonl", hash_name(name)));
         let created = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
         let description = description.unwrap_or("").to_string();
-        let message_count = messages_jsonl.lines().count();
+        let message_count = items.len();
 
-        let meta = SessionRecord::Meta {
+        let mut records: Vec<SessionItem> = vec![SessionItem::Meta {
             name: name.to_string(),
             created,
             model: model.to_string(),
             description,
             message_count,
-        };
+        }];
+        records.extend_from_slice(items);
 
-        let mut lines = vec![serde_json::to_string(&meta)?];
-        for line in messages_jsonl.lines() {
-            let record = SessionRecord::Output {
-                line: line.to_string(),
-            };
-            lines.push(serde_json::to_string(&record)?);
-        }
+        let lines: Vec<String> = records
+            .iter()
+            .map(|r| serde_json::to_string(r))
+            .collect::<Result<Vec<_>, _>>()?;
         fs::write(&path, lines.join("\n"))?;
         Ok(())
     }
 
-    pub fn load(name: &str) -> Result<Option<(SessionMeta, Vec<String>)>> {
+    pub fn load(name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
         let dir = Self::dir();
         let path = dir.join(format!("{}.jsonl", hash_name(name)));
         if !path.exists() {
@@ -126,8 +139,8 @@ impl Session {
             .next()
             .context("session file is empty")?
             .to_string();
-        let meta = match serde_json::from_str::<SessionRecord>(&first)? {
-            SessionRecord::Meta {
+        let meta = match serde_json::from_str::<SessionItem>(&first)? {
+            SessionItem::Meta {
                 name,
                 created,
                 model,
@@ -142,14 +155,14 @@ impl Session {
             },
             _ => anyhow::bail!("first record is not meta"),
         };
-        let mut output = Vec::new();
+        let mut items = Vec::new();
         for line in lines {
-            match serde_json::from_str::<SessionRecord>(line)? {
-                SessionRecord::Output { line } => output.push(line),
-                SessionRecord::Meta { .. } => {}
+            match serde_json::from_str::<SessionItem>(line)? {
+                SessionItem::Meta { .. } => {}
+                item => items.push(item),
             }
         }
-        Ok(Some((meta, output)))
+        Ok(Some((meta, items)))
     }
 
     pub fn delete(name: &str) -> Result<bool> {
@@ -184,22 +197,39 @@ mod tests {
 
     #[test]
     fn test_list_empty() {
-        // Session dir might not exist — should return empty
         let result = Session::list();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_save_delete_cycle() {
-        let result = Session::save("_test_session", "line1\nline2", "test-model", Some("test desc"));
+        let items = vec![
+            SessionItem::User {
+                content: "hello".into(),
+            },
+            SessionItem::Assistant {
+                content: "hi".into(),
+            },
+            SessionItem::Tool {
+                id: "call_1".into(),
+                name: "read_file".into(),
+                args: "{\"path\":\"x\"}".into(),
+                result: Some("content".into()),
+            },
+        ];
+        let result = Session::save("_test_session", &items, "test-model", Some("test desc"));
         assert!(result.is_ok());
         let loaded = Session::load("_test_session").unwrap();
         assert!(loaded.is_some());
-        let (meta, output) = loaded.unwrap();
+        let (meta, loaded_items) = loaded.unwrap();
         assert_eq!(meta.name, "_test_session");
         assert_eq!(meta.model, "test-model");
         assert_eq!(meta.description, "test desc");
-        assert_eq!(output, vec!["line1", "line2"]);
+        assert_eq!(loaded_items.len(), 3);
+        match &loaded_items[2] {
+            SessionItem::Tool { result, .. } => assert_eq!(result.as_deref(), Some("content")),
+            _ => panic!("expected tool item"),
+        }
         let deleted = Session::delete("_test_session").unwrap();
         assert!(deleted);
         let gone = Session::load("_test_session").unwrap();

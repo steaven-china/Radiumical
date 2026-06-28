@@ -175,6 +175,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             let name = trimmed
                 .trim_start_matches('┌')
                 .trim_start_matches('─')
+                .trim_end_matches('┐')
                 .trim_end_matches('─')
                 .trim()
                 .to_string();
@@ -211,7 +212,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                 },
                 source_lines: source,
                 width: 0,
-                height: 1,
+                height: 3,
             });
             continue;
         }
@@ -417,6 +418,48 @@ fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
         result[max_idx] = result[max_idx].saturating_sub(excess).max(3);
     }
     result
+}
+
+/// Parse a tool's JSON arguments into a readable `key: value, key: value` string.
+/// Falls back to the raw string if parsing fails.
+fn format_tool_args(args: &str) -> String {
+    if args.is_empty() {
+        return String::new();
+    }
+    let v = match serde_json::from_str::<serde_json::Value>(args) {
+        Ok(v) => v,
+        Err(_) => {
+            // not JSON — show raw, unescape backslashes
+            return args.replace("\\\\", "\\");
+        }
+    };
+    if let Some(obj) = v.as_object() {
+        let pairs: Vec<String> = obj
+            .iter()
+            .map(|(k, val)| {
+                let s = match val {
+                    serde_json::Value::String(s) => s.replace("\\\\", "\\"),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Null => "null".into(),
+                    other => other.to_string(),
+                };
+                format!("{k}: {s}")
+            })
+            .collect();
+        let joined = pairs.join(", ");
+        // truncate to ~60 chars
+        let chars: Vec<char> = joined.chars().collect();
+        if chars.len() > 60 {
+            let mut t: String = chars[..60].iter().collect();
+            t.push('…');
+            t
+        } else {
+            joined
+        }
+    } else {
+        args.replace("\\\\", "\\")
+    }
 }
 
 fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
@@ -668,63 +711,83 @@ impl Block {
                 result,
                 expanded,
             } => {
+                // ── parse JSON args into readable key-value ──
+                let args_disp = format_tool_args(args);
+
+                // ── skip blank result lines ──
                 let result_lines: Vec<String> = result
                     .lines()
+                    .filter(|l| !l.is_empty())
                     .map(|l| l.replace('\t', "    "))
                     .collect();
-                let max_content = args
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .chars()
-                    .count()
-                    .max(result_lines.iter().map(|l| l.chars().count()).max().unwrap_or(0));
-                let inner = max_content.max(56 - 4);
 
-                let args_clean = if args.is_empty() {
-                    String::new()
+                // ── widths ──
+                let top_w = (name.len() + 7)
+                    .max(args_disp.chars().count() + 6)
+                    .max(56);
+                let has_result = !result_lines.is_empty();
+                let result_w = if has_result {
+                    result_lines
+                        .iter()
+                        .map(|l| l.chars().count() + 4)
+                        .max()
+                        .unwrap_or(top_w)
+                        .max(top_w)
                 } else {
-                    let max_args = inner.saturating_sub(2);
-                    let first: String =
-                        args.lines().next().unwrap_or("").chars().take(max_args).collect();
-                    let dots = if args.lines().next().unwrap_or("").chars().count() > max_args {
-                        "…"
-                    } else {
-                        ""
-                    };
-                    format!("{first}{dots}").replace("\\\\", "\\")
+                    top_w
                 };
 
-                let top_fill = inner.saturating_sub(name.len() + 3);
+                let st = Style::default().fg(BORDER);
+
+                // ── top border + args + bottom (always shown) ──
+                let top_fill = top_w.saturating_sub(name.len() + 5);
                 let top = format!("  ┌─ {name} {}┐", "─".repeat(top_fill));
-                if !*expanded {
-                    return vec![Line::from(Span::styled(top, Style::default().fg(BORDER)))];
+                let t_inner = top_w.saturating_sub(4);
+                let args_pad = t_inner.saturating_sub(args_disp.chars().count() + 2);
+                let args_line = format!("  │  {args_disp}{}│", " ".repeat(args_pad));
+                let bottom = format!("  └{}┘", "─".repeat(t_inner));
+
+                if !*expanded || !has_result {
+                    // collapsed: call box only (no result)
+                    return vec![
+                        Line::from(Span::styled(top, st)),
+                        Line::from(Span::styled(args_line, st)),
+                        Line::from(Span::styled(bottom, st)),
+                    ];
                 }
 
+                // ── expanded: stepped box with result ──
                 let mut lines = Vec::new();
-                lines.push(Line::from(Span::styled(top, Style::default().fg(BORDER))));
+                lines.push(Line::from(Span::styled(top, st)));
+                lines.push(Line::from(Span::styled(args_line, st)));
 
-                // args line with 2-space indent
-                let args_pad = inner.saturating_sub(args_clean.chars().count() + 2);
-                lines.push(Line::from(Span::styled(
-                    format!("  │  {args_clean}{}│", " ".repeat(args_pad)),
-                    Style::default().fg(BORDER),
-                )));
+                // connector: └── result {dashes}┘{dashes}┐
+                let label = "└── result ";
+                let label_len = label.chars().count();
+                let fill1 = top_w.saturating_sub(label_len + 1);
+                let fill2 = result_w.saturating_sub(top_w + 1);
+                let connector = format!(
+                    "  {label}{}┘{}┐",
+                    "─".repeat(fill1),
+                    "─".repeat(fill2),
+                );
+                lines.push(Line::from(Span::styled(connector, st)));
 
-                // result lines flush left (1-space indent), truncated to fit
-                let max_line = inner.saturating_sub(1);
+                // result content lines
+                let r_inner = result_w.saturating_sub(4);
                 for line in &result_lines {
-                    let truncated: String = line.chars().take(max_line).collect();
-                    let pad = inner.saturating_sub(truncated.chars().count() + 1);
+                    let vis: String = line.chars().take(r_inner.saturating_sub(1)).collect();
+                    let pad = r_inner.saturating_sub(vis.chars().count() + 1);
                     lines.push(Line::from(Span::styled(
-                        format!("  │ {truncated}{}│", " ".repeat(pad)),
-                        Style::default().fg(BORDER),
+                        format!("  │ {vis}{}│", " ".repeat(pad)),
+                        st,
                     )));
                 }
 
+                // result bottom
                 lines.push(Line::from(Span::styled(
-                    format!("  └{}┘", "─".repeat(inner)),
-                    Style::default().fg(BORDER),
+                    format!("  └{}┘", "─".repeat(r_inner)),
+                    st,
                 )));
                 lines
             }

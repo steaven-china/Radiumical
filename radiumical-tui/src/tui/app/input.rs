@@ -98,15 +98,27 @@ impl App {
                 if self.session_list_visible {
                     if let Some(selected) = self.session_list.current() {
                         let name = selected.split(" (").next().unwrap_or(selected);
-                        if let Ok(Some((_, lines))) = radiumical_core::session::Session::load(name) {
-                            if !lines.is_empty() {
-                                self.output = lines;
+                        if let Ok(Some((_, items))) = radiumical_core::session::Session::load(name) {
+                            if !items.is_empty() {
+                                self.session_items = items;
+                                self.render_session_items_to_output();
                                 self.welcome = false;
-                                self.stick_to_bottom = true;
                             }
                         }
                     }
                     self.session_list_visible = false;
+                    return;
+                }
+                if let Some((id, _mode, _opts)) = self.pending_choice.take() {
+                    let value = self.input.trim().to_string();
+                    let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::ChoiceResponse {
+                        id,
+                        value,
+                    });
+                    self.input.clear();
+                    self.cursor = 0;
+                    self.hints.clear();
+                    self.stick_to_bottom = true;
                     return;
                 }
                 if self.input.trim() == "//" {
@@ -262,7 +274,7 @@ impl App {
                     return;
                 }
                 if self.thinking {
-                    let _ = self.cmd_tx.send(crate::tui::BackendCmd::Cancel);
+                        let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
                     self.thinking = false;
                     self.thinking_cancelled = true;
                 }

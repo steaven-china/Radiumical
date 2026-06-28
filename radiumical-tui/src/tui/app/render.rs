@@ -1,5 +1,7 @@
+use crate::tui::app::events::{box_args_line, box_bottom, box_result_line, box_top, box_width};
 use crate::tui::app::App;
 use crate::tui::{LOGO, SLASH_COMMANDS};
+use radiumical_core::session::SessionItem;
 
 impl App {
     pub(crate) fn show_help(&mut self) {
@@ -76,5 +78,60 @@ impl App {
             }
         }
         self.output.push(String::new());
+    }
+
+    pub(crate) fn render_session_items_to_output(&mut self) {
+        self.output.clear();
+        for item in &self.session_items {
+            match item {
+                SessionItem::Meta { .. } => {}
+                SessionItem::User { content } => {
+                    for line in content.lines() {
+                        self.output.push(format!("> {line}"));
+                    }
+                }
+                SessionItem::Assistant { content } => {
+                    if content.is_empty() {
+                        continue;
+                    }
+                    for line in content.lines() {
+                        self.output.push(line.to_string());
+                    }
+                    self.output.push(String::new());
+                }
+                SessionItem::Reasoning { content } => {
+                    if content.is_empty() {
+                        continue;
+                    }
+                    self.output.push(format!("\x01[思考] {content}"));
+                }
+                SessionItem::Tool {
+                    name,
+                    args,
+                    result,
+                    ..
+                } => {
+                    let width = box_width(name.len(), args.chars().count(), result.as_deref());
+                    self.output.push(box_top(name, width));
+                    self.output.push(box_args_line(&args, width));
+                    if let Some(result) = result {
+                        for line in result.lines() {
+                            self.output.push(box_result_line(line, width));
+                        }
+                    }
+                    self.output.push(box_bottom(width));
+                    self.output.push(String::new());
+                }
+                SessionItem::Raw { lines } => {
+                    for line in lines {
+                        self.output.push(line.clone());
+                    }
+                }
+            }
+        }
+        if self.output.is_empty() {
+            self.output.push(String::new());
+        }
+        self.stick_to_bottom = true;
     }
 }

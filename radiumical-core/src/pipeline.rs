@@ -1,7 +1,7 @@
 //! Agent pipeline — LLM → tool → LLM loop, with persistent conversation context.
 use crate::conversation::Conversation;
 use crate::hooks::crlf::CRLFNormalizer;
-use crate::tools::{all_tools, Tool};
+use crate::tools::{all_tools, Tool, ToolContext};
 use crate::types::{
     Message, MessageContent, ProviderEvent, Role, SessionConfig, ToolCall, ToolDefinition,
     ToolResult,
@@ -179,8 +179,11 @@ impl PipelineRunner {
                             });
                             let ws = workspace.clone();
                             let args = tc.function.arguments.clone();
+                            let ctx = ToolContext {
+                                ui_tx: ui_tx.clone(),
+                            };
                             let result =
-                                exec_with_timeout(tool.as_ref(), &ws, &args, tool_timeout).await;
+                                exec_with_timeout(tool.as_ref(), &ws, &args, tool_timeout, &ctx).await;
 
                             let mut final_result = result;
                             for hook in &self.tool_hooks {
@@ -280,11 +283,12 @@ async fn exec_with_timeout(
     workspace: &PathBuf,
     arguments: &str,
     timeout: Duration,
+    ctx: &ToolContext,
 ) -> ToolResult {
     let name = tool.definition().function.name.clone();
     let ws = workspace.clone();
     let args = arguments.to_string();
-    match tokio::time::timeout(timeout, tool.execute(&ws, &args)).await {
+    match tokio::time::timeout(timeout, tool.execute_with_context(&ws, &args, ctx)).await {
         Ok(r) => r,
         Err(_) => ToolResult {
             tool_call_id: String::new(),

@@ -66,6 +66,12 @@ async fn run_task(
                 radiumical_core::types::UiEvent::ToolResult { content } => {
                     let _ = handle.emit("tool-result", content);
                 }
+                radiumical_core::types::UiEvent::Choice { id, mode, options } => {
+                    let _ = handle.emit(
+                        "choice",
+                        serde_json::json!({ "id": id, "mode": mode, "options": options }),
+                    );
+                }
                 radiumical_core::types::UiEvent::Error(e) => {
                     let _ = handle.emit("llm-error", e);
                 }

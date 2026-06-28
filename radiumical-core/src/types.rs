@@ -234,6 +234,11 @@ pub enum UiEvent {
     },
     ToolDone,
     ToolResult { content: String },
+    Choice {
+        id: String,
+        mode: String,
+        options: Vec<String>,
+    },
     Error(String),
     ThinkingDone,
 }
@@ -242,6 +247,7 @@ pub enum UiEvent {
 pub enum BackendCmd {
     RunTask(String),
     Cancel,
+    ChoiceResponse { id: String, value: String },
 }
 
 // ═══ Slash hints ═══

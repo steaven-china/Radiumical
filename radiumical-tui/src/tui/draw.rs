@@ -156,17 +156,20 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
             let key = tool_call_key(block);
             let want = app.tool_expanded.get(&key).copied().unwrap_or(false);
             if want != *expanded {
-                let result_lines = result.lines().count();
+                let result_lines = result.lines().filter(|l| !l.is_empty()).count();
                 block.kind = crate::layout::BlockKind::ToolCall {
                     name: name.clone(),
                     args: args.clone(),
                     result: result.clone(),
                     expanded: want,
                 };
-                block.height = if want {
-                    3 + result_lines
+                // collapsed: top+args+bottom = 3
+                // expanded with result: 3 + connector(1) + result(N) + bottom(1)
+                // expanded without result: 3 (same as collapsed)
+                block.height = if want && result_lines > 0 {
+                    3 + 1 + result_lines + 1
                 } else {
-                    1
+                    3
                 };
             }
         }

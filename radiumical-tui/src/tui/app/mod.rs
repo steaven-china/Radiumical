@@ -32,8 +32,10 @@ pub struct App {
     pub mode: AgentMode,
     pub model: String,
     pub provider_name: String,
-    pub cmd_tx: mpsc::Sender<BackendCmd>,
+    pub cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
     pub ui_rx: mpsc::Receiver<UiEvent>,
+    pub session_items: Vec<radiumical_core::session::SessionItem>,
+    pub pending_choice: Option<(String, String, Vec<String>)>,
     pub should_quit: bool,
     pub history: Vec<String>,
     pub history_idx: Option<usize>,
@@ -71,7 +73,7 @@ pub struct App {
 
 impl App {
     pub fn new(
-        cmd_tx: mpsc::Sender<BackendCmd>,
+        cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
         ui_rx: mpsc::Receiver<UiEvent>,
         config: &SessionConfig,
     ) -> Self {
@@ -152,13 +154,9 @@ impl App {
             tool_expanded: std::collections::HashMap::new(),
             last_click: None,
             hovered_block: None,
+            session_items: Vec::new(),
+            pending_choice: None,
         }
-    }
-
-    pub fn load_output(&mut self, lines: Vec<String>) {
-        self.output = lines;
-        self.welcome = false;
-        self.stick_to_bottom = true;
     }
 
     pub fn tick(&mut self, _visible_lines: usize) {
