@@ -18,6 +18,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/review", "Self-review changes"),
     ("/tools", "List available tools"),
     ("/settings", "Show configuration"),
+    ("/provider", "Provider/model picker"),
     ("/models", "Model picker panel"),
     ("/model <n>", "Switch model"),
     ("/new", "New session / clear context"),

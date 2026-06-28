@@ -1,4 +1,5 @@
 use crate::tui::app::App;
+use crate::tui::BackendCmd;
 use crate::tui::UiEvent;
 use radiumical_core::session::SessionItem;
 use std::time::Instant;
@@ -206,6 +207,17 @@ impl App {
             }
             UiEvent::ThinkingDone => {
                 self.thinking = false;
+            }
+            UiEvent::ProvidersLoaded(providers) => {
+                self.provider_picker.set_providers(providers);
+            }
+            UiEvent::ModelsLoaded(models) => {
+                let mut models = models;
+                if !models.contains(&self.model) {
+                    models.push(self.model.clone());
+                }
+                self.available_models = models.clone();
+                self.provider_picker.set_models(models);
             }
             UiEvent::Choice { id, mode, options } => {
                 self.pending_choice = Some((id, mode.clone(), options.clone()));

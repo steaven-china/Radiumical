@@ -49,6 +49,14 @@ impl PipelineRunner {
         }
     }
 
+    pub fn set_model(&mut self, model: String) {
+        self.config.model = model;
+    }
+
+    pub fn set_mode(&mut self, mode: crate::types::AgentMode) {
+        self.config.mode = mode;
+    }
+
     pub async fn run(
         &mut self,
         task: String,

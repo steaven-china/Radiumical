@@ -7,6 +7,23 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if self.show_model_picker {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => {}
+                _ => {
+                    self.handle_provider_picker_key(key);
+                    return;
+                }
+            }
+        }
+        if self.settings_visible {
+            if self.settings_board.is_editing() {
+                self.handle_settings_edit_key(key);
+            } else {
+                self.handle_settings_key(key);
+            }
+            return;
+        }
         match (key.code, key.modifiers) {
             (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
                 self.show_full_reasoning = !self.show_full_reasoning;
@@ -143,18 +160,6 @@ impl App {
                     self.confirm.visible = false;
                     return;
                 }
-                if self.show_model_picker {
-                    if let Some(m) = self.model_picker.current() {
-                        self.model = m.to_string();
-                        self.toasts.push(crate::board::Toast::new(
-                            format!("Model: {m}"),
-                            crate::board::ToastLevel::Info,
-                            std::time::Duration::from_secs(3),
-                        ));
-                    }
-                    self.show_model_picker = false;
-                    return;
-                }
                 if self.dashboard.visible {
                     if let Some(action) = self.dashboard.selected_action() {
                         self.dispatch_dash_action(action);
@@ -273,6 +278,14 @@ impl App {
                     self.confirm.visible = false;
                     return;
                 }
+                if self.settings_visible {
+                    self.settings_board.save();
+                    let board = self.settings_board.clone();
+                    board.apply_to_app(self);
+                    self.settings_visible = false;
+                    self.settings_board.visible = false;
+                    return;
+                }
                 if self.thinking {
                         let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
                     self.thinking = false;
@@ -280,10 +293,50 @@ impl App {
                 }
                 self.show_help_overlay = false;
                 self.show_model_picker = false;
+                self.provider_picker.visible = false;
                 self.hint_selected = None;
                 self.hint_page = 0;
                 self.help_board.visible = false;
-                self.model_board.visible = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_provider_picker_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                self.show_model_picker = false;
+                self.provider_picker.visible = false;
+            }
+            (KeyCode::Up, _) => self.provider_picker.select_prev(),
+            (KeyCode::Down, _) => self.provider_picker.select_next(),
+            (KeyCode::Tab, _) => self.provider_picker.toggle_focus(),
+            (KeyCode::Enter, _) => {
+                if self.provider_picker.focus_providers {
+                    if let Some(source) = self.provider_picker.current_provider().cloned() {
+                        self.provider_name = source.name.clone();
+                        let _ = self
+                            .cmd_tx
+                            .blocking_send(crate::tui::BackendCmd::FetchModels(source));
+                    }
+                } else if let Some(model) = self.provider_picker.current_model() {
+                    let m = model.to_string();
+                    self.model = m.clone();
+                    let _ = self
+                        .cmd_tx
+                        .blocking_send(crate::tui::BackendCmd::SetModel(m.clone()));
+                    self.toasts.push(crate::board::Toast::new(
+                        format!("Model: {m}"),
+                        crate::board::ToastLevel::Info,
+                        std::time::Duration::from_secs(3),
+                    ));
+                    self.show_model_picker = false;
+                    self.provider_picker.visible = false;
+                }
             }
             _ => {}
         }
@@ -330,6 +383,54 @@ impl App {
     pub(crate) fn sync_hint_page(&mut self) {
         if let Some(sel) = self.hint_selected {
             self.hint_page = sel / 8;
+        }
+    }
+
+    pub(crate) fn handle_settings_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => {
+                self.settings_board.save();
+                let board = self.settings_board.clone();
+                board.apply_to_app(self);
+                self.settings_visible = false;
+                self.settings_board.visible = false;
+            }
+            (KeyCode::Up, _) => self.settings_board.select_prev(),
+            (KeyCode::Down, _) => self.settings_board.select_next(),
+            (KeyCode::Left, _) | (KeyCode::Char('-'), _) => self.settings_board.adjust(-1),
+            (KeyCode::Right, _) | (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
+                self.settings_board.adjust(1)
+            }
+            (KeyCode::Enter, _) => self.settings_board.begin_edit(),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn handle_settings_edit_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        match (key.code, key.modifiers) {
+            (KeyCode::Enter, _) => {
+                self.settings_board.commit_edit();
+                self.settings_board.save();
+                let board = self.settings_board.clone();
+                board.apply_to_app(self);
+            }
+            (KeyCode::Esc, _) => self.settings_board.cancel_edit(),
+            (KeyCode::Left, _) => self.settings_board.edit_left(),
+            (KeyCode::Right, _) => self.settings_board.edit_right(),
+            (KeyCode::Backspace, _) => self.settings_board.edit_backspace(),
+            (KeyCode::Delete, _) => self.settings_board.edit_delete(),
+            (KeyCode::Home, _) => self.settings_board.edit_cursor = 0,
+            (KeyCode::End, _) => {
+                self.settings_board.edit_cursor = self.settings_board.edit_buffer.len()
+            }
+            (KeyCode::Char(ch), mods) => {
+                if !mods.contains(KeyModifiers::CONTROL) {
+                    self.settings_board.edit_insert(ch);
+                }
+            }
+            _ => {}
         }
     }
 }

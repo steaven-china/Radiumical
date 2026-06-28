@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::providers::ProviderSource;
+
 // ── Chat types ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +223,7 @@ pub fn default_system_prompt() -> String {
 - Report what you changed and why when done.
 "#.into()
 }
+#[derive(Debug)]
 pub enum UiEvent {
     LlmChunk(String),
     LlmReasoning(String),
@@ -241,6 +244,8 @@ pub enum UiEvent {
     },
     Error(String),
     ThinkingDone,
+    ProvidersLoaded(Vec<ProviderSource>),
+    ModelsLoaded(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +253,12 @@ pub enum BackendCmd {
     RunTask(String),
     Cancel,
     ChoiceResponse { id: String, value: String },
+    SetModel(String),
+    SetMode(AgentMode),
+    SetThinkingEffort(String),
+    RefreshModels,
+    FetchProviders,
+    FetchModels(ProviderSource),
 }
 
 // ═══ Slash hints ═══

@@ -14,6 +14,7 @@ pub struct Config {
     pub llm_timeout_secs: Option<u64>,
     pub max_iterations: Option<usize>,
     pub reasoning_effort: Option<String>,
+    pub mode: Option<String>,
 }
 
 impl Config {
@@ -36,6 +37,7 @@ impl Config {
                 llm_timeout_secs: None,
                 max_iterations: None,
                 reasoning_effort: None,
+                mode: None,
             })
         }
     }

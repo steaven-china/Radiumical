@@ -71,6 +71,9 @@ pub trait Provider: Send + Sync {
         tools: &[ToolDefinition],
         tx: mpsc::UnboundedSender<ProviderEvent>,
     ) -> Result<()>;
+
+    /// Update the reasoning/thinking effort for providers that support it.
+    fn set_reasoning_effort(&self, _effort: Option<String>) {}
 }
 
 // ── OpenAI-compatible provider (works with OpenAI, DeepSeek, Ollama) ──
@@ -80,13 +83,14 @@ pub struct OpenAICompatibleProvider {
     api_base: String,
     api_key: String,
     model: String,
-    reasoning_effort: Option<String>,
+    reasoning_effort: std::sync::Mutex<Option<String>>,
 }
 
 impl OpenAICompatibleProvider {
-    #[allow(dead_code)]
-    pub fn set_reasoning(&mut self, effort: Option<String>) {
-        self.reasoning_effort = effort;
+    pub fn set_reasoning(&self, effort: Option<String>) {
+        if let Ok(mut r) = self.reasoning_effort.lock() {
+            *r = effort;
+        }
     }
 
     pub fn new(api_base: &str, api_key: &str, model: &str) -> Self {
@@ -100,7 +104,7 @@ impl OpenAICompatibleProvider {
             api_base: api_base.trim_end_matches('/').to_string(),
             api_key: api_key.to_string(),
             model: model.to_string(),
-            reasoning_effort: reasoning,
+            reasoning_effort: std::sync::Mutex::new(reasoning),
         }
     }
 }
@@ -120,10 +124,12 @@ impl Provider for OpenAICompatibleProvider {
             messages,
             tools,
             stream: true,
-            thinking: self.reasoning_effort.as_ref().map(|_| ThinkingConfig {
-                thinking_type: "enabled".into(),
+            thinking: self.reasoning_effort.lock().ok().and_then(|r| {
+                r.as_ref().map(|_| ThinkingConfig {
+                    thinking_type: "enabled".into(),
+                })
             }),
-            reasoning_effort: self.reasoning_effort.clone(),
+            reasoning_effort: self.reasoning_effort.lock().ok().and_then(|r| r.clone()),
         };
 
         let response = self
@@ -263,6 +269,10 @@ impl Provider for OpenAICompatibleProvider {
         // If we got here, stream ended without explicit [DONE] or tool_calls finish
         let _ = tx.send(ProviderEvent::Done);
         Ok(())
+    }
+
+    fn set_reasoning_effort(&self, effort: Option<String>) {
+        self.set_reasoning(effort);
     }
 }
 

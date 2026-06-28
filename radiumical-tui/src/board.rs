@@ -1,12 +1,14 @@
 //! Board — unified visual panel widget. Consistent borders, padding, colors.
 //! Use for: output area, help overlay, toasts, welcome screen, etc.
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
     Frame,
 };
+
+use radiumical_core::providers::ProviderSource;
 
 // ── Board stack: auto-positions boards so they don't overlap ──
 
@@ -361,6 +363,167 @@ impl ListBoard {
     }
 }
 
+// ── ProviderPicker: two-pane provider / model selector ──
+
+#[derive(Debug, Clone)]
+pub struct ProviderPicker {
+    pub providers: Vec<ProviderSource>,
+    pub models: Vec<String>,
+    pub provider_selected: usize,
+    pub model_selected: usize,
+    pub focus_providers: bool,
+    pub title: String,
+    pub visible: bool,
+    pub w: u16,
+    pub h: u16,
+    pub corner: Corner,
+}
+
+impl ProviderPicker {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            providers: Vec::new(),
+            models: Vec::new(),
+            provider_selected: 0,
+            model_selected: 0,
+            focus_providers: true,
+            title: title.into(),
+            visible: false,
+            w: 64,
+            h: 20,
+            corner: Corner::BottomRight,
+        }
+    }
+
+    pub fn set_providers(&mut self, providers: Vec<ProviderSource>) {
+        self.providers = providers;
+        self.provider_selected = 0;
+        self.models.clear();
+        self.model_selected = 0;
+        self.focus_providers = true;
+    }
+
+    pub fn set_models(&mut self, models: Vec<String>) {
+        self.models = models;
+        self.model_selected = 0;
+    }
+
+    pub fn current_provider(&self) -> Option<&ProviderSource> {
+        self.providers.get(self.provider_selected)
+    }
+
+    pub fn current_model(&self) -> Option<&str> {
+        self.models.get(self.model_selected).map(|s| s.as_str())
+    }
+
+    pub fn select_next(&mut self) {
+        if self.focus_providers {
+            if !self.providers.is_empty() {
+                self.provider_selected = (self.provider_selected + 1) % self.providers.len();
+            }
+        } else if !self.models.is_empty() {
+            self.model_selected = (self.model_selected + 1) % self.models.len();
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.focus_providers {
+            if !self.providers.is_empty() {
+                self.provider_selected =
+                    (self.provider_selected + self.providers.len() - 1) % self.providers.len();
+            }
+        } else if !self.models.is_empty() {
+            self.model_selected =
+                (self.model_selected + self.models.len() - 1) % self.models.len();
+        }
+    }
+
+    pub fn toggle_focus(&mut self) {
+        self.focus_providers = !self.focus_providers;
+    }
+
+    pub fn render_stacked(&self, f: &mut Frame, area: Rect, stack: &mut BoardStack) {
+        if !self.visible {
+            return;
+        }
+        let r = stack.push(self.corner, self.w, self.h, area);
+        let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
+        f.render_widget(scrim, r);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(80, 80, 90)))
+            .title(self.title.as_str());
+        let inner = block.inner(r);
+        f.render_widget(block, r);
+
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(inner);
+
+        let left_lines: Vec<Line> = if self.providers.is_empty() {
+            vec![Line::from("  Loading providers…")]
+        } else {
+            self.providers
+                .iter()
+                .enumerate()
+                .map(|(i, source)| {
+                    let selected = self.focus_providers && i == self.provider_selected;
+                    let prefix = if selected { "* " } else { "  " };
+                    let key_ok = source.api_key().is_some();
+                    let key_mark = if key_ok { "✓" } else { "✗" };
+                    let style = if selected {
+                        Style::default()
+                            .bg(Color::Rgb(50, 50, 60))
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled(
+                        format!("{prefix}{} ({}) [{}]", source.name, source.api_type, key_mark),
+                        style,
+                    ))
+                })
+                .collect()
+        };
+        let left_block = Block::default()
+            .borders(Borders::RIGHT)
+            .title(" Providers ");
+        let left_para = Paragraph::new(Text::from(left_lines))
+            .block(left_block)
+            .wrap(Wrap { trim: false });
+        f.render_widget(left_para, chunks[0]);
+
+        let right_lines: Vec<Line> = if self.models.is_empty() {
+            vec![Line::from("  (no models)")]
+        } else {
+            self.models
+                .iter()
+                .enumerate()
+                .map(|(i, model)| {
+                    let selected = !self.focus_providers && i == self.model_selected;
+                    let prefix = if selected { "* " } else { "  " };
+                    let style = if selected {
+                        Style::default()
+                            .bg(Color::Rgb(50, 50, 60))
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled(format!("{prefix}{model}"), style))
+                })
+                .collect()
+        };
+        let right_block = Block::default().title(" Models ");
+        let right_para = Paragraph::new(Text::from(right_lines))
+            .block(right_block)
+            .wrap(Wrap { trim: false });
+        f.render_widget(right_para, chunks[1]);
+    }
+}
+
 // ── ConfirmBoard: yes/no dialog ──
 
 #[allow(dead_code)]
@@ -429,6 +592,393 @@ impl ConfirmBoard {
                 height: h,
             },
         );
+    }
+}
+
+// ── FormBoard: labeled editable fields ──
+
+#[derive(Debug, Clone)]
+pub enum FieldValue {
+    String(String),
+    Password(String),
+    Integer(i64),
+    Enum { options: Vec<String>, selected: usize },
+    Boolean(bool),
+}
+
+pub struct FormBoard {
+    pub title: String,
+    pub visible: bool,
+    pub selected: usize,
+    fields: Vec<FormField>,
+}
+
+#[derive(Debug, Clone)]
+struct FormField {
+    label: String,
+    value: FieldValue,
+    editing: bool,
+    edit_buffer: String,
+}
+
+impl FormBoard {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            visible: false,
+            selected: 0,
+            fields: Vec::new(),
+        }
+    }
+
+    pub fn add_field(&mut self, label: impl Into<String>, value: FieldValue) {
+        self.fields.push(FormField {
+            label: label.into(),
+            value,
+            editing: false,
+            edit_buffer: String::new(),
+        });
+    }
+
+    pub fn next(&mut self) {
+        self.commit_edit();
+        if !self.fields.is_empty() {
+            self.selected = (self.selected + 1) % self.fields.len();
+        }
+    }
+
+    pub fn prev(&mut self) {
+        self.commit_edit();
+        if !self.fields.is_empty() {
+            self.selected = (self.selected + self.fields.len() - 1) % self.fields.len();
+        }
+    }
+
+    pub fn edit(&mut self) {
+        if let Some(field) = self.fields.get_mut(self.selected) {
+            match &mut field.value {
+                FieldValue::Boolean(b) => *b = !*b,
+                FieldValue::Enum { options, selected } => {
+                    if !options.is_empty() {
+                        *selected = (*selected + 1) % options.len();
+                    }
+                }
+                _ => {
+                    field.editing = true;
+                    field.edit_buffer = field.display_value();
+                }
+            }
+        }
+    }
+
+    pub fn toggle(&mut self) {
+        self.edit();
+    }
+
+    pub fn insert(&mut self, c: char) {
+        if let Some(field) = self.fields.get_mut(self.selected) {
+            if field.editing {
+                field.edit_buffer.push(c);
+            }
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        if let Some(field) = self.fields.get_mut(self.selected) {
+            if field.editing {
+                field.edit_buffer.pop();
+            }
+        }
+    }
+
+    pub fn commit_edit(&mut self) {
+        if let Some(field) = self.fields.get_mut(self.selected) {
+            if field.editing {
+                field.set_from_buffer();
+                field.editing = false;
+                field.edit_buffer.clear();
+            }
+        }
+    }
+
+    pub fn current_value(&self) -> Option<String> {
+        self.fields.get(self.selected).map(|f| {
+            if f.editing {
+                f.edit_buffer.clone()
+            } else {
+                f.display_value()
+            }
+        })
+    }
+
+    pub fn set_value(&mut self, value: &str) {
+        if let Some(field) = self.fields.get_mut(self.selected) {
+            field.set_from_str(value);
+            field.editing = false;
+            field.edit_buffer.clear();
+        }
+    }
+
+    pub fn current_label(&self) -> Option<&str> {
+        self.fields.get(self.selected).map(|f| f.label.as_str())
+    }
+
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect) {
+        if !self.visible || self.fields.is_empty() {
+            return;
+        }
+        let lines: Vec<Line> = self
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                let selected = i == self.selected;
+                let value = if field.editing {
+                    format!("{}{}", field.edit_buffer, "▏")
+                } else {
+                    field.display_value()
+                };
+                let display = if matches!(field.value, FieldValue::Boolean(_)) {
+                    let marker = if field.value.bool_value() { "[x] " } else { "[ ] " };
+                    format!("{}{}", marker, field.label)
+                } else {
+                    format!("{}: {}", field.label, value)
+                };
+                let style = if selected {
+                    Style::default()
+                        .bg(Color::Rgb(50, 50, 60))
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Rgb(180, 180, 190))
+                };
+                Line::from(Span::styled(display, style))
+            })
+            .collect();
+        let h = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+        let w = 50u16.min(area.width.saturating_sub(4));
+        let x = (area.width.saturating_sub(w)) / 2;
+        let y = (area.height.saturating_sub(h)) / 2;
+        let r = Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width: w,
+            height: h,
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(self.title.as_str())
+            .border_style(Style::default().fg(Color::Cyan));
+        f.render_widget(Paragraph::new(Text::from(lines)).block(block), r);
+    }
+}
+
+impl FieldValue {
+    fn bool_value(&self) -> bool {
+        match self {
+            FieldValue::Boolean(b) => *b,
+            _ => false,
+        }
+    }
+}
+
+impl FormField {
+    fn display_value(&self) -> String {
+        match &self.value {
+            FieldValue::String(s) => s.clone(),
+            FieldValue::Password(s) => "*".repeat(s.len()),
+            FieldValue::Integer(n) => n.to_string(),
+            FieldValue::Enum { options, selected } => {
+                options.get(*selected).cloned().unwrap_or_default()
+            }
+            FieldValue::Boolean(b) => (if *b { "On" } else { "Off" }).into(),
+        }
+    }
+
+    fn bool_value(&self) -> bool {
+        match &self.value {
+            FieldValue::Boolean(b) => *b,
+            _ => false,
+        }
+    }
+
+    fn set_from_str(&mut self, s: &str) {
+        match &mut self.value {
+            FieldValue::String(v) => *v = s.into(),
+            FieldValue::Password(v) => *v = s.into(),
+            FieldValue::Integer(v) => {
+                if let Ok(n) = s.parse::<i64>() {
+                    *v = n;
+                }
+            }
+            FieldValue::Enum { options, selected } => {
+                if let Some(idx) = options.iter().position(|o| o == s) {
+                    *selected = idx;
+                }
+            }
+            FieldValue::Boolean(v) => {
+                *v = matches!(s.to_lowercase().as_str(), "true" | "on" | "yes" | "1");
+            }
+        }
+    }
+
+    fn set_from_buffer(&mut self) {
+        if self.editing {
+            let buf = self.edit_buffer.clone();
+            self.set_from_str(&buf);
+        }
+    }
+}
+
+// ── TwoPaneBoard: left list + right details ──
+
+pub struct TwoPaneBoard {
+    pub title: String,
+    pub visible: bool,
+    pub left: Vec<String>,
+    pub right: Vec<String>,
+    pub left_selected: usize,
+    pub right_selected: usize,
+    pub focus_left: bool,
+}
+
+impl TwoPaneBoard {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            visible: false,
+            left: Vec::new(),
+            right: Vec::new(),
+            left_selected: 0,
+            right_selected: 0,
+            focus_left: true,
+        }
+    }
+
+    pub fn set_left(&mut self, items: Vec<String>) {
+        self.left = items;
+        self.left_selected = 0;
+    }
+
+    pub fn set_right(&mut self, items: Vec<String>) {
+        self.right = items;
+        self.right_selected = 0;
+    }
+
+    pub fn select_left_next(&mut self) {
+        if !self.left.is_empty() {
+            self.left_selected = (self.left_selected + 1) % self.left.len();
+        }
+    }
+
+    pub fn select_left_prev(&mut self) {
+        if !self.left.is_empty() {
+            self.left_selected = (self.left_selected + self.left.len() - 1) % self.left.len();
+        }
+    }
+
+    pub fn select_right_next(&mut self) {
+        if !self.right.is_empty() {
+            self.right_selected = (self.right_selected + 1) % self.right.len();
+        }
+    }
+
+    pub fn select_right_prev(&mut self) {
+        if !self.right.is_empty() {
+            self.right_selected = (self.right_selected + self.right.len() - 1) % self.right.len();
+        }
+    }
+
+    pub fn focus_left(&mut self) {
+        self.focus_left = true;
+    }
+
+    pub fn focus_right(&mut self) {
+        self.focus_left = false;
+    }
+
+    pub fn current_left(&self) -> Option<&str> {
+        self.left.get(self.left_selected).map(|s| s.as_str())
+    }
+
+    pub fn current_right(&self) -> Option<&str> {
+        self.right.get(self.right_selected).map(|s| s.as_str())
+    }
+
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect) {
+        if !self.visible {
+            return;
+        }
+        let w = (area.width as f32 * 0.65) as u16;
+        let h = (area.height as f32 * 0.65) as u16;
+        let x = (area.width.saturating_sub(w)) / 2;
+        let y = (area.height.saturating_sub(h)) / 2;
+        let r = Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width: w,
+            height: h,
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(self.title.as_str())
+            .border_style(Style::default().fg(Color::Cyan));
+        let inner = block.inner(r);
+        f.render_widget(block, r);
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(inner);
+
+        let left_lines: Vec<Line> = self
+            .left
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let selected = self.focus_left && i == self.left_selected;
+                let style = if selected {
+                    Style::default()
+                        .bg(Color::Rgb(50, 50, 60))
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else if i == self.left_selected && !self.focus_left {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::Rgb(160, 160, 170))
+                };
+                Line::from(Span::styled(format!("  {}", item), style))
+            })
+            .collect();
+        let left_block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::DarkGray));
+        f.render_widget(
+            Paragraph::new(Text::from(left_lines)).block(left_block),
+            chunks[0],
+        );
+
+        let right_lines: Vec<Line> = self
+            .right
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let selected = !self.focus_left && i == self.right_selected;
+                let style = if selected {
+                    Style::default()
+                        .bg(Color::Rgb(60, 60, 70))
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Rgb(180, 180, 190))
+                };
+                Line::from(Span::styled(format!("  {}", item), style))
+            })
+            .collect();
+        f.render_widget(Paragraph::new(Text::from(right_lines)), chunks[1]);
     }
 }
 
@@ -633,5 +1183,48 @@ mod tests {
         assert_eq!(lb.current(), Some("b"));
         lb.select_prev();
         assert_eq!(lb.current(), Some("a"));
+    }
+
+    #[test]
+    fn test_formboard_nav_and_values() {
+        let mut form = FormBoard::new("Settings");
+        form.add_field("Name", FieldValue::String("default".into()));
+        form.add_field("Key", FieldValue::Password("secret".into()));
+        form.add_field("Port", FieldValue::Integer(8080));
+        form.add_field(
+            "Theme",
+            FieldValue::Enum {
+                options: vec!["dark".into(), "light".into()],
+                selected: 0,
+            },
+        );
+        form.add_field("Debug", FieldValue::Boolean(false));
+        assert_eq!(form.current_value(), Some("default".into()));
+        form.next();
+        assert_eq!(form.current_label(), Some("Key"));
+        assert_eq!(form.current_value(), Some("******".into()));
+        form.next();
+        form.set_value("9000");
+        assert_eq!(form.current_value(), Some("9000".into()));
+        form.next();
+        form.toggle();
+        assert_eq!(form.current_value(), Some("light".into()));
+        form.next();
+        form.edit();
+        assert_eq!(form.current_value(), Some("On".into()));
+    }
+
+    #[test]
+    fn test_twopaneboard_nav() {
+        let mut tp = TwoPaneBoard::new("Picker");
+        tp.set_left(vec!["a".into(), "b".into()]);
+        tp.set_right(vec!["a1".into(), "a2".into()]);
+        assert_eq!(tp.current_left(), Some("a"));
+        assert_eq!(tp.current_right(), Some("a1"));
+        tp.select_left_next();
+        assert_eq!(tp.current_left(), Some("b"));
+        tp.focus_right();
+        tp.select_right_next();
+        assert_eq!(tp.current_right(), Some("a2"));
     }
 }

@@ -4,7 +4,7 @@ use radiumical_core::types::AgentMode;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph};
+use ratatui::widgets::{Block as RBlock, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 // ═══ Draw ═══
@@ -39,7 +39,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_model_picker {
         let mut stack = crate::board::BoardStack::new();
         if app.welcome && app.show_help_overlay && chunks[0].height > 12 {
-            // Push help board first so model picker stacks above it
+            // Push help board first so provider picker stacks above it
             let _ = stack.push(
                 crate::board::Corner::BottomRight,
                 app.help_board.w,
@@ -47,16 +47,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 chunks[0],
             );
         }
-        let models: Vec<Line> = app
-            .available_models
-            .iter()
-            .map(|m| {
-                let prefix = if m == &app.model { "* " } else { "  " };
-                Line::from(Span::raw(format!("{prefix}{m}")))
-            })
-            .collect();
-        app.model_board
-            .render_stacked(f, chunks[0], Text::from(models), &mut stack);
+        app.provider_picker.render_stacked(f, chunks[0], &mut stack);
     }
     let bottom = Layout::default()
         .direction(Direction::Vertical)
@@ -111,11 +102,37 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     // Render confirm dialog
     app.confirm.render(f, area);
+    // Settings panel
+    if app.settings_visible {
+        app.settings_board.render(f, area);
+    }
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
         let selected = app.hint_selected == Some(hint_page_start + i);
         draw_hint_row(f, bottom[1 + i], n, d, selected);
     }
     draw_status(f, bottom[bottom.len() - 1], app);
+}
+
+pub fn overlay_panel(f: &mut Frame, area: Rect, title: &str, content_lines: Vec<Line>) -> Rect {
+    let max_w = content_lines.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
+    let w = (max_w + 4).min(area.width.saturating_sub(4));
+    let h = (content_lines.len() as u16 + 2).min(area.height.saturating_sub(4));
+    let x = (area.width.saturating_sub(w)) / 2;
+    let y = (area.height.saturating_sub(h)) / 2;
+    let r = Rect {
+        x: area.x + x,
+        y: area.y + y,
+        width: w,
+        height: h,
+    };
+    f.render_widget(Clear, r);
+    let block = RBlock::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(format!(" {title} "))
+        .border_style(Style::default().fg(Color::Cyan));
+    f.render_widget(Paragraph::new(Text::from(content_lines)).block(block), r);
+    r
 }
 
 fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {

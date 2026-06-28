@@ -113,6 +113,10 @@ impl ProviderRegistry {
         Ok(sources)
     }
 
+    pub fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
     /// Load sources from the local cache, returning `None` if stale or missing.
     pub fn load_cache(&self) -> Result<Option<Vec<ProviderSource>>> {
         let path = self.cache_path();
@@ -169,12 +173,16 @@ fn parse_jsonl(text: &str) -> Result<Vec<ProviderSource>> {
 }
 
 /// Discover available models from a single source.
-pub async fn discover_models(client: &reqwest::Client, source: &ProviderSource) -> Vec<String> {
+pub async fn discover_models(
+    client: &reqwest::Client,
+    source: &ProviderSource,
+    api_key: Option<String>,
+) -> Vec<String> {
     let Some(url) = source.models_url() else {
         return source.models.clone().unwrap_or_default();
     };
 
-    let Some(key) = source.api_key() else {
+    let Some(key) = api_key.or_else(|| source.api_key()) else {
         return source.models.clone().unwrap_or_default();
     };
 
@@ -205,6 +213,63 @@ pub async fn discover_models(client: &reqwest::Client, source: &ProviderSource) 
     }
 }
 
+/// Convenience wrapper that discovers models for a [`SessionConfig`].
+pub async fn discover_models_for_config(config: &crate::types::SessionConfig) -> Vec<String> {
+    use crate::types::ProviderKind;
+    let client = reqwest::Client::new();
+    let api_base = config
+        .api_base
+        .clone()
+        .unwrap_or_else(|| config.provider.default_base().to_string());
+    let source = ProviderSource {
+        provider: config.provider.name().to_string(),
+        name: config.provider.name().to_string(),
+        api_type: match config.provider {
+            ProviderKind::OpenAI | ProviderKind::Ollama => "openai-chat".into(),
+            ProviderKind::Anthropic => "anthropic".into(),
+        },
+        api_base,
+        key_env: None,
+        models_endpoint: Some("/models".into()),
+        auth_header: if config.provider == ProviderKind::Anthropic {
+            Some("x-api-key".into())
+        } else {
+            None
+        },
+        version_header: if config.provider == ProviderKind::Anthropic {
+            Some("2023-06-01".into())
+        } else {
+            None
+        },
+        models: None,
+        extra: std::collections::HashMap::new(),
+    };
+    discover_models(
+        &client,
+        &source,
+        if config.api_key.is_empty() {
+            None
+        } else {
+            Some(config.api_key.clone())
+        },
+    )
+    .await
+}
+
+/// Fetch the provider registry from the remote URL or local cache.
+pub async fn fetch_provider_sources() -> Vec<ProviderSource> {
+    let cache_dir = dirs::cache_dir().unwrap_or_else(|| {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    });
+    match ProviderRegistry::new(cache_dir) {
+        Ok(registry) => match registry.fetch_or_cache(DEFAULT_REGISTRY_URL).await {
+            Ok(sources) => sources,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct OpenAiModelList {
     data: Vec<OpenAiModelEntry>,
@@ -225,7 +290,7 @@ pub async fn discover_all_models(
         let source = source.clone();
         let client = client.clone();
         handles.push(tokio::spawn(async move {
-            let ids = discover_models(&client, &source).await;
+            let ids = discover_models(&client, &source, source.api_key()).await;
             ids.into_iter()
                 .map(|id| DiscoveredModel {
                     id,

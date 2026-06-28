@@ -2,13 +2,15 @@ mod board;
 mod dashboard;
 mod layout;
 mod markdown;
+mod settings;
 mod tui;
 
 use anyhow::Result;
 use clap::Parser;
 use radiumical_core::commands::{CommandOutcome, CommandPool};
 use radiumical_core::pipeline::PipelineRunner;
-use radiumical_core::provider::create_provider;
+use radiumical_core::provider::{create_provider, Provider};
+use radiumical_core::providers::{discover_models, ProviderRegistry, DEFAULT_REGISTRY_URL};
 use radiumical_core::types::{ProviderKind, SessionConfig};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
@@ -142,7 +144,7 @@ async fn main() -> Result<()> {
         mode: radiumical_core::types::AgentMode::Auto,
     };
 
-    let provider = create_provider(
+    let mut provider = create_provider(
         &config.provider,
         config.api_base.as_deref(),
         &config.api_key,
@@ -173,10 +175,20 @@ async fn main() -> Result<()> {
     });
 
     // ── Backend loop (this tokio thread) ──
-    let runner = Arc::new(tokio::sync::Mutex::new(PipelineRunner::new(
+    let mut runner = Arc::new(tokio::sync::Mutex::new(PipelineRunner::new(
         config.clone(),
         Arc::clone(&provider),
     )));
+    let cache_dir = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".radiumical_cache");
+    let registry = match ProviderRegistry::new(cache_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to initialize provider registry: {e}");
+            std::process::exit(1);
+        }
+    };
     let cmd_pool = CommandPool::new();
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
 
@@ -257,6 +269,67 @@ async fn main() -> Result<()> {
                                 });
                             }
                         }
+                    }
+                    Some(BackendCmd::SetModel(model)) => {
+                        config.model = model.clone();
+                        provider = create_provider(
+                            &config.provider,
+                            config.api_base.as_deref(),
+                            &config.api_key,
+                            &config.model,
+                        );
+                        runner = Arc::new(tokio::sync::Mutex::new(PipelineRunner::new(
+                            config.clone(),
+                            Arc::clone(&provider),
+                        )));
+                        radiumical_core::subagent::set_defaults(
+                            config.clone(),
+                            Arc::clone(&provider),
+                        );
+                    }
+                    Some(BackendCmd::SetMode(mode)) => {
+                        config.mode = mode.clone();
+                        runner.lock().await.set_mode(mode);
+                    }
+                    Some(BackendCmd::SetThinkingEffort(effort)) => {
+                        provider.set_reasoning_effort(Some(effort));
+                    }
+                    Some(BackendCmd::RefreshModels) => {
+                        let ui_tx = ui_tx.clone();
+                        let cfg = config.clone();
+                        tokio::spawn(async move {
+                            let models = radiumical_core::providers::discover_models_for_config(&cfg).await;
+                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models));
+                        });
+                    }
+                    Some(BackendCmd::FetchProviders) => {
+                        let registry = registry.clone();
+                        let ui_tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            match registry.fetch_or_cache(DEFAULT_REGISTRY_URL).await {
+                                Ok(sources) => {
+                                    let _ = ui_tx.send(UiEvent::ProvidersLoaded(sources));
+                                }
+                                Err(e) => {
+                                    let _ = ui_tx.send(UiEvent::Error(format!(
+                                        "Provider registry error: {e}"
+                                    )));
+                                }
+                            }
+                        });
+                    }
+                    Some(BackendCmd::FetchModels(source)) => {
+                        let registry = registry.clone();
+                        let ui_tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let models = discover_models(
+                                registry.client(),
+                                &source,
+                                source.api_key(),
+                            )
+                            .await;
+                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models));
+                        });
                     }
                     None => break,
                 }

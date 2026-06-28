@@ -19,9 +19,9 @@ impl App {
                 self.welcome = true;
                 self.show_help_overlay = true;
                 self.show_model_picker = false;
+                self.provider_picker.visible = false;
                 self.hint_selected = None;
                 self.help_board.visible = false;
-                self.model_board.visible = false;
                 self.blocks.clear();
                 self.session_items.clear();
                 self.render_cache.clear();
@@ -53,9 +53,9 @@ impl App {
                 self.welcome = false;
                 self.show_help_overlay = false;
                 self.show_model_picker = false;
+                self.provider_picker.visible = false;
                 self.hint_selected = None;
                 self.help_board.visible = false;
-                self.model_board.visible = false;
                 return;
             }
             "/end" | "/bottom" => {
@@ -78,8 +78,15 @@ impl App {
                 return;
             }
             "/settings" | "/config" => {
-                self.output.push("> /settings".into());
-                self.show_settings();
+                self.settings_visible = !self.settings_visible;
+                if self.settings_visible {
+                    self.settings_board.visible = true;
+                } else {
+                    self.settings_board.save();
+                    let board = self.settings_board.clone();
+                    board.apply_to_app(self);
+                    self.settings_board.visible = false;
+                }
                 self.input.clear();
                 self.cursor = 0;
                 self.hints.clear();
@@ -87,7 +94,10 @@ impl App {
                 return;
             }
             "/plan" => {
-                self.mode = crate::tui::app::AgentMode::Plan;
+                self.mode = radiumical_core::types::AgentMode::Plan;
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::SetMode(radiumical_core::types::AgentMode::Plan));
                 self.output.push("  Plan mode".into());
                 self.output.push(String::new());
                 self.input.clear();
@@ -96,7 +106,10 @@ impl App {
                 return;
             }
             "/exec" => {
-                self.mode = crate::tui::app::AgentMode::Exec;
+                self.mode = radiumical_core::types::AgentMode::Exec;
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::SetMode(radiumical_core::types::AgentMode::Exec));
                 self.output.push("  Exec mode".into());
                 self.output.push(String::new());
                 self.input.clear();
@@ -105,7 +118,10 @@ impl App {
                 return;
             }
             "/auto" => {
-                self.mode = crate::tui::app::AgentMode::Auto;
+                self.mode = radiumical_core::types::AgentMode::Auto;
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::SetMode(radiumical_core::types::AgentMode::Auto));
                 self.output.push("  Auto mode".into());
                 self.output.push(String::new());
                 self.input.clear();
@@ -236,8 +252,79 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
-            _ if task == "/models" => {
+            "/review" => {
+                let has_history = !self.session_items.is_empty();
+                if has_history {
+                    let prompt = "Review the changes made in this session and suggest improvements. Check for bugs, style issues, missing tests, and dead code. Report findings concisely.";
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(prompt.into()));
+                    self.output.push("> /review".into());
+                    self.output.push("  Reviewing session…".into());
+                } else {
+                    self.toasts.push(crate::board::Toast::new(
+                        "Nothing to review yet",
+                        crate::board::ToastLevel::Warn,
+                        std::time::Duration::from_secs(3),
+                    ));
+                    self.output.push("> /review".into());
+                    self.output.push("  No session history to review.".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/tools" => {
+                self.output.push("> /tools".into());
+                let tools = radiumical_core::tools::all_tools();
+                self.output.push(format!("  Available tools ({}):", tools.len()));
+                for t in tools {
+                    let def = t.definition();
+                    let marker = match self.mode {
+                        radiumical_core::types::AgentMode::Plan => {
+                            if matches!(
+                                def.function.name.as_str(),
+                                "read_file" | "search_code" | "find_files"
+                            ) {
+                                "✅"
+                            } else {
+                                "🔒"
+                            }
+                        }
+                        _ => "✅",
+                    };
+                    self.output.push(format!(
+                        "  {} {:<14} {}",
+                        marker,
+                        def.function.name,
+                        def.function.description
+                    ));
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/provider" => {
                 self.show_model_picker = !self.show_model_picker;
+                self.provider_picker.visible = self.show_model_picker;
+                if self.show_model_picker {
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::FetchProviders);
+                }
+                self.input.clear();
+                self.cursor = 0;
+                return;
+            }
+            _ if task == "/models" => {
+                if self.available_models.len() <= 1 {
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
+                    self.output.push("> /models".into());
+                    self.output.push("  Refreshing models…".into());
+                    self.output.push(String::new());
+                }
+                self.show_model_picker = !self.show_model_picker;
+                self.provider_picker.visible = self.show_model_picker;
                 self.input.clear();
                 self.cursor = 0;
                 return;
@@ -264,6 +351,9 @@ impl App {
             }
             "/think high" => {
                 self.thinking_effort = "high".into();
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::SetThinkingEffort("high".into()));
                 self.output.push("> /think high".into());
                 self.output.push("  Reasoning: high".into());
                 self.output.push(String::new());
@@ -274,6 +364,9 @@ impl App {
             }
             "/think max" | "/think xhigh" => {
                 self.thinking_effort = "max".into();
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::SetThinkingEffort("max".into()));
                 self.output.push("> /think max".into());
                 self.output.push("  Reasoning: max".into());
                 self.output.push(String::new());
