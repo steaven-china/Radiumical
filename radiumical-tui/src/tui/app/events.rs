@@ -3,6 +3,32 @@ use crate::tui::UiEvent;
 use radiumical_core::session::SessionItem;
 use std::time::Instant;
 
+/// Strip MCP/assistant metadata tags that should never be visible in the TUI.
+/// Currently removes `<environment_details>...</environment_details>` blocks.
+pub(crate) fn strip_metadata_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    let open = "<environment_details>";
+    let close = "</environment_details>";
+    while i < s.len() {
+        if let Some(start) = s[i..].find(open) {
+            out.push_str(&s[i..i + start]);
+            let after_open = i + start + open.len();
+            if let Some(end) = s[after_open..].find(close) {
+                i = after_open + end + close.len();
+            } else {
+                // Incomplete tag at the end: drop the remainder.
+                break;
+            }
+        } else {
+            out.push_str(&s[i..]);
+            break;
+        }
+    }
+    // Also drop any stray closing tag fragment.
+    out.split(close).collect::<Vec<_>>().join("").replace(open, "")
+}
+
 pub(crate) fn box_width(name_len: usize, args_len: usize, result: Option<&str>) -> usize {
     let result_max = result
         .map(|r| r.lines().map(|l| l.chars().count()).max().unwrap_or(0))
@@ -45,7 +71,12 @@ impl App {
     pub fn handle_ui_event(&mut self, event: UiEvent) {
         match event {
             UiEvent::LlmChunk(chunk) => {
-                let chunk = chunk.replace("\r\n", "\n").replace('\r', "");
+                let chunk = strip_metadata_tags(&chunk)
+                    .replace("\r\n", "\n")
+                    .replace('\r', "");
+                if chunk.is_empty() {
+                    return;
+                }
                 if let Some(last) = self.output.last() {
                     if last.starts_with("\x01") {
                         self.output.push(String::new());
@@ -70,6 +101,10 @@ impl App {
                 }
             }
             UiEvent::LlmReasoning(rc) => {
+                let rc = strip_metadata_tags(&rc);
+                if rc.is_empty() {
+                    return;
+                }
                 if let Some(last) = self.output.last_mut() {
                     if last.starts_with("\x01") {
                         last.push_str(&rc);
