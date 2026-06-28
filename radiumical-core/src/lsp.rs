@@ -5,14 +5,27 @@ use std::process::Command;
 /// Detect the primary language of a workspace.
 pub fn detect_language(workspace: &Path) -> Vec<&'static str> {
     let mut langs = Vec::new();
-    if workspace.join("Cargo.toml").exists() { langs.push("rust"); }
-    if workspace.join("package.json").exists() { langs.push("javascript"); }
-    if workspace.join("tsconfig.json").exists() { langs.push("typescript"); }
-    if workspace.join("go.mod").exists() { langs.push("go"); }
-    if workspace.join("requirements.txt").exists() || workspace.join("pyproject.toml").exists() || workspace.join("setup.py").exists() {
+    if workspace.join("Cargo.toml").exists() {
+        langs.push("rust");
+    }
+    if workspace.join("package.json").exists() {
+        langs.push("javascript");
+    }
+    if workspace.join("tsconfig.json").exists() {
+        langs.push("typescript");
+    }
+    if workspace.join("go.mod").exists() {
+        langs.push("go");
+    }
+    if workspace.join("requirements.txt").exists()
+        || workspace.join("pyproject.toml").exists()
+        || workspace.join("setup.py").exists()
+    {
         langs.push("python");
     }
-    if workspace.join("CMakeLists.txt").exists() { langs.push("cpp"); }
+    if workspace.join("CMakeLists.txt").exists() {
+        langs.push("cpp");
+    }
     if workspace.join("pom.xml").exists() || workspace.join("build.gradle").exists() {
         langs.push("java");
     }
@@ -21,11 +34,26 @@ pub fn detect_language(workspace: &Path) -> Vec<&'static str> {
         if let Ok(entries) = std::fs::read_dir(workspace.join("src")) {
             for e in entries.flatten() {
                 match e.path().extension().and_then(|s| s.to_str()) {
-                    Some("rs") => { langs.push("rust"); break; }
-                    Some("ts") => { langs.push("typescript"); break; }
-                    Some("js") => { langs.push("javascript"); break; }
-                    Some("py") => { langs.push("python"); break; }
-                    Some("go") => { langs.push("go"); break; }
+                    Some("rs") => {
+                        langs.push("rust");
+                        break;
+                    }
+                    Some("ts") => {
+                        langs.push("typescript");
+                        break;
+                    }
+                    Some("js") => {
+                        langs.push("javascript");
+                        break;
+                    }
+                    Some("py") => {
+                        langs.push("python");
+                        break;
+                    }
+                    Some("go") => {
+                        langs.push("go");
+                        break;
+                    }
                     _ => {}
                 }
             }

@@ -104,10 +104,7 @@ impl CommandPool {
         names: &'static [&'static str],
         handler: fn(&mut SessionConfig, &str) -> CommandOutcome,
     ) {
-        self.entries.push(CommandEntry {
-            names,
-            handler,
-        });
+        self.entries.push(CommandEntry { names, handler });
     }
 
     /// Try to match input against known slash commands.

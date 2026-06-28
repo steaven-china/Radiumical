@@ -1,3 +1,4 @@
+pub mod agent_pool;
 pub mod commands;
 pub mod config;
 pub mod conversation;
@@ -5,6 +6,7 @@ pub mod highlight;
 pub mod hooks;
 pub mod lsp;
 pub mod memory;
+pub mod orchestrator;
 pub mod perf;
 pub mod pipeline;
 pub mod provider;

@@ -16,9 +16,13 @@ pub struct PerfMonitor {
 impl PerfMonitor {
     pub fn new() -> Self {
         Self {
-            fps: 0.0, frame_time_ms: 0.0, output_lines: 0,
-            render_time_ms: 0.0, last_frame: Instant::now(),
-            frame_count: 0, frame_acc: 0.0,
+            fps: 0.0,
+            frame_time_ms: 0.0,
+            output_lines: 0,
+            render_time_ms: 0.0,
+            last_frame: Instant::now(),
+            frame_count: 0,
+            frame_acc: 0.0,
         }
     }
 
@@ -51,7 +55,9 @@ fn perf() -> &'static Mutex<PerfMonitor> {
 }
 
 pub fn tick(render_us: u64, output_lines: usize) {
-    if let Ok(mut p) = perf().lock() { p.tick(render_us, output_lines); }
+    if let Ok(mut p) = perf().lock() {
+        p.tick(render_us, output_lines);
+    }
 }
 
 pub fn report() -> String {

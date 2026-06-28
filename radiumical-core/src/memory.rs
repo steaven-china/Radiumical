@@ -20,7 +20,10 @@ pub struct Memory {
 
 impl Memory {
     pub fn dir() -> PathBuf {
-        dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".radi").join("mem")
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".radi")
+            .join("mem")
     }
 
     pub fn load() -> Result<Self> {
@@ -56,7 +59,9 @@ impl Memory {
 
     /// Core memory injected directly into system prompt.
     pub fn core_context(&self) -> String {
-        if self.core.is_empty() { return String::new(); }
+        if self.core.is_empty() {
+            return String::new();
+        }
         let mut ctx = String::from("\n## Memory (Core)\n");
         for m in &self.core {
             ctx.push_str(&format!("- {}\n", m.content));

@@ -3,8 +3,8 @@ use radiumical_core::provider::create_provider;
 use radiumical_core::types::{ProviderKind, SessionConfig};
 use std::sync::Mutex;
 use tauri::Emitter;
-use tokio::sync::Mutex as TokioMutex;
 use tauri::Manager;
+use tokio::sync::Mutex as TokioMutex;
 
 struct AppState {
     runner: TokioMutex<PipelineRunner>,
@@ -16,7 +16,11 @@ async fn run_task(
     app: tauri::AppHandle,
     task: String,
 ) -> Result<String, String> {
-    let workspace = std::env::current_dir().unwrap_or_default().parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let workspace = std::env::current_dir()
+        .unwrap_or_default()
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<radiumical_core::types::UiEvent>();
     let (_, cancel_rx) = tokio::sync::watch::channel(false);
 
@@ -28,19 +32,43 @@ async fn run_task(
                 radiumical_core::types::UiEvent::LlmChunk(chunk) => {
                     let _ = handle.emit("llm-chunk", chunk);
                 }
+                radiumical_core::types::UiEvent::LlmReasoning(reasoning) => {
+                    let _ = handle.emit("llm-reasoning", reasoning);
+                }
+                radiumical_core::types::UiEvent::ThinkingTick => {
+                    let _ = handle.emit("thinking-tick", "");
+                }
                 radiumical_core::types::UiEvent::LlmDone => {
                     let _ = handle.emit("llm-done", "");
                 }
-                radiumical_core::types::UiEvent::ToolStart { name, index, total, .. } => {
-                    let _ = handle.emit("tool-start", format!("[{}/{}] {name}", index + 1, total));
+                radiumical_core::types::UiEvent::ThinkingDone => {
+                    let _ = handle.emit("thinking-done", "");
+                }
+                radiumical_core::types::UiEvent::ToolStart {
+                    name,
+                    index,
+                    total,
+                    args,
+                } => {
+                    let _ = handle.emit(
+                        "tool-start",
+                        serde_json::json!({
+                            "name": name,
+                            "index": index,
+                            "total": total,
+                            "args": args
+                        }),
+                    );
                 }
                 radiumical_core::types::UiEvent::ToolDone => {
                     let _ = handle.emit("tool-done", "");
                 }
+                radiumical_core::types::UiEvent::ToolResult { content } => {
+                    let _ = handle.emit("tool-result", content);
+                }
                 radiumical_core::types::UiEvent::Error(e) => {
                     let _ = handle.emit("llm-error", e);
                 }
-                _ => {}
             }
         }
     });
@@ -77,7 +105,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(AppState { runner: TokioMutex::new(runner) })
+        .manage(AppState {
+            runner: TokioMutex::new(runner),
+        })
         .invoke_handler(tauri::generate_handler![run_task, get_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

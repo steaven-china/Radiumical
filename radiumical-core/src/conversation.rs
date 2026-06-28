@@ -14,7 +14,11 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn new(system_prompt: String, _jsonl_path: Option<PathBuf>) -> Self {
-        Self { messages: Vec::new(), system_prompt, jsonl_path: _jsonl_path }
+        Self {
+            messages: Vec::new(),
+            system_prompt,
+            jsonl_path: _jsonl_path,
+        }
     }
 
     // ── Mutation ──
@@ -43,7 +47,12 @@ impl Conversation {
         });
     }
 
-    pub fn push_assistant(&mut self, content: &str, tool_calls: Option<Vec<ToolCall>>, reasoning: Option<&str>) {
+    pub fn push_assistant(
+        &mut self,
+        content: &str,
+        tool_calls: Option<Vec<ToolCall>>,
+        reasoning: Option<&str>,
+    ) {
         self.push(Message {
             role: Role::Assistant,
             content: MessageContent::Text(content.to_string()),
@@ -164,10 +173,14 @@ impl Conversation {
     /// Rough token count (1 token ≈ 4 chars).
     #[allow(dead_code)]
     pub fn estimated_tokens(&self) -> usize {
-        self.messages.iter().map(|m| match &m.content {
-            MessageContent::Text(s) => s.chars().count(),
-            _ => 0,
-        }).sum::<usize>() / 4
+        self.messages
+            .iter()
+            .map(|m| match &m.content {
+                MessageContent::Text(s) => s.chars().count(),
+                _ => 0,
+            })
+            .sum::<usize>()
+            / 4
     }
 
     /// Truncate context to keep the last `max_tokens` worth of messages.
@@ -218,8 +231,14 @@ impl Conversation {
             return s.to_string();
         }
         let head: String = s.chars().take(max_chars / 2).collect();
-        let tail: String = s.chars().rev().take(max_chars / 4).collect::<String>()
-            .chars().rev().collect();
+        let tail: String = s
+            .chars()
+            .rev()
+            .take(max_chars / 4)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
         format!(
             "{head}\n\n... [truncated {} chars → {} kept] ...\n\n{tail}",
             s.chars().count(),
@@ -237,7 +256,11 @@ impl Conversation {
                 msgs.push(msg);
             }
         }
-        if msgs.is_empty() { None } else { Some(msgs) }
+        if msgs.is_empty() {
+            None
+        } else {
+            Some(msgs)
+        }
     }
 }
 
@@ -317,10 +340,13 @@ mod tests {
         assert!(matches!(ctx[1].role, Role::User));
         assert!(matches!(ctx[2].role, Role::Assistant));
         assert!(matches!(ctx[3].role, Role::User));
-        assert_eq!(match &ctx[3].content {
-            MessageContent::Text(s) => s.as_str(),
-            _ => "",
-        }, "New task");
+        assert_eq!(
+            match &ctx[3].content {
+                MessageContent::Text(s) => s.as_str(),
+                _ => "",
+            },
+            "New task"
+        );
     }
 
     #[test]
@@ -331,7 +357,11 @@ mod tests {
         conv.push(Message {
             role: Role::Assistant,
             content: MessageContent::Text("Calling tool...".into()),
-            tool_calls: Some(vec![make_tool_call("call_1", "read_file", r#"{"path":"x"}"#)]),
+            tool_calls: Some(vec![make_tool_call(
+                "call_1",
+                "read_file",
+                r#"{"path":"x"}"#,
+            )]),
             tool_call_id: None,
             name: None,
             reasoning_content: None,
@@ -339,8 +369,14 @@ mod tests {
 
         let ctx = conv.build_context("Next task");
         // The orphan assistant message should be stripped
-        let assistant_msgs: Vec<_> = ctx.iter().filter(|m| matches!(m.role, Role::Assistant)).collect();
-        assert!(assistant_msgs.is_empty(), "orphan tool call should be removed");
+        let assistant_msgs: Vec<_> = ctx
+            .iter()
+            .filter(|m| matches!(m.role, Role::Assistant))
+            .collect();
+        assert!(
+            assistant_msgs.is_empty(),
+            "orphan tool call should be removed"
+        );
     }
 
     #[test]
@@ -356,14 +392,20 @@ mod tests {
             name: None,
             reasoning_content: None,
         });
-        conv.push_tool_result(&tc, &ToolResult {
-            tool_call_id: "call_1".into(),
-            content: "file contents here".into(),
-            is_error: false,
-        });
+        conv.push_tool_result(
+            &tc,
+            &ToolResult {
+                tool_call_id: "call_1".into(),
+                content: "file contents here".into(),
+                is_error: false,
+            },
+        );
 
         let ctx = conv.build_context("Next task");
-        let tool_msgs: Vec<_> = ctx.iter().filter(|m| matches!(m.role, Role::Tool)).collect();
+        let tool_msgs: Vec<_> = ctx
+            .iter()
+            .filter(|m| matches!(m.role, Role::Tool))
+            .collect();
         assert_eq!(tool_msgs.len(), 1, "resolved tool result should remain");
     }
 

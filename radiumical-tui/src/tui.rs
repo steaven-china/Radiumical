@@ -1,28 +1,12 @@
 //! Ratatui TUI — async frontend/backend.
-use crate::types::SessionConfig;
 use crossterm::event::Event;
+use radiumical_core::types::SessionConfig;
 use std::sync::mpsc;
 use std::time::Instant;
 
 // ═══ Channels ═══
 
-#[derive(Debug, Clone)]
-pub enum UiEvent {
-    LlmChunk(String),
-    LlmReasoning(String),
-    ThinkingTick,
-    LlmDone,
-    ToolStart { name: String, index: usize, total: usize, args: String },
-    ToolDone,
-    Error(String),
-    ThinkingDone,
-}
-
-#[derive(Debug, Clone)]
-pub enum BackendCmd {
-    RunTask(String),
-    Cancel,
-}
+pub use radiumical_core::types::{BackendCmd, UiEvent};
 
 // ═══ Slash hints ═══
 
@@ -36,6 +20,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/settings", "Show configuration"),
     ("/models", "Model picker panel"),
     ("/model <n>", "Switch model"),
+    ("/new", "New session / clear context"),
     ("/session", "Save/load sessions"),
     ("/cod on/off", "Chain of Draft experimental"),
     ("/debug <t>", "Debug info"),
@@ -45,19 +30,41 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
 ];
 
 pub fn matching_hints(prefix: &str) -> Vec<(&'static str, &'static str)> {
-    SLASH_COMMANDS.iter().filter(|(n, _)| n.starts_with(prefix)).copied().collect()
+    SLASH_COMMANDS
+        .iter()
+        .filter(|(n, _)| n.starts_with(prefix))
+        .copied()
+        .collect()
 }
 
 pub fn _complete_slash(prefix: &str) -> Option<String> {
-    let m: Vec<&str> = SLASH_COMMANDS.iter().map(|(n, _)| *n).filter(|n| n.starts_with(prefix) && *n != prefix).collect();
-    if m.len() == 1 { Some(format!("{} ", m[0])) } else { None }
+    let m: Vec<&str> = SLASH_COMMANDS
+        .iter()
+        .map(|(n, _)| *n)
+        .filter(|n| n.starts_with(prefix) && *n != prefix)
+        .collect();
+    if m.len() == 1 {
+        Some(format!("{} ", m[0]))
+    } else {
+        None
+    }
 }
 
 // ═══ Pulse ═══
 
 pub const PULSE: &[&str] = &[
-    "    ", "░   ", "▒░  ", "▓▒░ ", "▓▓▒░", "▓▓▓▒",
-    "▓▓▓▓", "▒▓▓▓", "░▒▓▓", " ░▒▓", "  ░▒", "   ░",
+    "    ",
+    "░   ",
+    "▒░  ",
+    "▓▒░ ",
+    "▓▓▒░",
+    "▓▓▓▒",
+    "▓▓▓▓",
+    "▒▓▓▓",
+    "░▒▓▓",
+    " ░▒▓",
+    "  ░▒",
+    "   ░",
 ];
 
 // ═══ Logo ═══
@@ -78,10 +85,16 @@ use self::app::App;
 
 // ═══ TUI runner ═══
 
-pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, config: SessionConfig) -> anyhow::Result<()> {
+pub fn run(
+    cmd_tx: mpsc::Sender<BackendCmd>,
+    ui_rx: mpsc::Receiver<UiEvent>,
+    config: SessionConfig,
+) -> anyhow::Result<()> {
     use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
     use crossterm::execute;
-    use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+    use crossterm::terminal::{
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    };
     use ratatui::Terminal;
     use std::io;
     use std::time::Duration;
@@ -102,53 +115,79 @@ pub fn run(cmd_tx: mpsc::Sender<BackendCmd>, ui_rx: mpsc::Receiver<UiEvent>, con
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(cmd_tx, ui_rx, &config);
     // Auto-load previous session if available
-    if let Ok(Some(session)) = crate::session::Session::load("autosave") {
-        let lines: Vec<String> = session.messages_jsonl.lines().map(|s| s.to_string()).collect();
-        if !lines.is_empty() { app.load_output(lines); }
+    if let Ok(Some((_, lines))) = radiumical_core::session::Session::load("autosave") {
+        if !lines.is_empty() {
+            app.load_output(lines);
+        }
     }
     let frame_time = Duration::from_nanos(16_666_667); // 60 FPS
     let mut term_size = terminal.size()?;
 
     let result = (|| -> anyhow::Result<()> {
-        let out_h_init = term_size.height.saturating_sub(7) as usize;
         let t0 = Instant::now();
-        terminal.draw(|f| draw::draw(f, &mut app, out_h_init))?;
-        crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
+        terminal.draw(|f| draw::draw(f, &mut app))?;
+        radiumical_core::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
         let mut next_frame = Instant::now() + frame_time;
         loop {
+            let hint_count = app.hints.len().min(8);
+            let input_lines = app.input.split('\n').count().max(1).min(5);
+            let bottom_h = ((input_lines + 2) + hint_count + 1)
+                .min(term_size.height.saturating_sub(1) as usize) as u16;
+            let out_h = term_size.height.saturating_sub(bottom_h).max(1) as usize;
+
             // Drain ALL pending input events (non-blocking batch)
             while crossterm::event::poll(Duration::ZERO)? {
                 match crossterm::event::read()? {
                     Event::Key(key) => app.handle_key(key),
-                    Event::Mouse(m) => app.handle_mouse(m.kind, m.row, m.column, 0),
-                    Event::Resize(w, h) => { term_size = ratatui::layout::Size { width: w, height: h }; }
+                    Event::Mouse(m) => {
+                        let output_top = term_size.height.saturating_sub(bottom_h) as u16;
+                        app.handle_mouse(m.kind, m.row, m.column, output_top);
+                    }
+                    Event::Resize(w, h) => {
+                        term_size = ratatui::layout::Size {
+                            width: w,
+                            height: h,
+                        };
+                    }
                     _ => {}
                 }
             }
-            while let Ok(ev) = app.ui_rx.try_recv() { app.handle_ui_event(ev); }
+            while let Ok(ev) = app.ui_rx.try_recv() {
+                app.handle_ui_event(ev);
+            }
 
-            let hint_count = app.hints.len().min(8);
-            let input_lines = app.input.split('\n').count().max(1).min(5);
-            let bottom_h = ((input_lines + 2) + hint_count + 1).min(term_size.height.saturating_sub(2) as usize) as u16;
-            let out_h = term_size.height.saturating_sub(bottom_h + 2) as usize;
             app.tick(out_h);
             let t0 = Instant::now();
-            terminal.draw(|f| draw::draw(f, &mut app, out_h))?;
-            crate::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
+            terminal.draw(|f| draw::draw(f, &mut app))?;
+            radiumical_core::perf::tick(t0.elapsed().as_micros() as u64, app.output.len());
 
-            if app.should_quit { break; }
+            if app.should_quit {
+                break;
+            }
             // Sleep to maintain exactly 60 FPS
             let now = Instant::now();
-            if now < next_frame { std::thread::sleep(next_frame - now); }
+            if now < next_frame {
+                std::thread::sleep(next_frame - now);
+            }
             next_frame = Instant::now() + frame_time;
         }
         Ok(())
     })();
 
     let jsonl = app.output.join("\n");
-    let _ = crate::session::Session::save("autosave", &jsonl, &app.model);
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    let desc = app.history.first().cloned();
+    let _ = radiumical_core::session::Session::save(
+        "autosave",
+        &jsonl,
+        &app.model,
+        desc.as_deref(),
+    );
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     disable_raw_mode()?;
     result
 }

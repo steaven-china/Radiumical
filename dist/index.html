@@ -5,82 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radiumical</title>
 <style>
-:root { --bg: #000; --panel: #111; --text: #ccc; --accent: #fff; --dim: #555; --border: #222; }
+:root { --bg:#000; --panel:#111; --text:#ccc; --accent:#fff; --dim:#555; --border:#222; }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font:14px/1.6 'Segoe UI',system-ui,monospace; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
-#output { flex:1; overflow-y:auto; padding:16px 20px; }
-#output .line { padding:1px 0; }
-#output .cmd { color:var(--accent); }
-#output .think { color:var(--dim); font-style:italic; }
+body { font:14px/1.2 'Segoe UI',system-ui,monospace; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#output { flex:1; overflow-y:auto; padding:12px 16px; }
+#output .cmd { color:var(--accent); margin:4px 0; }
 #output .err { color:#f66; }
-#output .info { color:var(--dim); font-size:12px; }
-#input-wrap { border-top:1px solid var(--border); padding:12px 20px; background:var(--panel); display:flex; align-items:center; }
-#input-wrap .prompt { color:var(--accent); font-weight:bold; margin-right:8px; }
+#output .info { color:var(--dim); }
+#output strong { color:#fff; }
+#output em { color:#aaa; }
+#output code { background:#222; padding:1px 4px; border-radius:2px; color:#ff0; font-size:13px; }
+#output pre { background:#111; padding:8px; border-radius:4px; overflow-x:auto; font-size:12px; }
+#output pre code { background:none; padding:0; color:#ccc; }
+#output ul, #output ol { padding-left:20px; }
+#output h1,#output h2,#output h3 { color:#fff; margin:8px 0 4px; }
+#output table { border-collapse:collapse; margin:4px 0; font-size:12px; }
+#output th,#output td { border:1px solid #333; padding:4px 8px; text-align:left; }
+#output th { background:#111; color:#fff; }
+#output blockquote { border-left:2px solid #444; padding-left:8px; color:#888; margin:4px 0; }
+#output hr { border:none; border-top:1px solid #222; margin:8px 0; }
+#input-wrap { border-top:1px solid var(--border); padding:10px 16px; background:var(--panel); display:flex; align-items:center; }
+#input-wrap .prompt { color:var(--accent); font-weight:bold; margin-right:8px; user-select:none; }
 #input-wrap input { flex:1; background:transparent; border:none; color:var(--text); font:inherit; outline:none; }
 #input-wrap input::placeholder { color:var(--dim); }
-#status { padding:4px 20px; font-size:11px; color:var(--dim); display:flex; justify-content:space-between; border-top:1px solid #111; }
+#status { padding:4px 16px; font-size:11px; color:var(--dim); display:flex; justify-content:space-between; border-top:1px solid #111; }
 </style>
 </head>
 <body>
-<div id="output">
-  <div class="line">Radiumical <span class="info">— lean CLI coding agent</span></div>
-  <div class="line info">Type a task or /help to begin.</div>
-</div>
+<div id="output"><div class="info">Radiumical — lean CLI coding agent</div></div>
 <div id="input-wrap"><span class="prompt">></span><input id="cmd" placeholder="ask anything..." autofocus></div>
-<div id="status"><span id="think-status">ready</span><span id="model-info">deepseek-v4-pro | auto</span></div>
+<div id="status"><span id="think-status">ready</span><span id="model-info">deepseek-v4-pro</span></div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-const invoke = window.__TAURI__?.invoke || window.__TAURI__?.core?.invoke;
-if (!invoke) { document.getElementById('output').innerHTML += '<div class="err">Tauri API not loaded. Check CSP and withGlobalTauri.</div>'; }
 const out = document.getElementById('output');
 const cmd = document.getElementById('cmd');
-const think = document.getElementById('think-status');
-let buf = { current: '' };
-function add(text, cls) {
-  buf.current += text;
-  // Flush completed lines (split by \n)
-  while (buf.current.includes('\n')) {
-    const idx = buf.current.indexOf('\n');
-    const line = buf.current.slice(0, idx);
-    buf.current = buf.current.slice(idx + 1);
-    const d = document.createElement('div');
-    d.className = 'line ' + (cls || '');
-    d.textContent = line;
-    out.appendChild(d);
-  }
+let fullText = '';
+
+function renderAll() {
+  let html = marked.parse(fullText, { breaks: true, gfm: true });
+  out.innerHTML = html;
   out.scrollTop = out.scrollHeight;
 }
-function flush() {
-  if (buf.current) {
-    const d = document.createElement('div');
-    d.className = 'line';
-    d.textContent = buf.current;
-    out.appendChild(d);
-    buf.current = '';
-    out.scrollTop = out.scrollHeight;
-  }
-}
+
+function addChunk(text) { fullText += text; renderAll(); }
+
 cmd.onkeydown = async e => {
   if (e.key === 'Enter' && cmd.value.trim()) {
     const t = cmd.value.trim(); cmd.value = '';
-    add('> ' + t, 'cmd');
-    try {
-      add('', ''); // spacing
-      await invoke('run_task', { task: t });
-      add('', '');
-    } catch(err) {
-      add('Error: ' + (typeof err === 'string' ? err : JSON.stringify(err)), 'err');
-    }
+    fullText += '\n> **' + t + '**\n\n';
+    renderAll();
+    try { await invoke('run_task', { task: t }); } catch(err) { fullText += '\n<span class="err">Error: '+err+'</span>\n'; renderAll(); }
   }
 };
 
-// Listen for streaming events from backend (Tauri v2)
+const invoke = window.__TAURI__?.invoke || window.__TAURI__?.core?.invoke;
 (async () => {
   const { listen } = window.__TAURI__?.event || {};
   if (listen) {
-    await listen('llm-chunk', (e) => { add(e.payload, ''); });
-    await listen('tool-start', (e) => { flush(); add(e.payload, 'tool'); });
-    await listen('llm-done', () => { flush(); });
-    await listen('llm-error', (e) => { flush(); add(e.payload, 'err'); });
+    await listen('llm-chunk', (e) => { addChunk(e.payload); });
+    await listen('tool-start', (e) => { fullText += '\n<span class="info">'+e.payload+'</span>\n'; renderAll(); });
   }
 })();
 </script>

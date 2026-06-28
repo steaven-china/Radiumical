@@ -87,7 +87,8 @@ mod tests {
                     "path": "test.txt",
                     "old_text": old,
                     "new_text": new
-                }).to_string(),
+                })
+                .to_string(),
             },
         }
     }

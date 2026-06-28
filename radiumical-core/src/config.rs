@@ -28,8 +28,14 @@ impl Config {
             Ok(toml::from_str(&data)?)
         } else {
             Ok(Config {
-                model: None, provider: None, api_key: None, api_base: None,
-                heartbeat_secs: None, llm_timeout_secs: None, max_iterations: None, reasoning_effort: None,
+                model: None,
+                provider: None,
+                api_key: None,
+                api_base: None,
+                heartbeat_secs: None,
+                llm_timeout_secs: None,
+                max_iterations: None,
+                reasoning_effort: None,
             })
         }
     }
@@ -44,6 +50,8 @@ impl Config {
     /// Apply config over CLI args (CLI takes priority)
     #[allow(dead_code)]
     pub fn apply(&self, model: &mut String, _provider: &mut String) {
-        if let Some(ref m) = self.model { *model = m.clone(); }
+        if let Some(ref m) = self.model {
+            *model = m.clone();
+        }
     }
 }

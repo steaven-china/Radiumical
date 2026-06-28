@@ -16,13 +16,17 @@ pub struct BoardStack {
 }
 
 impl BoardStack {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Reserve space at a corner. Returns the y-offset for this board.
     pub fn push(&mut self, corner: Corner, w: u16, h: u16, area: Rect) -> Rect {
         let w = w.min(area.width.saturating_sub(2));
         let h = h.min(area.height.saturating_sub(2));
-        let total_h: u16 = self.boards.iter()
+        let total_h: u16 = self
+            .boards
+            .iter()
             .filter(|(c, _, _, _)| *c == corner)
             .map(|(_, _, _, bh)| bh + 1) // +1 gap
             .sum();
@@ -30,13 +34,24 @@ impl BoardStack {
             Corner::TopLeft => (0, total_h),
             Corner::TopRight => (area.width.saturating_sub(w), total_h),
             Corner::BottomLeft => (0, area.height.saturating_sub(h + total_h)),
-            Corner::BottomRight => (area.width.saturating_sub(w), area.height.saturating_sub(h + total_h)),
+            Corner::BottomRight => (
+                area.width.saturating_sub(w),
+                area.height.saturating_sub(h + total_h),
+            ),
         };
         self.boards.push((corner, 0, total_h, h));
-        Rect { x: area.x + x, y: area.y + y, width: w, height: h }
+        Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width: w,
+            height: h,
+        }
     }
 
-    #[allow(dead_code)] pub fn clear(&mut self) { self.boards.clear(); }
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        self.boards.clear();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,10 +85,19 @@ pub struct BoardState {
 impl BoardState {
     pub fn new(title: &str, w: u16, h: u16, corner: Corner) -> Self {
         Self {
-            w, h, min_w: 10, min_h: 3, max_w: 80, max_h: 40,
-            visible: true, corner, title: title.into(),
-            border_fg: Color::Rgb(80, 80, 90), show_border: true,
-            dragging: false, drag_start: None,
+            w,
+            h,
+            min_w: 10,
+            min_h: 3,
+            max_w: 80,
+            max_h: 40,
+            visible: true,
+            corner,
+            title: title.into(),
+            border_fg: Color::Rgb(80, 80, 90),
+            show_border: true,
+            dragging: false,
+            drag_start: None,
         }
     }
 
@@ -87,16 +111,25 @@ impl BoardState {
             Corner::BottomLeft => (0, area.height.saturating_sub(h)),
             Corner::BottomRight => (area.width.saturating_sub(w), area.height.saturating_sub(h)),
         };
-        Rect { x: area.x + x, y: area.y + y, width: w, height: h }
+        Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width: w,
+            height: h,
+        }
     }
 
     /// Check if a mouse position is on the border (within 1 cell of edge).
     pub fn hit_border(&self, mouse_x: u16, mouse_y: u16, area: Rect) -> bool {
         let r = self.rect(area);
-        mouse_x >= r.x && mouse_x < r.x + r.width
-            && mouse_y >= r.y && mouse_y < r.y + r.height
-            && (mouse_x == r.x || mouse_x == r.x + r.width - 1
-                || mouse_y == r.y || mouse_y == r.y + r.height - 1)
+        mouse_x >= r.x
+            && mouse_x < r.x + r.width
+            && mouse_y >= r.y
+            && mouse_y < r.y + r.height
+            && (mouse_x == r.x
+                || mouse_x == r.x + r.width - 1
+                || mouse_y == r.y
+                || mouse_y == r.y + r.height - 1)
     }
 
     /// Start dragging — save origin dimensions.
@@ -110,8 +143,12 @@ impl BoardState {
         if let Some((sx, sy, ow, oh)) = self.drag_start {
             let dx = mouse_x as i32 - sx as i32;
             let dy = mouse_y as i32 - sy as i32;
-            let new_w = (ow as i32 + dx).max(self.min_w as i32).min(self.max_w as i32) as u16;
-            let new_h = (oh as i32 + dy).max(self.min_h as i32).min(self.max_h as i32) as u16;
+            let new_w = (ow as i32 + dx)
+                .max(self.min_w as i32)
+                .min(self.max_w as i32) as u16;
+            let new_h = (oh as i32 + dy)
+                .max(self.min_h as i32)
+                .min(self.max_h as i32) as u16;
             self.w = new_w.min(area.width.saturating_sub(2));
             self.h = new_h.min(area.height.saturating_sub(2));
         }
@@ -124,8 +161,11 @@ impl BoardState {
     }
 
     /// Render with a dimmed background scrim behind the panel.
-    #[allow(dead_code)] pub fn render_scrim(&self, f: &mut Frame, area: Rect, content: Text) {
-        if !self.visible { return; }
+    #[allow(dead_code)]
+    pub fn render_scrim(&self, f: &mut Frame, area: Rect, content: Text) {
+        if !self.visible {
+            return;
+        }
         let r = self.rect(area);
         // Dimmed scrim behind panel only
         let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
@@ -135,15 +175,23 @@ impl BoardState {
 
     /// Render with auto-stacking (no overlap with other boards at same corner).
     pub fn render_stacked(&self, f: &mut Frame, area: Rect, content: Text, stack: &mut BoardStack) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
         let r = stack.push(self.corner, self.w, self.h, area);
         let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
         f.render_widget(scrim, r);
         let mut para = Paragraph::new(content).wrap(Wrap { trim: false });
         if self.show_border {
-            let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(self.border_fg));
-            let block = if self.title.is_empty() { block } else { block.title(self.title.as_str()) };
+            let block = if self.title.is_empty() {
+                block
+            } else {
+                block.title(self.title.as_str())
+            };
             para = para.block(block);
         }
         f.render_widget(para, r);
@@ -151,14 +199,23 @@ impl BoardState {
 
     /// Render using the persistent state.
     #[allow(dead_code)]
-    #[allow(dead_code)] pub fn render(&self, f: &mut Frame, area: Rect, content: Text) {
-        if !self.visible { return; }
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect, content: Text) {
+        if !self.visible {
+            return;
+        }
         let r = self.rect(area);
         let mut para = Paragraph::new(content).wrap(Wrap { trim: false });
         if self.show_border {
-            let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(self.border_fg));
-            let block = if self.title.is_empty() { block } else { block.title(self.title.as_str()) };
+            let block = if self.title.is_empty() {
+                block
+            } else {
+                block.title(self.title.as_str())
+            };
             para = para.block(block);
         }
         f.render_widget(para, r);
@@ -179,7 +236,8 @@ pub struct Board {
 
 // ── Toast: auto-dismiss notification ──
 
-#[allow(dead_code)] pub struct Toast {
+#[allow(dead_code)]
+pub struct Toast {
     pub message: String,
     pub level: ToastLevel,
     pub expires: std::time::Instant,
@@ -195,28 +253,43 @@ pub enum ToastLevel {
 
 impl Toast {
     pub fn new(msg: impl Into<String>, level: ToastLevel, duration: std::time::Duration) -> Self {
-        Self { message: msg.into(), level, expires: std::time::Instant::now() + duration }
+        Self {
+            message: msg.into(),
+            level,
+            expires: std::time::Instant::now() + duration,
+        }
     }
 
-    pub fn is_expired(&self) -> bool { std::time::Instant::now() > self.expires }
+    pub fn is_expired(&self) -> bool {
+        std::time::Instant::now() > self.expires
+    }
 
-    #[allow(dead_code)] pub fn render(&self, f: &mut Frame, area: Rect) {
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect) {
         let color = match self.level {
             ToastLevel::Info => Color::Cyan,
             ToastLevel::Warn => Color::Yellow,
             ToastLevel::Error => Color::Red,
         };
-        let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(color));
         let w = (self.message.len() + 4).min(area.width as usize - 4) as u16;
-        let r = Rect { x: area.x + area.width.saturating_sub(w + 2), y: area.y + 1, width: w, height: 3 };
+        let r = Rect {
+            x: area.x + area.width.saturating_sub(w + 2),
+            y: area.y + 1,
+            width: w,
+            height: 3,
+        };
         f.render_widget(Paragraph::new(self.message.as_str()).block(block), r);
     }
 }
 
 // ── ListBoard: selectable item list ──
 
-#[allow(dead_code)] pub struct ListBoard {
+#[allow(dead_code)]
+pub struct ListBoard {
     pub items: Vec<String>,
     pub selected: usize,
     pub title: String,
@@ -225,7 +298,12 @@ impl Toast {
 
 impl ListBoard {
     pub fn new(title: impl Into<String>) -> Self {
-        Self { items: Vec::new(), selected: 0, title: title.into(), visible: false }
+        Self {
+            items: Vec::new(),
+            selected: 0,
+            title: title.into(),
+            visible: false,
+        }
     }
 
     pub fn set_items(&mut self, items: Vec<String>) {
@@ -233,32 +311,63 @@ impl ListBoard {
         self.selected = 0;
     }
 
-    pub fn select_next(&mut self) { if !self.items.is_empty() { self.selected = (self.selected + 1) % self.items.len(); } }
-    pub fn select_prev(&mut self) { if !self.items.is_empty() { self.selected = (self.selected + self.items.len() - 1) % self.items.len(); } }
+    pub fn select_next(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 1) % self.items.len();
+        }
+    }
+    pub fn select_prev(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + self.items.len() - 1) % self.items.len();
+        }
+    }
 
-    pub fn current(&self) -> Option<&str> { self.items.get(self.selected).map(|s| s.as_str()) }
+    pub fn current(&self) -> Option<&str> {
+        self.items.get(self.selected).map(|s| s.as_str())
+    }
 
-    #[allow(dead_code)] pub fn render(&self, f: &mut Frame, area: Rect) {
-        if !self.visible || self.items.is_empty() { return; }
-        let lines: Vec<Line> = self.items.iter().enumerate().map(|(i, item)| {
-            let prefix = if i == self.selected { "* " } else { "  " };
-            let style = if i == self.selected {
-                Style::default().bg(Color::Rgb(50, 50, 60)).add_modifier(Modifier::BOLD)
-            } else { Style::default() };
-            Line::from(Span::styled(format!("{prefix}{item}"), style))
-        }).collect();
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect) {
+        if !self.visible || self.items.is_empty() {
+            return;
+        }
+        let lines: Vec<Line> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let prefix = if i == self.selected { "* " } else { "  " };
+                let style = if i == self.selected {
+                    Style::default()
+                        .bg(Color::Rgb(50, 50, 60))
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                Line::from(Span::styled(format!("{prefix}{item}"), style))
+            })
+            .collect();
         let h = (lines.len() as u16 + 2).min(area.height);
         let w = 40u16.min(area.width.saturating_sub(4));
-        let r = Rect { x: area.x + area.width.saturating_sub(w), y: area.y + area.height.saturating_sub(h), width: w, height: h };
-        let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-            .title(self.title.as_str()).border_style(Style::default().fg(Color::DarkGray));
+        let r = Rect {
+            x: area.x + area.width.saturating_sub(w),
+            y: area.y + area.height.saturating_sub(h),
+            width: w,
+            height: h,
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(self.title.as_str())
+            .border_style(Style::default().fg(Color::DarkGray));
         f.render_widget(Paragraph::new(Text::from(lines)).block(block), r);
     }
 }
 
 // ── ConfirmBoard: yes/no dialog ──
 
-#[allow(dead_code)] pub struct ConfirmBoard {
+#[allow(dead_code)]
+pub struct ConfirmBoard {
     pub message: String,
     pub visible: bool,
     pub yes_selected: bool,
@@ -266,27 +375,63 @@ impl ListBoard {
 
 impl ConfirmBoard {
     pub fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into(), visible: false, yes_selected: true }
+        Self {
+            message: msg.into(),
+            visible: false,
+            yes_selected: true,
+        }
     }
 
-    pub fn toggle(&mut self) { self.yes_selected = !self.yes_selected; }
+    pub fn toggle(&mut self) {
+        self.yes_selected = !self.yes_selected;
+    }
 
-    #[allow(dead_code)] pub fn render(&self, f: &mut Frame, area: Rect) {
-        if !self.visible { return; }
-        let yes_style = if self.yes_selected { Style::default().bg(Color::Rgb(50, 50, 60)).add_modifier(Modifier::BOLD) } else { Style::default() };
-        let no_style = if !self.yes_selected { Style::default().bg(Color::Rgb(50, 50, 60)).add_modifier(Modifier::BOLD) } else { Style::default() };
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect) {
+        if !self.visible {
+            return;
+        }
+        let yes_style = if self.yes_selected {
+            Style::default()
+                .bg(Color::Rgb(50, 50, 60))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        let no_style = if !self.yes_selected {
+            Style::default()
+                .bg(Color::Rgb(50, 50, 60))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
         let lines = vec![
             Line::from(Span::raw(&self.message)),
             Line::from(""),
-            Line::from(vec![Span::styled("  [ Yes ]", yes_style), Span::raw("  "), Span::styled("[ No ]", no_style)]),
+            Line::from(vec![
+                Span::styled("  [ Yes ]", yes_style),
+                Span::raw("  "),
+                Span::styled("[ No ]", no_style),
+            ]),
         ];
-        let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-            .title(" Confirm ").border_style(Style::default().fg(Color::Yellow));
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Confirm ")
+            .border_style(Style::default().fg(Color::Yellow));
         let h = 5u16;
         let w = (self.message.len() as u16 + 6).min(area.width - 4);
         let x = (area.width.saturating_sub(w)) / 2;
         let y = (area.height.saturating_sub(h)) / 2;
-        f.render_widget(Paragraph::new(Text::from(lines)).block(block), Rect { x: area.x + x, y: area.y + y, width: w, height: h });
+        f.render_widget(
+            Paragraph::new(Text::from(lines)).block(block),
+            Rect {
+                x: area.x + x,
+                y: area.y + y,
+                width: w,
+                height: h,
+            },
+        );
     }
 }
 
@@ -339,7 +484,8 @@ impl Board {
     /// Render content within this board.
     /// If overlay is set, content is placed at the specified corner of `area`.
     /// Otherwise, content fills `area`.
-    #[allow(dead_code)] pub fn render(&self, f: &mut Frame, area: Rect, content: Text) {
+    #[allow(dead_code)]
+    pub fn render(&self, f: &mut Frame, area: Rect, content: Text) {
         let render_area = if let Some((corner, w, h)) = self.overlay {
             let w = w.min(area.width.saturating_sub(2));
             let h = h.min(area.height.saturating_sub(2));
@@ -347,9 +493,16 @@ impl Board {
                 Corner::TopLeft => (0, 0),
                 Corner::TopRight => (area.width.saturating_sub(w), 0),
                 Corner::BottomLeft => (0, area.height.saturating_sub(h)),
-                Corner::BottomRight => (area.width.saturating_sub(w), area.height.saturating_sub(h)),
+                Corner::BottomRight => {
+                    (area.width.saturating_sub(w), area.height.saturating_sub(h))
+                }
             };
-            Rect { x: area.x + x, y: area.y + y, width: w, height: h }
+            Rect {
+                x: area.x + x,
+                y: area.y + y,
+                width: w,
+                height: h,
+            }
         } else {
             area
         };
@@ -385,7 +538,9 @@ impl Board {
                 ratatui::text::Line::from(vec![
                     ratatui::text::Span::styled(
                         format!("{n:<w$}", w = max_w),
-                        Style::default().fg(accent).add_modifier(ratatui::style::Modifier::BOLD),
+                        Style::default()
+                            .fg(accent)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
                     ),
                     ratatui::text::Span::raw(format!("  {d}")),
                 ])
@@ -412,18 +567,36 @@ pub struct ProgressBoard {
 
 impl ProgressBoard {
     pub fn new(label: impl Into<String>) -> Self {
-        Self { label: label.into(), progress: 0.0, visible: false }
+        Self {
+            label: label.into(),
+            progress: 0.0,
+            visible: false,
+        }
     }
 
     pub fn render(&self, f: &mut Frame, area: Rect) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
         let w = 30u16.min(area.width - 4);
         let bar_w = w.saturating_sub(2) as usize;
         let filled = (self.progress * bar_w as f32) as usize;
-        let bar = format!("[{}{}]", "█".repeat(filled), " ".repeat(bar_w.saturating_sub(filled)));
-        let r = Rect { x: area.x + area.width - w - 2, y: area.y + 1, width: w, height: 3 };
-        let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)
-            .title(self.label.as_str()).border_style(Style::default().fg(Color::Cyan));
+        let bar = format!(
+            "[{}{}]",
+            "█".repeat(filled),
+            " ".repeat(bar_w.saturating_sub(filled))
+        );
+        let r = Rect {
+            x: area.x + area.width - w - 2,
+            y: area.y + 1,
+            width: w,
+            height: 3,
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(self.label.as_str())
+            .border_style(Style::default().fg(Color::Cyan));
         f.render_widget(Paragraph::new(bar).block(block), r);
     }
 }
@@ -435,7 +608,12 @@ mod tests {
     #[test]
     fn test_boardstack_push() {
         let mut s = BoardStack::new();
-        let area = Rect { x: 0, y: 0, width: 80, height: 24 };
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
         let r1 = s.push(Corner::BottomRight, 30, 10, area);
         let r2 = s.push(Corner::BottomRight, 30, 8, area);
         // r2 should be above r1 (stacked)

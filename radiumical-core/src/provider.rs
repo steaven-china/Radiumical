@@ -169,7 +169,10 @@ impl Provider for OpenAICompatibleProvider {
                             .iter()
                             .map(|acc| ToolCall {
                                 id: acc.id.clone().unwrap_or_default(),
-                                call_type: acc.call_type.clone().unwrap_or_else(|| "function".into()),
+                                call_type: acc
+                                    .call_type
+                                    .clone()
+                                    .unwrap_or_else(|| "function".into()),
                                 function: crate::types::FunctionCall {
                                     name: acc.name.clone().unwrap_or_default(),
                                     arguments: acc.arguments.clone().unwrap_or_default(),
@@ -196,7 +199,10 @@ impl Provider for OpenAICompatibleProvider {
                                 .iter()
                                 .map(|acc| ToolCall {
                                     id: acc.id.clone().unwrap_or_default(),
-                                    call_type: acc.call_type.clone().unwrap_or_else(|| "function".into()),
+                                    call_type: acc
+                                        .call_type
+                                        .clone()
+                                        .unwrap_or_else(|| "function".into()),
                                     function: crate::types::FunctionCall {
                                         name: acc.name.clone().unwrap_or_default(),
                                         arguments: acc.arguments.clone().unwrap_or_default(),
@@ -296,14 +302,19 @@ impl Provider for UnsupportedProvider {
     }
 }
 
-pub fn create_provider(kind: &ProviderKind, api_base: Option<&str>, api_key: &str, model: &str) -> Arc<dyn Provider> {
+pub fn create_provider(
+    kind: &ProviderKind,
+    api_base: Option<&str>,
+    api_key: &str,
+    model: &str,
+) -> Arc<dyn Provider> {
     let base = api_base.unwrap_or_else(|| kind.default_base());
     match kind {
         ProviderKind::OpenAI | ProviderKind::Ollama => {
             Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
         }
-        ProviderKind::Anthropic => {
-            Arc::new(UnsupportedProvider { name: "anthropic".into() })
-        }
+        ProviderKind::Anthropic => Arc::new(UnsupportedProvider {
+            name: "anthropic".into(),
+        }),
     }
 }

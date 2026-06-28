@@ -1,0 +1,80 @@
+use crate::tui::app::App;
+use crate::tui::{LOGO, SLASH_COMMANDS};
+
+impl App {
+    pub(crate) fn show_help(&mut self) {
+        self.output.push("".into());
+        self.output.push("  Commands:".into());
+        let max_w = SLASH_COMMANDS
+            .iter()
+            .map(|(n, _)| n.len())
+            .max()
+            .unwrap_or(10);
+        for (n, d) in SLASH_COMMANDS {
+            self.output.push(format!("  {n:<w$}  {d}", w = max_w));
+        }
+        self.output.push("".into());
+        self.output.push("  Keys:".into());
+        self.output
+            .push("  PgUp/PgDn  Scroll | Up/Down  History".into());
+        self.output
+            .push("  Ctrl+W     Del word | Shift+Enter  Newline".into());
+        self.output
+            .push("  End        Jump to bottom (empty input)".into());
+        self.output
+            .push("  Mouse drag Scroll | PgUp/PgDn Scroll".into());
+        self.output.push("  Ctrl+C     Quit".into());
+        self.output.push(String::new());
+    }
+
+    pub(crate) fn show_settings(&mut self) {
+        self.output.push("".into());
+        self.output
+            .push(format!("  Provider : {}", self.provider_name));
+        self.output.push(format!("  Model    : {}", self.model));
+        self.output.push(format!("  Mode     : {:?}", self.mode));
+        self.output
+            .push(format!("  History  : {} items", self.history.len()));
+        self.output.push(String::new());
+    }
+
+    pub(crate) fn show_debug(&mut self, topic: &str) {
+        self.output.push(format!("> /debug {topic}"));
+        self.output.push(String::new());
+        match topic {
+            "logo" => {
+                for line in LOGO {
+                    self.output
+                        .push(format!("  [{:>2}] {line}", line.chars().count()));
+                }
+            }
+            "output" => {
+                self.output.push(format!(
+                    "  Lines: {} | Scroll: {:.1} | Stick: {}",
+                    self.output.len(),
+                    self.scroll,
+                    self.stick_to_bottom
+                ));
+            }
+            "blocks" => {
+                let blocks = crate::layout::measure_blocks(
+                    &self.output,
+                    80,
+                    self.show_full_reasoning,
+                );
+                self.output.push(format!("  Blocks: {}", blocks.len()));
+                for (i, b) in blocks.iter().enumerate() {
+                    self.output
+                        .push(format!("    [{i}] {:?} h={}", b.kind, b.height));
+                }
+            }
+            "" | "help" => {
+                self.output.push("  logo | output | blocks".into());
+            }
+            _ => {
+                self.output.push(format!("  Unknown: {topic}"));
+            }
+        }
+        self.output.push(String::new());
+    }
+}

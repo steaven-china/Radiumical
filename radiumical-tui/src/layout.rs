@@ -13,14 +13,25 @@ const BORDER: Color = Color::Rgb(80, 80, 90);
 
 // ── Block types ──
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum BlockKind {
     /// ASCII art logo (detected by █ characters)
     Logo,
     /// Code fence block
     CodeFence { lang: String },
     /// Table (buffered, fully measured)
-    Table { rows: Vec<Vec<String>>, widths: Vec<usize>, sep_idx: Option<usize> },
+    Table {
+        rows: Vec<Vec<String>>,
+        widths: Vec<usize>,
+        sep_idx: Option<usize>,
+    },
+    /// Tool call box (collapsible)
+    ToolCall {
+        name: String,
+        args: String,
+        result: String,
+        expanded: bool,
+    },
     /// Regular text (markdown)
     Text,
     /// Heading
@@ -46,7 +57,7 @@ pub struct Block {
 
 // ── Pass 1: measure ──
 
-pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
+pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: bool) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
     let mut i = 0;
 
@@ -58,47 +69,83 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
         if line.contains('█') && line.len() > 30 {
             let start = i;
             i += 1;
-            while i < output.len() && output[i].len() > 30
+            while i < output.len()
+                && output[i].len() > 30
                 && (output[i].contains('█') || output[i].contains('╚') || output[i].contains('╔'))
             {
                 i += 1;
             }
             let source = output[start..i].to_vec();
             let w = source.iter().map(|s| s.chars().count()).max().unwrap_or(0);
-            blocks.push(Block { kind: BlockKind::Logo, source_lines: source, width: w, height: i - start });
+            blocks.push(Block {
+                kind: BlockKind::Logo,
+                source_lines: source,
+                width: w,
+                height: i - start,
+            });
             continue;
         }
 
         // Code fence open
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            let lang = trimmed.trim_start_matches('`').trim_start_matches('~').trim().to_string();
+            let lang = trimmed
+                .trim_start_matches('`')
+                .trim_start_matches('~')
+                .trim()
+                .to_string();
             let start = i;
             i += 1;
             while i < output.len() {
                 let t = output[i].trim();
-                if t.starts_with("```") || t.starts_with("~~~") { i += 1; break; }
+                if t.starts_with("```") || t.starts_with("~~~") {
+                    i += 1;
+                    break;
+                }
                 i += 1;
             }
             let source = output[start..i].to_vec();
             let w = source.iter().map(|s| s.len()).max().unwrap_or(0);
-            blocks.push(Block { kind: BlockKind::CodeFence { lang }, source_lines: source, width: w, height: i - start });
+            // Render guarantees at least 2 lines (label + footer). During streaming
+            // the closing fence may be missing, so reserve space for it too.
+            let height = if source.len() >= 2
+                && (source.last().unwrap().trim().starts_with("```")
+                    || source.last().unwrap().trim().starts_with("~~~"))
+            {
+                source.len().max(2)
+            } else {
+                source.len() + 1
+            };
+            blocks.push(Block {
+                kind: BlockKind::CodeFence { lang },
+                source_lines: source,
+                width: w,
+                height,
+            });
             continue;
         }
 
         // Table
         if trimmed.starts_with('|') {
             let start = i;
-            while i < output.len() && output[i].trim().starts_with('|') { i += 1; }
+            while i < output.len() && output[i].trim().starts_with('|') {
+                i += 1;
+            }
             let source = output[start..i].to_vec();
             let (rows, widths, sep_idx) = measure_table(&source, area_width);
             let avail_width = (area_width as usize).saturating_sub(4).max(1);
             let adjusted_widths = fit_table_widths(&widths, avail_width);
-            let width = if widths.is_empty() { 0 } else { widths.iter().sum::<usize>() + widths.len() * 3 + 1 };
+            let width = if widths.is_empty() {
+                0
+            } else {
+                widths.iter().sum::<usize>() + widths.len() * 3 + 1
+            };
             let sep_count = sep_idx.map(|_| 1).unwrap_or(0);
             let data_rows = rows.len() - sep_count;
             let mut extra_lines = 0usize;
             for (ri, row) in rows.iter().enumerate() {
-                if sep_idx == Some(ri) { continue; }
+                if sep_idx == Some(ri) {
+                    continue;
+                }
                 let mut row_max_lines = 1usize;
                 for (ci, cell) in row.iter().enumerate() {
                     let col_w = adjusted_widths.get(ci).copied().unwrap_or(3);
@@ -109,13 +156,80 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
                 extra_lines += row_max_lines.saturating_sub(1);
             }
             let height = data_rows + 2 + sep_count + extra_lines;
-            blocks.push(Block { kind: BlockKind::Table { rows, widths, sep_idx }, source_lines: source, width, height });
+            blocks.push(Block {
+                kind: BlockKind::Table {
+                    rows,
+                    widths,
+                    sep_idx,
+                },
+                source_lines: source,
+                width,
+                height,
+            });
+            continue;
+        }
+
+        // Tool call box
+        if trimmed.starts_with('┌') && trimmed.contains('─') {
+            let start = i;
+            let name = trimmed
+                .trim_start_matches('┌')
+                .trim_start_matches('─')
+                .trim_end_matches('─')
+                .trim()
+                .to_string();
+            i += 1;
+            let mut content_lines = Vec::new();
+            while i < output.len() {
+                let t = output[i].trim();
+                if t.starts_with('└') {
+                    i += 1;
+                    break;
+                }
+                if let Some(body) = output[i].strip_prefix("  │  ") {
+                    content_lines.push(body.to_string());
+                } else if let Some(body) = output[i].strip_prefix("  │ ") {
+                    content_lines.push(body.to_string());
+                } else if let Some(body) = output[i].strip_prefix("│ ") {
+                    content_lines.push(body.to_string());
+                }
+                i += 1;
+            }
+            let source = output[start..i].to_vec();
+            let args = content_lines.first().cloned().unwrap_or_default();
+            let result = if content_lines.len() > 1 {
+                content_lines[1..].join("\n")
+            } else {
+                String::new()
+            };
+            blocks.push(Block {
+                kind: BlockKind::ToolCall {
+                    name,
+                    args,
+                    result,
+                    expanded: false,
+                },
+                source_lines: source,
+                width: 0,
+                height: 1,
+            });
             continue;
         }
 
         // Reasoning
         if line.starts_with("\x01") {
-            blocks.push(Block { kind: BlockKind::Reasoning, source_lines: vec![line.clone()], width: line.len(), height: 1 });
+            let raw = line[1..].trim_start_matches("[思考] ").trim();
+            let height = if show_full_reasoning {
+                raw.lines().count().max(1)
+            } else {
+                1
+            };
+            blocks.push(Block {
+                kind: BlockKind::Reasoning,
+                source_lines: vec![line.clone()],
+                width: line.len(),
+                height,
+            });
             i += 1;
             continue;
         }
@@ -125,7 +239,12 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
             let level = rest.chars().take_while(|c| *c == '#').count() + 1;
             if level <= 6 && rest.as_bytes().get(level - 1) == Some(&b' ') {
                 let w = rest[level..].chars().count();
-                blocks.push(Block { kind: BlockKind::Heading { level }, source_lines: vec![line.clone()], width: w, height: 1 });
+                blocks.push(Block {
+                    kind: BlockKind::Heading { level },
+                    source_lines: vec![line.clone()],
+                    width: w,
+                    height: 1,
+                });
                 i += 1;
                 continue;
             }
@@ -134,7 +253,12 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
         // Blockquote
         if let Some(rest) = trimmed.strip_prefix("> ") {
             let w = rest.chars().count() + 2;
-            blocks.push(Block { kind: BlockKind::Blockquote, source_lines: vec![line.clone()], width: w, height: 1 });
+            blocks.push(Block {
+                kind: BlockKind::Blockquote,
+                source_lines: vec![line.clone()],
+                width: w,
+                height: 1,
+            });
             i += 1;
             continue;
         }
@@ -142,7 +266,12 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
         // Unordered list
         if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
             let w = trimmed[2..].chars().count() + 4;
-            blocks.push(Block { kind: BlockKind::ListItem, source_lines: vec![line.clone()], width: w, height: 1 });
+            blocks.push(Block {
+                kind: BlockKind::ListItem,
+                source_lines: vec![line.clone()],
+                width: w,
+                height: 1,
+            });
             i += 1;
             continue;
         }
@@ -153,7 +282,12 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
                 let num_end = trimmed.find(rest).unwrap_or(0);
                 let num = trimmed[..num_end].to_string();
                 let w = rest[2..].chars().count() + num.len() + 4;
-                blocks.push(Block { kind: BlockKind::OrderedItem { num }, source_lines: vec![line.clone()], width: w, height: 1 });
+                blocks.push(Block {
+                    kind: BlockKind::OrderedItem { num },
+                    source_lines: vec![line.clone()],
+                    width: w,
+                    height: 1,
+                });
                 i += 1;
                 continue;
             }
@@ -161,25 +295,43 @@ pub fn measure_blocks(output: &[String], area_width: u16) -> Vec<Block> {
 
         // Regular text (including blank lines — must preserve spacing)
         let w = if trimmed.is_empty() { 0 } else { trimmed.len() };
-        blocks.push(Block { kind: BlockKind::Text, source_lines: vec![line.clone()], width: w, height: 1 });
+        blocks.push(Block {
+            kind: BlockKind::Text,
+            source_lines: vec![line.clone()],
+            width: w,
+            height: 1,
+        });
         i += 1;
     }
 
     blocks
 }
 
-fn measure_table(source: &[String], _area_width: u16) -> (Vec<Vec<String>>, Vec<usize>, Option<usize>) {
-    let rows: Vec<Vec<String>> = source.iter()
-        .map(|line| line.trim().trim_matches('|').split('|').map(|c| c.trim().to_string()).collect())
+fn measure_table(
+    source: &[String],
+    _area_width: u16,
+) -> (Vec<Vec<String>>, Vec<usize>, Option<usize>) {
+    let rows: Vec<Vec<String>> = source
+        .iter()
+        .map(|line| {
+            line.trim()
+                .trim_matches('|')
+                .split('|')
+                .map(|c| c.trim().to_string())
+                .collect()
+        })
         .collect();
     let col_count = rows.iter().map(|r| r.len()).max().unwrap_or(1);
     let mut widths = vec![3; col_count];
     // Identify Markdown separator row: every non-empty cell contains only '-' and/or ':'
     let sep_idx = rows.iter().position(|r| {
-        r.iter().all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':'))
+        r.iter()
+            .all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':'))
     });
     for (ri, row) in rows.iter().enumerate() {
-        if sep_idx == Some(ri) { continue; }
+        if sep_idx == Some(ri) {
+            continue;
+        }
         for (ci, cell) in row.iter().enumerate() {
             if ci < col_count {
                 let stripped = strip_markdown(cell);
@@ -199,19 +351,22 @@ fn strip_markdown(text: &str) -> String {
         if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
             if let Some(end) = find_md_pair(&chars, i + 2, "**") {
                 out.push_str(&chars[i + 2..end].iter().collect::<String>());
-                i = end + 2; continue;
+                i = end + 2;
+                continue;
             }
         }
         if chars[i] == '*' && (i == 0 || chars[i - 1] != '*') {
             if let Some(end) = find_md_single(&chars, i + 1, '*') {
                 out.push_str(&chars[i + 1..end].iter().collect::<String>());
-                i = end + 1; continue;
+                i = end + 1;
+                continue;
             }
         }
         if chars[i] == '`' {
             if let Some(end) = find_md_single(&chars, i + 1, '`') {
                 out.push_str(&chars[i + 1..end].iter().collect::<String>());
-                i = end + 1; continue;
+                i = end + 1;
+                continue;
             }
         }
         out.push(chars[i]);
@@ -223,13 +378,18 @@ fn strip_markdown(text: &str) -> String {
 fn find_md_pair(chars: &[char], start: usize, d: &str) -> Option<usize> {
     let d: Vec<char> = d.chars().collect();
     for i in start..chars.len().saturating_sub(1) {
-        if chars[i] == d[0] && chars[i + 1] == d[1] { return Some(i); }
+        if chars[i] == d[0] && chars[i + 1] == d[1] {
+            return Some(i);
+        }
     }
     None
 }
 
 fn find_md_single(chars: &[char], start: usize, d: char) -> Option<usize> {
-    chars[start..].iter().position(|&c| c == d).map(|p| start + p)
+    chars[start..]
+        .iter()
+        .position(|&c| c == d)
+        .map(|p| start + p)
 }
 
 // ── Table width fitting ──
@@ -240,12 +400,20 @@ fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
         return widths.to_vec();
     }
     let scale = avail as f32 / total as f32;
-    let mut result: Vec<usize> = widths.iter().map(|&w| ((w as f32 * scale).max(3.0) as usize).min(w)).collect();
+    let mut result: Vec<usize> = widths
+        .iter()
+        .map(|&w| ((w as f32 * scale).max(3.0) as usize).min(w))
+        .collect();
     // Ensure we don't exceed avail after rounding
     let result_total = result.iter().sum::<usize>() + result.len() * 3 + 1;
     if result_total > avail && !result.is_empty() {
         let excess = result_total - avail;
-        let max_idx = result.iter().enumerate().max_by_key(|(_, &w)| w).map(|(i, _)| i).unwrap_or(0);
+        let max_idx = result
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &w)| w)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
         result[max_idx] = result[max_idx].saturating_sub(excess).max(3);
     }
     result
@@ -314,15 +482,13 @@ fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
 // ── Pass 2: render blocks ──
 
 impl Block {
-    /// Render only lines [skip..skip+take] for efficient viewport rendering.
-    pub fn render_range(&self, area_width: u16, frame: usize, markdown: &mut crate::markdown::MarkdownRenderer, show_full: bool, skip: usize, take: usize) -> Vec<Line<'static>> {
-        let all = self.render(area_width, frame, markdown, show_full);
-        let start = skip.min(all.len());
-        let end = (start + take).min(all.len());
-        all[start..end].to_vec()
-    }
-
-    pub fn render(&self, _area_width: u16, _frame: usize, _markdown: &mut crate::markdown::MarkdownRenderer, show_full: bool) -> Vec<Line<'static>> {
+    pub fn render(
+        &self,
+        _area_width: u16,
+        _frame: usize,
+        _markdown: &mut crate::markdown::MarkdownRenderer,
+        show_full: bool,
+    ) -> Vec<Line<'static>> {
         match &self.kind {
             BlockKind::Logo => {
                 // Breathing color: slow hue shift per line
@@ -334,27 +500,43 @@ impl Block {
                         (180.0 + 40.0 * (phase + 4.0).sin()) as u8,
                     )
                 };
-                self.source_lines.iter().enumerate().map(|(i, s)| {
-                    Line::from(Span::styled(s.clone(), Style::default().fg(breathe(i))))
-                }).collect()
+                self.source_lines
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| {
+                        Line::from(Span::styled(s.clone(), Style::default().fg(breathe(i))))
+                    })
+                    .collect()
             }
 
             BlockKind::CodeFence { lang } => {
-                let label = if lang.is_empty() { "─".into() } else { format!(" {lang} ") };
-                let mut lines: Vec<Line> = vec![Line::from(Span::styled(label, Style::default().fg(DIM)))];
-                // Safety: only render code content if fence has enough lines
+                let label = if lang.is_empty() {
+                    "─".into()
+                } else {
+                    format!(" {lang} ")
+                };
+                let mut lines: Vec<Line> =
+                    vec![Line::from(Span::styled(label, Style::default().fg(DIM)))];
                 if self.source_lines.len() > 2 {
-                    let code: String = self.source_lines[1..self.source_lines.len().saturating_sub(1)].join("\n");
-                    let highlighted = crate::highlight::highlight_code(&code, lang);
-                    for line in highlighted.lines() {
-                        lines.push(Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(180, 180, 190)))));
+                    let code: String =
+                        self.source_lines[1..self.source_lines.len().saturating_sub(1)].join("\n");
+                    let rows = radiumical_core::highlight::highlight_code(&code, lang);
+                    for row in rows {
+                        lines.push(Line::from(row));
                     }
                 }
-                lines.push(Line::from(Span::styled("─".to_string(), Style::default().fg(DIM))));
+                lines.push(Line::from(Span::styled(
+                    "─".to_string(),
+                    Style::default().fg(DIM),
+                )));
                 lines
             }
 
-            BlockKind::Table { rows, widths, sep_idx } => {
+            BlockKind::Table {
+                rows,
+                widths,
+                sep_idx,
+            } => {
                 let mut lines = Vec::new();
                 let avail_width = (_area_width as usize).saturating_sub(4).max(1);
                 let adjusted_widths = fit_table_widths(widths, avail_width);
@@ -375,11 +557,14 @@ impl Block {
                         cell_lines.push(wrapped);
                     }
                     for li in 0..max_lines {
-                        let mut spans = vec![Span::raw("  "), Span::styled("│", Style::default().fg(BORDER))];
+                        let mut spans = vec![
+                            Span::raw("  "),
+                            Span::styled("│", Style::default().fg(BORDER)),
+                        ];
                         for (ci, cell_wrapped) in cell_lines.iter().enumerate() {
                             let col_w = adjusted_widths.get(ci).copied().unwrap_or(3);
                             let cell_text = cell_wrapped.get(li).map(|s| s.as_str()).unwrap_or("");
-                            let cell_spans = crate::markdown::render_inline(cell_text);
+                            let cell_spans = _markdown.render_inline_cached(cell_text);
                             spans.push(Span::raw(" "));
                             let mut remaining = col_w;
                             for cs in cell_spans {
@@ -411,23 +596,36 @@ impl Block {
                 let s = self.source_lines[0].trim();
                 let rest = s.strip_prefix(&"#".repeat(*level)).unwrap_or(s);
                 let rest = rest.strip_prefix(' ').unwrap_or(rest);
-                let color = if *level <= 2 { Color::Cyan } else { Color::Blue };
-                vec![Line::from(Span::styled(rest.to_string(), Style::default().fg(color).add_modifier(Modifier::BOLD)))]
+                let color = if *level <= 2 {
+                    Color::Cyan
+                } else {
+                    Color::Blue
+                };
+                vec![Line::from(Span::styled(
+                    rest.to_string(),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                ))]
             }
 
             BlockKind::ListItem => {
                 let s = self.source_lines[0].trim();
                 let rest = &s[2..];
                 let mut spans = vec![Span::styled("  • ", Style::default().fg(Color::Green))];
-                spans.extend(crate::markdown::render_inline(rest));
+                spans.extend(_markdown.render_inline_cached(rest));
                 vec![Line::from(spans)]
             }
 
             BlockKind::OrderedItem { num } => {
                 let s = self.source_lines[0].trim();
-                let rest = s.strip_prefix(&format!("{num}. ")).or_else(|| s.strip_prefix(&format!("{num}) "))).unwrap_or("");
-                let mut spans = vec![Span::styled(format!("  {num}. "), Style::default().fg(Color::Green))];
-                spans.extend(crate::markdown::render_inline(rest));
+                let rest = s
+                    .strip_prefix(&format!("{num}. "))
+                    .or_else(|| s.strip_prefix(&format!("{num}) ")))
+                    .unwrap_or("");
+                let mut spans = vec![Span::styled(
+                    format!("  {num}. "),
+                    Style::default().fg(Color::Green),
+                )];
+                spans.extend(_markdown.render_inline_cached(rest));
                 vec![Line::from(spans)]
             }
 
@@ -435,34 +633,150 @@ impl Block {
                 let s = self.source_lines[0].trim();
                 let rest = &s[2..];
                 let mut spans = vec![Span::styled("│ ", Style::default().fg(DIM))];
-                spans.extend(crate::markdown::render_inline(rest));
+                spans.extend(_markdown.render_inline_cached(rest));
                 vec![Line::from(spans)]
             }
 
             BlockKind::Reasoning => {
                 let s = &self.source_lines[0];
                 let raw = s[1..].trim_start_matches("[思考] ").trim();
-                let display = if show_full { format!("[思考] {raw}") } else { let preview: String = raw.chars().take(40).collect(); let dots = if raw.chars().count() > 40 { "…" } else { "" }; format!("[思考] {preview}{dots}") };
-                vec![Line::from(Span::styled(display, Style::default().fg(Color::Rgb(170, 170, 180)).bg(Color::Rgb(35, 35, 42))))]
+                let style = Style::default()
+                    .fg(Color::Rgb(170, 170, 180))
+                    .bg(Color::Rgb(35, 35, 42));
+                if show_full {
+                    raw.lines()
+                        .map(|l| {
+                            Line::from(Span::styled(
+                                format!("[思考] {l}"),
+                                style,
+                            ))
+                        })
+                        .collect()
+                } else {
+                    let preview: String = raw.chars().take(40).collect();
+                    let dots = if raw.chars().count() > 40 { "…" } else { "" };
+                    vec![Line::from(Span::styled(
+                        format!("[思考] {preview}{dots}"),
+                        style,
+                    ))]
+                }
+            }
+
+            BlockKind::ToolCall {
+                name,
+                args,
+                result,
+                expanded,
+            } => {
+                let result_lines: Vec<String> = result
+                    .lines()
+                    .map(|l| l.replace('\t', "    "))
+                    .collect();
+                let max_content = args
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .count()
+                    .max(result_lines.iter().map(|l| l.chars().count()).max().unwrap_or(0));
+                let inner = max_content.max(56 - 4);
+
+                let args_clean = if args.is_empty() {
+                    String::new()
+                } else {
+                    let max_args = inner.saturating_sub(2);
+                    let first: String =
+                        args.lines().next().unwrap_or("").chars().take(max_args).collect();
+                    let dots = if args.lines().next().unwrap_or("").chars().count() > max_args {
+                        "…"
+                    } else {
+                        ""
+                    };
+                    format!("{first}{dots}").replace("\\\\", "\\")
+                };
+
+                let top_fill = inner.saturating_sub(name.len() + 3);
+                let top = format!("  ┌─ {name} {}┐", "─".repeat(top_fill));
+                if !*expanded {
+                    return vec![Line::from(Span::styled(top, Style::default().fg(BORDER)))];
+                }
+
+                let mut lines = Vec::new();
+                lines.push(Line::from(Span::styled(top, Style::default().fg(BORDER))));
+
+                // args line with 2-space indent
+                let args_pad = inner.saturating_sub(args_clean.chars().count() + 2);
+                lines.push(Line::from(Span::styled(
+                    format!("  │  {args_clean}{}│", " ".repeat(args_pad)),
+                    Style::default().fg(BORDER),
+                )));
+
+                // result lines flush left (1-space indent), truncated to fit
+                let max_line = inner.saturating_sub(1);
+                for line in &result_lines {
+                    let truncated: String = line.chars().take(max_line).collect();
+                    let pad = inner.saturating_sub(truncated.chars().count() + 1);
+                    lines.push(Line::from(Span::styled(
+                        format!("  │ {truncated}{}│", " ".repeat(pad)),
+                        Style::default().fg(BORDER),
+                    )));
+                }
+
+                lines.push(Line::from(Span::styled(
+                    format!("  └{}┘", "─".repeat(inner)),
+                    Style::default().fg(BORDER),
+                )));
+                lines
             }
 
             BlockKind::Text => {
-                let s = self.source_lines[0].trim();
-                if s.is_empty() { return vec![Line::from("")]; }
+                let raw = &self.source_lines[0];
+                let leading = raw.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+                let s = raw.trim_start();
+                if s.is_empty() {
+                    return vec![Line::from("")];
+                }
                 // Diff highlighting
                 if let Some(rest) = s.strip_prefix("+ ") {
-                    return vec![Line::from(Span::styled(format!("+ {rest}"), Style::default().fg(Color::Green)))];
+                    return vec![Line::from(vec![
+                        Span::raw(leading),
+                        Span::styled(
+                            format!("+ {rest}"),
+                            Style::default().fg(Color::Green),
+                        ),
+                    ])];
                 }
                 if let Some(rest) = s.strip_prefix("- ") {
-                    return vec![Line::from(Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)))];
+                    return vec![Line::from(vec![
+                        Span::raw(leading),
+                        Span::styled(
+                            format!("- {rest}"),
+                            Style::default().fg(Color::Red),
+                        ),
+                    ])];
                 }
                 // Truncate read_file output (lines matching "  NNN | ..."), Ctrl+O to expand
-                if !show_full && s.len() > 40 && s.get(7..9) == Some("| ") && s[..6].chars().all(|c| c == ' ' || c.is_ascii_digit()) {
+                if !show_full
+                    && s.len() > 40
+                    && s.get(7..9) == Some("| ")
+                    && s[..6].chars().all(|c| c == ' ' || c.is_ascii_digit())
+                {
                     let preview: String = s.chars().take(40).collect();
-                    return vec![Line::from(Span::styled(format!("{preview}…"), Style::default().fg(Color::DarkGray)))];
+                    return vec![Line::from(vec![
+                        Span::raw(leading),
+                        Span::styled(
+                            format!("{preview}…"),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ])];
                 }
-                let spans = crate::markdown::render_inline(s);
-                if spans.is_empty() { vec![Line::from("")] } else { vec![Line::from(spans)] }
+                let mut spans = vec![Span::raw(leading)];
+                spans.extend(_markdown.render_inline_cached(s));
+                if spans.len() <= 1 {
+                    vec![Line::from("")]
+                } else {
+                    vec![Line::from(spans)]
+                }
             }
         }
     }
@@ -472,7 +786,9 @@ fn border_line(left: &str, mid: &str, right: &str, fill: &str, cols: &[usize]) -
     let mut s = String::from(left);
     for (i, &w) in cols.iter().enumerate() {
         s.push_str(&fill.repeat(w + 2));
-        if i < cols.len() - 1 { s.push_str(mid); }
+        if i < cols.len() - 1 {
+            s.push_str(mid);
+        }
     }
     s.push_str(right);
     Line::from(Span::styled(format!("  {s}"), Style::default().fg(BORDER)))
@@ -495,7 +811,12 @@ fn data_line(cells: &[String], cols: &[usize]) -> Line<'static> {
                 remaining -= cw;
             } else {
                 // Truncate: take only what fits and append "…"
-                let text: String = cs.content.as_ref().chars().take(remaining.saturating_sub(1)).collect();
+                let text: String = cs
+                    .content
+                    .as_ref()
+                    .chars()
+                    .take(remaining.saturating_sub(1))
+                    .collect();
                 if !text.is_empty() {
                     spans.push(Span::styled(text, cs.style));
                 }
@@ -508,7 +829,9 @@ fn data_line(cells: &[String], cols: &[usize]) -> Line<'static> {
             spans.push(Span::raw(" ".repeat(remaining)));
         }
         spans.push(Span::raw(" "));
-        if i < cols.len() - 1 { spans.push(edge.clone()); }
+        if i < cols.len() - 1 {
+            spans.push(edge.clone());
+        }
     }
     spans.push(edge);
     Line::from(spans)
@@ -532,11 +855,15 @@ mod tests {
             "1. Ordered item".to_string(),
         ];
 
-        let blocks = measure_blocks(&input, 80);
+        let blocks = measure_blocks(&input, 80, false);
         let mut md = MarkdownRenderer::new();
 
         // Verify block kinds
-        assert_eq!(blocks.len(), 6, "should have 6 blocks (heading, blank, text, blockquote, list, ordered)");
+        assert_eq!(
+            blocks.len(),
+            6,
+            "should have 6 blocks (heading, blank, text, blockquote, list, ordered)"
+        );
         assert!(matches!(blocks[0].kind, BlockKind::Heading { level: 2 }));
         assert!(matches!(blocks[1].kind, BlockKind::Text)); // blank line
         assert!(matches!(blocks[2].kind, BlockKind::Text));
@@ -560,17 +887,24 @@ mod tests {
             "| Bob | *Viewer* | ❌ inactive |".to_string(),
         ];
 
-        let blocks = measure_blocks(&input, 80);
+        let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
         let block = &blocks[0];
 
         match &block.kind {
-            BlockKind::Table { rows, widths, sep_idx: _ } => {
+            BlockKind::Table {
+                rows,
+                widths,
+                sep_idx: _,
+            } => {
                 assert_eq!(rows.len(), 4, "4 table rows");
                 assert_eq!(widths.len(), 3, "3 columns");
                 // Check that widths account for markdown stripping
                 assert!(widths[0] >= 5, "Name column should be >= width 5 (Alice)");
-                assert!(widths[1] >= 4, "Role column should be >= width 4 (Viewer stripped)");
+                assert!(
+                    widths[1] >= 4,
+                    "Role column should be >= width 4 (Viewer stripped)"
+                );
                 println!("test_table widths: {:?}", widths);
             }
             _ => panic!("expected Table block"),
@@ -579,18 +913,35 @@ mod tests {
         let mut md = MarkdownRenderer::new();
         let lines = block.render(80, 0, &mut md, false);
         // Should have: top border + header + sep border + 2 data rows + bottom border = 6 lines
-        assert_eq!(lines.len(), 6, "table should render 6 lines (borders + header + sep + 2 data)");
+        assert_eq!(
+            lines.len(),
+            6,
+            "table should render 6 lines (borders + header + sep + 2 data)"
+        );
 
         // Verify border characters
         let top = &lines[0].spans[0].content;
-        assert!(top.contains('┌'), "top border should start with ┌, got: {top}");
+        assert!(
+            top.contains('┌'),
+            "top border should start with ┌, got: {top}"
+        );
         let bottom = &lines[5].spans[0].content;
-        assert!(bottom.contains('└'), "bottom border should start with └, got: {bottom}");
+        assert!(
+            bottom.contains('└'),
+            "bottom border should start with └, got: {bottom}"
+        );
 
         // Verify data is present (index 3 = Alice row)
-        let alice_line = &lines[3].spans.iter().map(|s| &*s.content).collect::<String>();
+        let alice_line = &lines[3]
+            .spans
+            .iter()
+            .map(|s| &*s.content)
+            .collect::<String>();
         assert!(alice_line.contains("Alice"), "should contain Alice");
-        assert!(alice_line.contains("Admin"), "should contain Admin (bold stripped in border but rendered in data)");
+        assert!(
+            alice_line.contains("Admin"),
+            "should contain Admin (bold stripped in border but rendered in data)"
+        );
     }
 
     #[test]
@@ -603,7 +954,7 @@ mod tests {
             "```".to_string(),
         ];
 
-        let blocks = measure_blocks(&input, 80);
+        let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::CodeFence { .. }));
 
@@ -615,29 +966,38 @@ mod tests {
     #[test]
     fn test_logo_block_detected() {
         let input = vec![
-            "██████╗  █████╗ ██████╗ ██╗██╗   ██╗███╗   ███╗██╗ ██████╗ █████╗ ██╗     ".to_string(),
-            "██╔══██╗██╔══██╗██╔══██╗██║██║   ██║████╗ ████║██║██╔════╝██╔══██╗██║     ".to_string(),
+            "██████╗  █████╗ ██████╗ ██╗██╗   ██╗███╗   ███╗██╗ ██████╗ █████╗ ██╗     "
+                .to_string(),
+            "██╔══██╗██╔══██╗██╔══██╗██║██║   ██║████╗ ████║██║██╔════╝██╔══██╗██║     "
+                .to_string(),
         ];
 
-        let blocks = measure_blocks(&input, 80);
+        let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::Logo));
     }
 
     #[test]
     fn test_reasoning_block() {
-        let input = vec![
-            "\x01[思考] Analyzing code structure...".to_string(),
-        ];
+        let input = vec!["\x01[思考] Analyzing code structure...".to_string()];
 
-        let blocks = measure_blocks(&input, 80);
+        let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::Reasoning));
+        assert_eq!(blocks[0].height, 1, "collapsed reasoning height should be 1");
 
         let mut md = MarkdownRenderer::new();
         let lines = blocks[0].render(80, 0, &mut md, false);
         let content = &lines[0].spans[0].content;
         assert!(content.contains("[思考]"), "should contain [思考]");
+
+        // Expanded multi-line reasoning
+        let multi = vec!["\x01[思考] line one\nline two\nline three".to_string()];
+        let blocks_full = measure_blocks(&multi, 80, true);
+        assert_eq!(blocks_full.len(), 1);
+        assert_eq!(blocks_full[0].height, 3, "expanded reasoning height should match line count");
+        let lines_full = blocks_full[0].render(80, 0, &mut md, true);
+        assert_eq!(lines_full.len(), 3, "expanded reasoning should render 3 lines");
     }
 
     #[test]
@@ -688,18 +1048,30 @@ mod tests {
             "  PgUp/PgDn  Scroll | Up/Down  History".to_string(),
             "  Ctrl+W     Del word | Shift+Enter  Newline".to_string(),
             "  End        Jump to bottom (empty input)".to_string(),
-            "  Mouse drag Select | Ctrl+Shift+C  Copy".to_string(),
+            "  Mouse drag Scroll | PgUp/PgDn Scroll".to_string(),
             "  Ctrl+C     Quit".to_string(),
             "".to_string(),
         ];
 
-        let blocks = measure_blocks(&output, 80);
+        let blocks = measure_blocks(&output, 80, false);
         let total_h: usize = blocks.iter().map(|b| b.height).sum();
         // For text-only output, total block height must equal raw line count
-        assert_eq!(total_h, output.len(), "block height sum ({}) must equal output line count ({})", total_h, output.len());
+        assert_eq!(
+            total_h,
+            output.len(),
+            "block height sum ({}) must equal output line count ({})",
+            total_h,
+            output.len()
+        );
 
         // Every line must produce exactly one block (no accidental merging)
-        assert_eq!(blocks.len(), output.len(), "each line should be its own block, got {} blocks for {} lines", blocks.len(), output.len());
+        assert_eq!(
+            blocks.len(),
+            output.len(),
+            "each line should be its own block, got {} blocks for {} lines",
+            blocks.len(),
+            output.len()
+        );
 
         // Simulate draw_output viewport logic (stick_to_bottom)
         let vis = 15usize; // small terminal
@@ -712,24 +1084,43 @@ mod tests {
         for block in &blocks {
             let block_end = line_offset + block.height;
             if block_end > start && line_offset < end {
-                let skip = if line_offset < start { start - line_offset } else { 0 };
+                let skip = if line_offset < start {
+                    start - line_offset
+                } else {
+                    0
+                };
                 let take = vis.saturating_sub(rendered);
-                let block_lines = block.render_range(80, 0, &mut crate::markdown::MarkdownRenderer::new(), false, skip, take);
+                let all_lines =
+                    block.render(80, 0, &mut crate::markdown::MarkdownRenderer::new(), false);
+                let block_start = skip.min(all_lines.len());
+                let block_end_idx = (block_start + take).min(all_lines.len());
+                let block_lines = all_lines[block_start..block_end_idx].to_vec();
                 rendered += block_lines.len();
             }
             line_offset = block_end;
-            if rendered >= vis { break; }
+            if rendered >= vis {
+                break;
+            }
         }
 
         // We should have rendered exactly 'vis' lines (or all remaining if fewer)
         let expected = vis.min(total.saturating_sub(start));
-        assert_eq!(rendered, expected, "viewport should render {} lines but got {}", expected, rendered);
+        assert_eq!(
+            rendered, expected,
+            "viewport should render {} lines but got {}",
+            expected, rendered
+        );
 
         // Specifically: render every text block and make sure nothing disappears
         let mut md = crate::markdown::MarkdownRenderer::new();
         for (i, block) in blocks.iter().enumerate() {
             let lines = block.render(80, 0, &mut md, false);
-            assert!(!lines.is_empty(), "block {} (source: {:?}) should render at least one line", i, block.source_lines);
+            assert!(
+                !lines.is_empty(),
+                "block {} (source: {:?}) should render at least one line",
+                i,
+                block.source_lines
+            );
         }
     }
 
@@ -738,14 +1129,34 @@ mod tests {
         // Keys lines contain '|' — make sure pulldown-cmark doesn't eat them
         let spans = crate::markdown::render_inline("PgUp/PgDn  Scroll | Up/Down  History");
         let text: String = spans.iter().map(|s| s.to_string()).collect();
-        assert!(text.contains("PgUp/PgDn"), "render_inline ate text before pipe: {}", text);
-        assert!(text.contains("History"), "render_inline ate text after pipe: {}", text);
-        assert!(text.contains("|"), "render_inline dropped pipe character: {}", text);
+        assert!(
+            text.contains("PgUp/PgDn"),
+            "render_inline ate text before pipe: {}",
+            text
+        );
+        assert!(
+            text.contains("History"),
+            "render_inline ate text after pipe: {}",
+            text
+        );
+        assert!(
+            text.contains("|"),
+            "render_inline dropped pipe character: {}",
+            text
+        );
 
-        let spans2 = crate::markdown::render_inline("Mouse drag Select | Ctrl+Shift+C  Copy");
+        let spans2 = crate::markdown::render_inline("Mouse drag Scroll | PgUp/PgDn Scroll");
         let text2: String = spans2.iter().map(|s| s.to_string()).collect();
-        assert!(text2.contains("Mouse drag"), "render_inline ate 'Mouse drag': {}", text2);
-        assert!(text2.contains("Copy"), "render_inline ate 'Copy': {}", text2);
+        assert!(
+            text2.contains("Mouse drag"),
+            "render_inline ate 'Mouse drag': {}",
+            text2
+        );
+        assert!(
+            text2.contains("Scroll"),
+            "render_inline ate 'Scroll': {}",
+            text2
+        );
     }
 
     #[test]

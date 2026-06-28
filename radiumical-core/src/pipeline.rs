@@ -6,7 +6,7 @@ use crate::types::{
     Message, MessageContent, ProviderEvent, Role, SessionConfig, ToolCall, ToolDefinition,
     ToolResult,
 };
-use crate::{provider::Provider, types::UiEvent};
+use crate::{orchestrator, provider::Provider, types::UiEvent};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -61,6 +61,12 @@ impl PipelineRunner {
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
 
         let mut messages = self.conversation.build_context(&task);
+
+        // Inject orchestrator plan context before first LLM call
+        let ws_key = workspace.display().to_string();
+        if let Some(ctx) = orchestrator::get_context_for_workspace(&ws_key) {
+            messages.push(user_msg(&ctx));
+        }
 
         for iteration in 0..self.config.max_iterations {
             // ── 1. LLM call ──
@@ -145,8 +151,16 @@ impl PipelineRunner {
 
             // ── 2. Tool execution ──
             if let Some(ref calls) = last_tool_calls {
-                self.conversation.push_assistant(&full_text, Some(calls.clone()), Some(&full_reasoning));
-                messages.push(assistant_msg(&full_text, Some(calls.clone()), &full_reasoning));
+                self.conversation.push_assistant(
+                    &full_text,
+                    Some(calls.clone()),
+                    Some(&full_reasoning),
+                );
+                messages.push(assistant_msg(
+                    &full_text,
+                    Some(calls.clone()),
+                    &full_reasoning,
+                ));
 
                 let total = calls.len();
                 for (i, tc) in calls.iter().enumerate() {
@@ -173,10 +187,9 @@ impl PipelineRunner {
                                 final_result = hook.after(tc, final_result, &workspace);
                             }
                             let _ = ui_tx.send(UiEvent::ToolDone);
-                            let _ = ui_tx.send(UiEvent::LlmChunk(format!(
-                                "{}\n",
-                                final_result.content.trim_end()
-                            )));
+                            let _ = ui_tx.send(UiEvent::ToolResult {
+                                content: final_result.content.trim_end().to_string(),
+                            });
                             self.conversation.push_tool_result(tc, &final_result);
                             messages.push(tool_result_msg(tc, final_result));
                         }
@@ -203,7 +216,8 @@ impl PipelineRunner {
             }
 
             // ── 3. Final response ──
-            self.conversation.push_assistant(&full_text, None, Some(&full_reasoning));
+            self.conversation
+                .push_assistant(&full_text, None, Some(&full_reasoning));
             messages.push(assistant_msg(&full_text, None, &full_reasoning));
             return Ok(());
         }
@@ -237,7 +251,11 @@ fn assistant_msg(text: &str, calls: Option<Vec<ToolCall>>, reasoning: &str) -> M
         tool_calls: calls,
         tool_call_id: None,
         name: None,
-        reasoning_content: if reasoning.is_empty() { None } else { Some(reasoning.to_string()) },
+        reasoning_content: if reasoning.is_empty() {
+            None
+        } else {
+            Some(reasoning.to_string())
+        },
     }
 }
 
