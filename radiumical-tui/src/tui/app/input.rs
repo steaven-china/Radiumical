@@ -1,5 +1,5 @@
 use crate::tui::app::App;
-use crate::tui::{matching_hints, SLASH_COMMANDS};
+use crate::tui::matching_hints;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
 impl App {

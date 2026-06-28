@@ -231,7 +231,7 @@ impl Orchestrator {
     }
 
     pub fn block(&mut self, id: u32, reason: Option<&str>) -> Result<String, String> {
-        let title = {
+        let _title = {
             let task = self
                 .plan
                 .tasks

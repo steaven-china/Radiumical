@@ -499,6 +499,8 @@ mod tests {
 
     #[test]
     fn test_tool_call_box_lines_fit_width() {
+        use unicode_width::UnicodeWidthStr;
+
         let mut md = MarkdownRenderer::new();
         let block = Block {
             kind: BlockKind::ToolCall {
@@ -524,11 +526,11 @@ mod tests {
         let lines = block.render(area_width, 0, &mut md, false);
         assert!(!lines.is_empty(), "tool call should render lines");
         for (i, line) in lines.iter().enumerate() {
-            let w = line.width();
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            let w = text.width();
             assert!(
                 w <= area_width as usize,
-                "line {i} width {w} exceeds area width {area_width}: {:?}",
-                line.spans.iter().map(|s| s.content.as_ref()).collect::<Vec<_>>()
+                "line {i} width {w} exceeds area width {area_width}: {text:?}"
             );
         }
     }

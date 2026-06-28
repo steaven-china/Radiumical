@@ -1,8 +1,8 @@
 //! Sub-agent system — spawn parallel workers for independent tasks.
-use crate::agent_pool::{get_agent, AgentRoleMode};
+use crate::agent_pool::get_agent;
 use crate::pipeline::PipelineRunner;
 use crate::provider::Provider;
-use crate::types::{AgentMode, SessionConfig};
+use crate::types::SessionConfig;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 

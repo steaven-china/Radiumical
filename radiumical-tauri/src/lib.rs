@@ -1,9 +1,7 @@
 use radiumical_core::pipeline::PipelineRunner;
 use radiumical_core::provider::create_provider;
 use radiumical_core::types::{ProviderKind, SessionConfig};
-use std::sync::Mutex;
 use tauri::Emitter;
-use tauri::Manager;
 use tokio::sync::Mutex as TokioMutex;
 
 struct AppState {

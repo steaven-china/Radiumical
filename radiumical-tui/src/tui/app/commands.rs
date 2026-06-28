@@ -1,5 +1,5 @@
 use crate::tui::app::App;
-use crate::tui::{BackendCmd, SLASH_COMMANDS};
+use crate::tui::BackendCmd;
 
 impl App {
     pub(crate) fn handle_command(&mut self, task: &str) {

@@ -67,8 +67,14 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         let line = &output[i];
         let trimmed = line.trim();
 
-        // Logo block: first line has █, include subsequent long lines (╚═╝, etc.)
-        if line.contains('█') && line.len() > 30 {
+        // Logo block: first line has █ and looks like ASCII art.
+        // Reject lines that contain XML-like tags (e.g. <environment_details>)
+        // to avoid treating structured metadata as the logo.
+        if line.contains('█')
+            && line.len() > 30
+            && !line.contains('<')
+            && !line.contains('>')
+        {
             let start = i;
             i += 1;
             while i < output.len()

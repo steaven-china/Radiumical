@@ -69,10 +69,6 @@ pub enum Corner {
 pub struct BoardState {
     pub w: u16,
     pub h: u16,
-    pub min_w: u16,
-    pub min_h: u16,
-    pub max_w: u16,
-    pub max_h: u16,
     pub visible: bool,
     pub corner: Corner,
     pub title: String,
@@ -87,10 +83,6 @@ impl BoardState {
         Self {
             w,
             h,
-            min_w: 10,
-            min_h: 3,
-            max_w: 80,
-            max_h: 40,
             visible: true,
             corner,
             title: title.into(),
@@ -139,16 +131,21 @@ impl BoardState {
     }
 
     /// Update size during drag.
+    #[allow(dead_code)]
     pub fn drag_to(&mut self, mouse_x: u16, mouse_y: u16, area: Rect) {
+        const MIN_W: u16 = 10;
+        const MIN_H: u16 = 3;
+        const MAX_W: u16 = 80;
+        const MAX_H: u16 = 40;
         if let Some((sx, sy, ow, oh)) = self.drag_start {
             let dx = mouse_x as i32 - sx as i32;
             let dy = mouse_y as i32 - sy as i32;
             let new_w = (ow as i32 + dx)
-                .max(self.min_w as i32)
-                .min(self.max_w as i32) as u16;
+                .max(MIN_W as i32)
+                .min(MAX_W as i32) as u16;
             let new_h = (oh as i32 + dy)
-                .max(self.min_h as i32)
-                .min(self.max_h as i32) as u16;
+                .max(MIN_H as i32)
+                .min(MAX_H as i32) as u16;
             self.w = new_w.min(area.width.saturating_sub(2));
             self.h = new_h.min(area.height.saturating_sub(2));
         }
