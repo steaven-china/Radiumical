@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 use radiumical_core::commands::{CommandOutcome, CommandPool};
 use radiumical_core::pipeline::PipelineRunner;
-use radiumical_core::provider::{create_provider, Provider};
+use radiumical_core::provider::create_provider;
 use radiumical_core::providers::{discover_models, ProviderRegistry, DEFAULT_REGISTRY_URL};
 use radiumical_core::types::{ProviderKind, SessionConfig};
 use std::path::PathBuf;

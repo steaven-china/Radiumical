@@ -188,6 +188,27 @@ impl App {
         self.scroll = self.scroll.clamp(0.0, max.max(0.0));
     }
 
+    /// Save settings board, apply changes, and sync mode/thinking effort to backend.
+    pub(crate) fn commit_settings(&mut self) {
+        self.settings_board.save();
+        let board = self.settings_board.clone();
+        let old_mode = self.mode.clone();
+        let old_effort = self.thinking_effort.clone();
+        board.apply_to_app(self);
+        if self.mode != old_mode {
+            let _ = self
+                .cmd_tx
+                .blocking_send(crate::tui::BackendCmd::SetMode(self.mode.clone()));
+        }
+        if self.thinking_effort != old_effort {
+            let _ = self
+                .cmd_tx
+                .blocking_send(crate::tui::BackendCmd::SetThinkingEffort(
+                    self.thinking_effort.clone(),
+                ));
+        }
+    }
+
     pub fn scroll_up(&mut self, lines: f32) {
         let lines = lines.max(0.0);
         let max = self.rendered_total.saturating_sub(self.output_vis.max(1)) as f32;

@@ -365,7 +365,7 @@ impl ListBoard {
 
 // ── ProviderPicker: two-pane provider / model selector ──
 
-#[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProviderPicker {
     pub providers: Vec<ProviderSource>,
     pub models: Vec<String>,
@@ -379,6 +379,7 @@ pub struct ProviderPicker {
     pub corner: Corner,
 }
 
+#[allow(dead_code)]
 impl ProviderPicker {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
@@ -598,6 +599,7 @@ impl ConfirmBoard {
 // ── FormBoard: labeled editable fields ──
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum FieldValue {
     String(String),
     Password(String),
@@ -606,6 +608,7 @@ pub enum FieldValue {
     Boolean(bool),
 }
 
+#[allow(dead_code)]
 pub struct FormBoard {
     pub title: String,
     pub visible: bool,
@@ -621,6 +624,7 @@ struct FormField {
     edit_buffer: String,
 }
 
+#[allow(dead_code)]
 impl FormBoard {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
@@ -774,6 +778,7 @@ impl FormBoard {
     }
 }
 
+#[allow(dead_code)]
 impl FieldValue {
     fn bool_value(&self) -> bool {
         match self {
@@ -783,6 +788,7 @@ impl FieldValue {
     }
 }
 
+#[allow(dead_code)]
 impl FormField {
     fn display_value(&self) -> String {
         match &self.value {
@@ -833,6 +839,7 @@ impl FormField {
 
 // ── TwoPaneBoard: left list + right details ──
 
+#[allow(dead_code)]
 pub struct TwoPaneBoard {
     pub title: String,
     pub visible: bool,
@@ -843,6 +850,7 @@ pub struct TwoPaneBoard {
     pub focus_left: bool,
 }
 
+#[allow(dead_code)]
 impl TwoPaneBoard {
     pub fn new(title: impl Into<String>) -> Self {
         Self {

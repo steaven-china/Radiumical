@@ -208,17 +208,6 @@ impl App {
             UiEvent::ThinkingDone => {
                 self.thinking = false;
             }
-            UiEvent::ProvidersLoaded(providers) => {
-                self.provider_picker.set_providers(providers);
-            }
-            UiEvent::ModelsLoaded(models) => {
-                let mut models = models;
-                if !models.contains(&self.model) {
-                    models.push(self.model.clone());
-                }
-                self.available_models = models.clone();
-                self.provider_picker.set_models(models);
-            }
             UiEvent::Choice { id, mode, options } => {
                 self.pending_choice = Some((id, mode.clone(), options.clone()));
                 self.output.push(String::new());
@@ -238,6 +227,23 @@ impl App {
                 }
                 self.output.push(String::new());
                 self.stick_to_bottom = true;
+            }
+            UiEvent::ProvidersLoaded(sources) => {
+                let first = sources.first().cloned();
+                self.provider_picker.set_providers(sources);
+                if let Some(source) = first {
+                    self.provider_name = source.name.clone();
+                    let _ = self
+                        .cmd_tx
+                        .blocking_send(BackendCmd::FetchModels(source));
+                }
+            }
+            UiEvent::ModelsLoaded(mut models) => {
+                if !models.contains(&self.model) {
+                    models.push(self.model.clone());
+                }
+                self.available_models = models.clone();
+                self.provider_picker.set_models(models);
             }
         }
     }

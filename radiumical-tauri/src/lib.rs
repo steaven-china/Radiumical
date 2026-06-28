@@ -70,6 +70,15 @@ async fn run_task(
                         serde_json::json!({ "id": id, "mode": mode, "options": options }),
                     );
                 }
+                radiumical_core::types::UiEvent::ProvidersLoaded(sources) => {
+                    let _ = handle.emit(
+                        "providers-loaded",
+                        serde_json::json!({ "sources": sources }),
+                    );
+                }
+                radiumical_core::types::UiEvent::ModelsLoaded(models) => {
+                    let _ = handle.emit("models-loaded", serde_json::json!({ "models": models }));
+                }
                 radiumical_core::types::UiEvent::Error(e) => {
                     let _ = handle.emit("llm-error", e);
                 }

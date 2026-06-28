@@ -113,6 +113,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_status(f, bottom[bottom.len() - 1], app);
 }
 
+#[allow(dead_code)]
 pub fn overlay_panel(f: &mut Frame, area: Rect, title: &str, content_lines: Vec<Line>) -> Rect {
     let max_w = content_lines.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
     let w = (max_w + 4).min(area.width.saturating_sub(4));

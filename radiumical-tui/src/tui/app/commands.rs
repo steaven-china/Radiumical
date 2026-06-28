@@ -78,13 +78,10 @@ impl App {
                 return;
             }
             "/settings" | "/config" => {
-                self.settings_visible = !self.settings_visible;
-                if self.settings_visible {
+                if !self.settings_board.visible {
                     self.settings_board.visible = true;
                 } else {
-                    self.settings_board.save();
-                    let board = self.settings_board.clone();
-                    board.apply_to_app(self);
+                    self.commit_settings();
                     self.settings_board.visible = false;
                 }
                 self.input.clear();
@@ -317,14 +314,17 @@ impl App {
                 return;
             }
             _ if task == "/models" => {
-                if self.available_models.len() <= 1 {
-                    let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
-                    self.output.push("> /models".into());
-                    self.output.push("  Refreshing models…".into());
-                    self.output.push(String::new());
-                }
                 self.show_model_picker = !self.show_model_picker;
                 self.provider_picker.visible = self.show_model_picker;
+                if self.show_model_picker {
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::FetchProviders);
+                    if self.available_models.len() <= 1 {
+                        let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
+                        self.output.push("> /models".into());
+                        self.output.push("  Refreshing models…".into());
+                        self.output.push(String::new());
+                    }
+                }
                 self.input.clear();
                 self.cursor = 0;
                 return;
@@ -378,6 +378,7 @@ impl App {
             _ if task.starts_with("/model ") => {
                 let m = task[7..].trim().to_string();
                 self.model = m.clone();
+                let _ = self.cmd_tx.blocking_send(BackendCmd::SetModel(m.clone()));
                 self.toasts.push(crate::board::Toast::new(
                     format!("Model: {m}"),
                     crate::board::ToastLevel::Info,

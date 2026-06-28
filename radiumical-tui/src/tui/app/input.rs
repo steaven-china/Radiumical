@@ -279,9 +279,7 @@ impl App {
                     return;
                 }
                 if self.settings_visible {
-                    self.settings_board.save();
-                    let board = self.settings_board.clone();
-                    board.apply_to_app(self);
+                    self.commit_settings();
                     self.settings_visible = false;
                     self.settings_board.visible = false;
                     return;
@@ -390,9 +388,7 @@ impl App {
         use crossterm::event::KeyCode;
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => {
-                self.settings_board.save();
-                let board = self.settings_board.clone();
-                board.apply_to_app(self);
+                self.commit_settings();
                 self.settings_visible = false;
                 self.settings_board.visible = false;
             }
@@ -412,9 +408,7 @@ impl App {
         match (key.code, key.modifiers) {
             (KeyCode::Enter, _) => {
                 self.settings_board.commit_edit();
-                self.settings_board.save();
-                let board = self.settings_board.clone();
-                board.apply_to_app(self);
+                self.commit_settings();
             }
             (KeyCode::Esc, _) => self.settings_board.cancel_edit(),
             (KeyCode::Left, _) => self.settings_board.edit_left(),
