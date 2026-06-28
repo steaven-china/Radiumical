@@ -59,6 +59,7 @@ pub struct App {
     pub markdown: crate::markdown::MarkdownRenderer,
     pub perf_visible: bool,
     pub output_vis: usize,
+    pub output_width: usize,
     pub rendered_total: usize,
     pub progress: crate::board::ProgressBoard,
     #[allow(dead_code)]
@@ -142,6 +143,7 @@ impl App {
             perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),
             output_vis: 20,
+            output_width: 80,
             rendered_total: 0,
             plan_board: crate::board::BoardState::new(
                 " Plan ",
@@ -194,6 +196,17 @@ impl App {
         self.scroll = self.scroll.min(max.max(0.0));
         if lines > 0.0 {
             self.scroll_velocity = -lines;
+        }
+    }
+
+    /// Compute the top visible content-line index from current scroll state.
+    /// Shared by draw.rs (rendering) and mouse.rs (hit-testing) so they never diverge.
+    pub fn scroll_start(&self, total: usize, vis: usize) -> usize {
+        let vis = vis.max(1);
+        if self.stick_to_bottom {
+            total.saturating_sub(vis)
+        } else {
+            (self.scroll as usize).min(total.saturating_sub(vis))
         }
     }
 }

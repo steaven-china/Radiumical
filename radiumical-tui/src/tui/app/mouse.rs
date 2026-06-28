@@ -8,26 +8,34 @@ use std::time::{Duration, Instant};
 const DOUBLE_CLICK_MS: u64 = 300;
 
 impl App {
-    pub fn handle_mouse(&mut self, kind: MouseEventKind, row: u16, _col: u16, output_top: u16) {
+    pub fn handle_mouse(
+        &mut self,
+        kind: MouseEventKind,
+        row: u16,
+        _col: u16,
+        output_top: u16,
+        output_h: u16,
+    ) {
         if self.welcome {
             return;
         }
         match kind {
-            MouseEventKind::ScrollDown => self.scroll_down(1.0),
-            MouseEventKind::ScrollUp => self.scroll_up(1.0),
+            MouseEventKind::ScrollDown => self.scroll_up(1.0),
+            MouseEventKind::ScrollUp => self.scroll_down(1.0),
             MouseEventKind::Moved => {
-                self.hovered_block = self.block_at_row(row, output_top);
+                self.hovered_block = self.block_at_row(row, output_top, output_h);
             }
             MouseEventKind::Down(btn) => {
                 if btn == MouseButton::Right {
                     return;
                 }
-                let on_scrollbar = _col + 1 >= self.output_vis as u16;
-                let total = self.output.len();
+                let on_scrollbar = _col >= self.output_width as u16;
+                let total = self.rendered_total;
                 let needs_scrollbar = total > self.output_vis;
-                if on_scrollbar && needs_scrollbar && row > output_top {
+                if on_scrollbar && needs_scrollbar && row > output_top && row < output_top + output_h
+                {
                     self.scrollbar_dragging = true;
-                    self.set_scroll_from_thumb(row, output_top);
+                    self.set_scroll_from_thumb(row, output_top, output_h);
                     return;
                 }
                 if self.help_board.hit_border(
@@ -37,13 +45,13 @@ impl App {
                         x: 0,
                         y: output_top,
                         width: 80,
-                        height: 24,
+                        height: output_h,
                     },
                 ) {
                     self.help_board.start_drag(_col, row);
                     return;
                 }
-                if let Some(bi) = self.block_at_row(row, output_top) {
+                if let Some(bi) = self.block_at_row(row, output_top, output_h) {
                     let now = Instant::now();
                     let is_double = self.last_click.is_some_and(|(t, r, c)| {
                         t.elapsed() < Duration::from_millis(DOUBLE_CLICK_MS)
@@ -61,7 +69,7 @@ impl App {
                 }
             }
             MouseEventKind::Drag(_) if self.scrollbar_dragging => {
-                self.set_scroll_from_thumb(row, output_top);
+                self.set_scroll_from_thumb(row, output_top, output_h);
             }
             MouseEventKind::Up(_) => {
                 self.scrollbar_dragging = false;
@@ -70,7 +78,7 @@ impl App {
         }
     }
 
-    fn set_scroll_from_thumb(&mut self, row: u16, output_top: u16) {
+    fn set_scroll_from_thumb(&mut self, row: u16, output_top: u16, output_h: u16) {
         let total = self.rendered_total;
         let vis = self.output_vis.max(1);
         if total <= vis {
@@ -78,7 +86,7 @@ impl App {
             self.stick_to_bottom = true;
             return;
         }
-        let sb_h = (self.output_vis as u16).saturating_sub(1) as f32;
+        let sb_h = output_h.saturating_sub(1) as f32;
         if sb_h <= 0.0 {
             return;
         }
@@ -86,21 +94,17 @@ impl App {
         let progress = (rel / sb_h).clamp(0.0, 1.0);
         let max_scroll = (total - vis) as f32;
         self.scroll = (progress * max_scroll).round();
-        self.stick_to_bottom = self.scroll <= 0.0;
+        self.stick_to_bottom = self.scroll >= max_scroll;
     }
 
-    fn block_at_row(&self, screen_row: u16, output_top: u16) -> Option<usize> {
-        if screen_row < output_top {
+    fn block_at_row(&self, screen_row: u16, output_top: u16, output_h: u16) -> Option<usize> {
+        if screen_row < output_top || screen_row >= output_top + output_h {
             return None;
         }
         let blocks = &self.blocks;
         let vis = self.output_vis;
         let total: usize = blocks.iter().map(|b| b.height).sum();
-        let start = if self.stick_to_bottom {
-            total.saturating_sub(vis)
-        } else {
-            (self.scroll as usize).min(total.saturating_sub(vis))
-        };
+        let start = self.scroll_start(total, vis);
         let rel = (screen_row - output_top) as usize + start;
         let mut off = 0usize;
         for (i, b) in blocks.iter().enumerate() {

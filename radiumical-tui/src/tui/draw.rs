@@ -122,13 +122,13 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     use crate::layout::measure_blocks;
     use crate::tui::app::mouse::tool_call_key;
     use ratatui::widgets::{Clear, Wrap};
-    let total_raw = app.output.len();
-    if total_raw == 0 {
+    if app.output.is_empty() {
         return;
     }
     let vis = _vis.min(area.height as usize).max(1);
     app.output_vis = vis;
-    let needs_scrollbar = total_raw > vis;
+    // Use previous frame's rendered_total for scrollbar decision (updated below)
+    let needs_scrollbar = app.rendered_total > vis;
     let text_area = Rect {
         x: area.x,
         y: area.y,
@@ -139,6 +139,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         },
         height: area.height,
     };
+    app.output_width = text_area.width as usize;
     f.render_widget(Clear, area);
 
     app.blocks = measure_blocks(&app.output,
@@ -156,7 +157,12 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
             let key = tool_call_key(block);
             let want = app.tool_expanded.get(&key).copied().unwrap_or(false);
             if want != *expanded {
-                let result_lines = result.lines().filter(|l| !l.is_empty()).count();
+                // content width inside the box borders
+                let content_w = (text_area.width as usize)
+                    .saturating_sub(4 + 1)
+                    .max(1);
+                let wrapped_count =
+                    crate::layout::wrapped_tool_result_lines(result, content_w).len();
                 block.kind = crate::layout::BlockKind::ToolCall {
                     name: name.clone(),
                     args: args.clone(),
@@ -164,10 +170,9 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
                     expanded: want,
                 };
                 // collapsed: top+args+bottom = 3
-                // expanded with result: 3 + connector(1) + result(N) + bottom(1)
-                // expanded without result: 3 (same as collapsed)
-                block.height = if want && result_lines > 0 {
-                    3 + 1 + result_lines + 1
+                // expanded with result: 3 + separator(1) + wrapped(N) = 4 + N
+                block.height = if want && wrapped_count > 0 {
+                    4 + wrapped_count
                 } else {
                     3
                 };
@@ -177,11 +182,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     let total: usize = app.blocks.iter().map(|b| b.height).sum();
     app.rendered_total = total;
 
-    let start = if app.stick_to_bottom {
-        total.saturating_sub(vis)
-    } else {
-        (app.scroll as usize).min(total.saturating_sub(1))
-    };
+    let start = app.scroll_start(total, vis);
     let end = (start + vis).min(total);
 
     app.markdown.tick_frame();

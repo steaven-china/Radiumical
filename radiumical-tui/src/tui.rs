@@ -131,7 +131,9 @@ pub fn run(
 
         let mut next_frame = Instant::now() + frame_time;
         loop {
-            let hint_count = app.hints.len().min(8);
+            let hint_page_start = app.hint_page * 8;
+            let hint_page_end = (hint_page_start + 8).min(app.hints.len());
+            let hint_count = hint_page_end.saturating_sub(hint_page_start);
             let input_lines = app.input.split('\n').count().max(1).min(5);
             let bottom_h = ((input_lines + 2) + hint_count + 1)
                 .min(term_size.height.saturating_sub(1) as usize) as u16;
@@ -142,8 +144,9 @@ pub fn run(
                 match crossterm::event::read()? {
                     Event::Key(key) => app.handle_key(key),
                     Event::Mouse(m) => {
-                        let output_top = term_size.height.saturating_sub(bottom_h) as u16;
-                        app.handle_mouse(m.kind, m.row, m.column, output_top);
+                        let output_top = 0u16;
+                        let output_h = out_h as u16;
+                        app.handle_mouse(m.kind, m.row, m.column, output_top, output_h);
                     }
                     Event::Resize(w, h) => {
                         term_size = ratatui::layout::Size {

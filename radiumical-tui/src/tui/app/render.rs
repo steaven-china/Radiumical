@@ -133,5 +133,6 @@ impl App {
             self.output.push(String::new());
         }
         self.stick_to_bottom = true;
+        self.welcome = false;
     }
 }

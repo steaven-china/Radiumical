@@ -17,7 +17,7 @@ impl App {
                     self.hint_page = self.hint_page.saturating_sub(1);
                     self.hint_selected = Some(0);
                 } else if !self.welcome {
-                    self.scroll_up(12.0);
+                    self.scroll_down(12.0);
                 }
             }
             (KeyCode::PageDown, _) => {
@@ -26,7 +26,7 @@ impl App {
                     self.hint_page = (self.hint_page + 1).min(max_page);
                     self.hint_selected = Some(0);
                 } else if !self.welcome {
-                    self.scroll_down(12.0);
+                    self.scroll_up(12.0);
                 }
             }
             (KeyCode::Up, _) => {

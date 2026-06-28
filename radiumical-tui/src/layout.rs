@@ -420,23 +420,93 @@ fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
     result
 }
 
+fn format_read_file_path(path: &str, start: Option<u64>, end: Option<u64>) -> String {
+    let path = path.replace("\\\\", "\\");
+    let range = match (start, end) {
+        (Some(s), Some(e)) => format!("[{s}-{e}]"),
+        (Some(s), None) => format!("[{s}]"),
+        _ => String::new(),
+    };
+    if range.is_empty() {
+        path
+    } else {
+        format!("{path} {range}")
+    }
+}
+
+/// Extract the path value from a malformed read_file JSON args string
+/// (e.g. with unescaped backslashes) without requiring a regex dependency.
+fn extract_read_file_path(args: &str) -> Option<String> {
+    let key = "\"path\"";
+    let start = args.find(key)? + key.len();
+    let rest = &args[start..];
+    let colon = rest.find(':')?;
+    let rest = &rest[colon + 1..];
+    let first_quote = rest.find('"')?;
+    let rest = &rest[first_quote + 1..];
+    let end_quote = rest.find('"')?;
+    Some(rest[..end_quote].replace("\\\\", "\\"))
+}
+
+/// Wrap tool result lines to the available content width and return the total
+/// number of visual lines (used both for block height and rendering).
+pub(crate) fn wrapped_tool_result_lines(result: &str, content_width: usize) -> Vec<String> {
+    result
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .flat_map(|l| wrap_text_to_width(l, content_width.max(1)))
+        .collect()
+}
+
 /// Parse a tool's JSON arguments into a readable `key: value, key: value` string.
-/// Falls back to the raw string if parsing fails.
-fn format_tool_args(args: &str) -> String {
+/// Falls back to the raw string if parsing fails. Special-cases `read_file` to
+/// show `path[start_line[-end_line]]` compactly.
+fn format_tool_args(name: &str, args: &str) -> String {
     if args.is_empty() {
         return String::new();
     }
     let v = match serde_json::from_str::<serde_json::Value>(args) {
         Ok(v) => v,
         Err(_) => {
-            // not JSON — show raw, unescape backslashes
+            // not JSON — try to salvage a read_file path, otherwise show raw
+            if name.split_whitespace().next() == Some("read_file") {
+                if let Some(path) = extract_read_file_path(args) {
+                    return path;
+                }
+            }
             return args.replace("\\\\", "\\");
         }
     };
+
+    if name.split_whitespace().next() == Some("read_file") {
+        // Try to extract path even if JSON is malformed (e.g. unescaped Windows backslashes).
+        if let Some(obj) = v.as_object() {
+            let path = obj.get("path").and_then(|p| p.as_str()).unwrap_or("");
+            let start = obj.get("start_line").and_then(|n| n.as_u64());
+            let end = obj.get("end_line").and_then(|n| n.as_u64());
+            return format_read_file_path(path, start, end);
+        } else if let Some(path) = extract_read_file_path(args) {
+            return path;
+        }
+    }
+
+    if name.split_whitespace().next() == Some("tree") {
+        if let Some(obj) = v.as_object() {
+            if let Some(path) = obj.get("path").and_then(|p| p.as_str()) {
+                return path.replace("\\\\", "\\");
+            }
+        } else if let Some(path) = extract_read_file_path(args) {
+            return path;
+        }
+    }
+
     if let Some(obj) = v.as_object() {
-        let pairs: Vec<String> = obj
-            .iter()
-            .map(|(k, val)| {
+        let mut keys: Vec<&String> = obj.keys().collect();
+        keys.sort();
+        let pairs: Vec<String> = keys
+            .into_iter()
+            .map(|k| {
+                let val = &obj[k];
                 let s = match val {
                     serde_json::Value::String(s) => s.replace("\\\\", "\\"),
                     serde_json::Value::Number(n) => n.to_string(),
@@ -712,42 +782,39 @@ impl Block {
                 expanded,
             } => {
                 // ── parse JSON args into readable key-value ──
-                let args_disp = format_tool_args(args);
+                let args_disp = format_tool_args(name, args);
 
                 // ── skip blank result lines ──
                 let result_lines: Vec<String> = result
                     .lines()
-                    .filter(|l| !l.is_empty())
+                    .filter(|l| !l.trim().is_empty())
                     .map(|l| l.replace('\t', "    "))
                     .collect();
 
-                // ── widths ──
-                let top_w = (name.len() + 7)
+                // ── widths (never wider than the terminal area) ──
+                let box_w = (name.len() + 8)
                     .max(args_disp.chars().count() + 6)
-                    .max(56);
-                let has_result = !result_lines.is_empty();
-                let result_w = if has_result {
-                    result_lines
-                        .iter()
-                        .map(|l| l.chars().count() + 4)
-                        .max()
-                        .unwrap_or(top_w)
-                        .max(top_w)
-                } else {
-                    top_w
-                };
+                    .max(
+                        result_lines
+                            .iter()
+                            .map(|l| l.chars().count() + 5)
+                            .max()
+                            .unwrap_or(0),
+                    )
+                    .max(56)
+                    .min(_area_width as usize);
 
                 let st = Style::default().fg(BORDER);
 
-                // ── top border + args + bottom (always shown) ──
-                let top_fill = top_w.saturating_sub(name.len() + 5);
+                // ── shared pieces ──
+                let top_fill = box_w.saturating_sub(name.len() + 7);
                 let top = format!("  ┌─ {name} {}┐", "─".repeat(top_fill));
-                let t_inner = top_w.saturating_sub(4);
-                let args_pad = t_inner.saturating_sub(args_disp.chars().count() + 2);
+                let inner = box_w.saturating_sub(4);
+                let args_pad = inner.saturating_sub(args_disp.chars().count() + 2);
                 let args_line = format!("  │  {args_disp}{}│", " ".repeat(args_pad));
-                let bottom = format!("  └{}┘", "─".repeat(t_inner));
+                let bottom = format!("  └{}┘", "─".repeat(inner));
 
-                if !*expanded || !has_result {
+                if !*expanded || result_lines.is_empty() {
                     // collapsed: call box only (no result)
                     return vec![
                         Line::from(Span::styled(top, st)),
@@ -756,39 +823,27 @@ impl Block {
                     ];
                 }
 
-                // ── expanded: stepped box with result ──
+                // ── expanded: single contiguous box with result separator ──
                 let mut lines = Vec::new();
                 lines.push(Line::from(Span::styled(top, st)));
                 lines.push(Line::from(Span::styled(args_line, st)));
 
-                // connector: └── result {dashes}┘{dashes}┐
-                let label = "└── result ";
-                let label_len = label.chars().count();
-                let fill1 = top_w.saturating_sub(label_len + 1);
-                let fill2 = result_w.saturating_sub(top_w + 1);
-                let connector = format!(
-                    "  {label}{}┘{}┐",
-                    "─".repeat(fill1),
-                    "─".repeat(fill2),
-                );
-                lines.push(Line::from(Span::styled(connector, st)));
+                let sep_label = "├── result ";
+                let sep_fill = box_w.saturating_sub(sep_label.chars().count() + 1);
+                let sep = format!("  {sep_label}{}┤", "─".repeat(sep_fill));
+                lines.push(Line::from(Span::styled(sep, st)));
 
-                // result content lines
-                let r_inner = result_w.saturating_sub(4);
-                for line in &result_lines {
-                    let vis: String = line.chars().take(r_inner.saturating_sub(1)).collect();
-                    let pad = r_inner.saturating_sub(vis.chars().count() + 1);
+                let content_w = inner.saturating_sub(1);
+                for line in wrapped_tool_result_lines(result, content_w) {
+                    let vis: String = line.chars().take(content_w).collect();
+                    let pad = content_w.saturating_sub(vis.chars().count());
                     lines.push(Line::from(Span::styled(
                         format!("  │ {vis}{}│", " ".repeat(pad)),
                         st,
                     )));
                 }
 
-                // result bottom
-                lines.push(Line::from(Span::styled(
-                    format!("  └{}┘", "─".repeat(r_inner)),
-                    st,
-                )));
+                lines.push(Line::from(Span::styled(bottom, st)));
                 lines
             }
 
@@ -1219,6 +1274,40 @@ mod tests {
             text2.contains("Scroll"),
             "render_inline ate 'Scroll': {}",
             text2
+        );
+    }
+
+    #[test]
+    fn test_format_tool_args_read_file() {
+        assert_eq!(
+            format_tool_args("read_file", r#"{"path":"src/main.rs"}"#),
+            "src/main.rs"
+        );
+        assert_eq!(
+            format_tool_args("read_file", r#"{"path":"src/main.rs","start_line":10}"#),
+            "src/main.rs [10]"
+        );
+        assert_eq!(
+            format_tool_args(
+                "read_file",
+                r#"{"path":"src/main.rs","start_line":10,"end_line":50}"#
+            ),
+            "src/main.rs [10-50]"
+        );
+        // Malformed JSON with unescaped Windows backslashes
+        assert_eq!(
+            format_tool_args("read_file", r#"{"path": "D:\Radiumical\Cargo.toml"}"#),
+            "D:\\Radiumical\\Cargo.toml"
+        );
+        // Header may include batch suffix
+        assert_eq!(
+            format_tool_args("read_file (2/2)", r#"{"path":"src/main.rs"}"#),
+            "src/main.rs"
+        );
+        // Non-read_file tools keep generic key:value formatting (sorted keys)
+        assert_eq!(
+            format_tool_args("write_file", r#"{"path":"x","content":"y"}"#),
+            "content: y, path: x"
         );
     }
 
