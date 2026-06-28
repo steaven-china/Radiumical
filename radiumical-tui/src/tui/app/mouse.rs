@@ -20,8 +20,16 @@ impl App {
             return;
         }
         match kind {
-            MouseEventKind::ScrollDown => self.scroll_up(1.0),
-            MouseEventKind::ScrollUp => self.scroll_down(1.0),
+            MouseEventKind::ScrollDown => {
+                if !self.scroll_hovered_tool_result(1) {
+                    self.scroll_up(1.0);
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if !self.scroll_hovered_tool_result(-1) {
+                    self.scroll_down(1.0);
+                }
+            }
             MouseEventKind::Moved => {
                 self.hovered_block = self.block_at_row(row, output_top, output_h);
             }
@@ -115,6 +123,42 @@ impl App {
             off = end;
         }
         None
+    }
+
+    fn scroll_hovered_tool_result(&mut self, delta: i64) -> bool {
+        const MAX_RESULT_VIS: usize = 10;
+        let bi = match self.hovered_block {
+            Some(bi) => bi,
+            None => return false,
+        };
+        let block = match self.blocks.get(bi) {
+            Some(b) => b,
+            None => return false,
+        };
+        let (_name, _args, result, expanded) = match &block.kind {
+            crate::layout::BlockKind::ToolCall {
+                name,
+                args,
+                result,
+                expanded,
+                ..
+            } => (name, args, result, *expanded),
+            _ => return false,
+        };
+        if !expanded {
+            return false;
+        }
+        let content_w = self.output_width.saturating_sub(4 + 1).max(1);
+        let wrapped_count = crate::layout::wrapped_tool_result_lines(result, content_w).len();
+        if wrapped_count <= MAX_RESULT_VIS {
+            return false;
+        }
+        let key = tool_call_key(block);
+        let current = self.tool_result_scroll.get(&key).copied().unwrap_or(0) as i64;
+        let max_scroll = (wrapped_count - MAX_RESULT_VIS) as i64;
+        let next = (current + delta).clamp(0, max_scroll) as usize;
+        self.tool_result_scroll.insert(key, next);
+        true
     }
 
     fn toggle_tool_call(&mut self, block_idx: usize) {

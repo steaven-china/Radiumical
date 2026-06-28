@@ -25,12 +25,13 @@ pub enum BlockKind {
         widths: Vec<usize>,
         sep_idx: Option<usize>,
     },
-    /// Tool call box (collapsible)
+    /// Tool call box (collapsible, result scrollable)
     ToolCall {
         name: String,
         args: String,
         result: String,
         expanded: bool,
+        result_scroll: usize,
     },
     /// Regular text (markdown)
     Text,
@@ -209,6 +210,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                     args,
                     result,
                     expanded: false,
+                    result_scroll: 0,
                 },
                 source_lines: source,
                 width: 0,
@@ -780,6 +782,7 @@ impl Block {
                 args,
                 result,
                 expanded,
+                result_scroll,
             } => {
                 // ── parse JSON args into readable key-value ──
                 let args_disp = format_tool_args(name, args);
@@ -824,21 +827,55 @@ impl Block {
                 }
 
                 // ── expanded: single contiguous box with result separator ──
+                const MAX_RESULT_VIS: usize = 10;
                 let mut lines = Vec::new();
                 lines.push(Line::from(Span::styled(top, st)));
                 lines.push(Line::from(Span::styled(args_line, st)));
 
-                let sep_label = "├── result ";
+                let sep_label = "├── result (exp) ";
                 let sep_fill = box_w.saturating_sub(sep_label.chars().count() + 1);
                 let sep = format!("  {sep_label}{}┤", "─".repeat(sep_fill));
                 lines.push(Line::from(Span::styled(sep, st)));
 
-                let content_w = inner.saturating_sub(1);
-                for line in wrapped_tool_result_lines(result, content_w) {
+                let wrapped = wrapped_tool_result_lines(result, inner.saturating_sub(1));
+                let has_overflow = wrapped.len() > MAX_RESULT_VIS;
+                let max_scroll = wrapped.len().saturating_sub(MAX_RESULT_VIS);
+                let scroll = (*result_scroll).min(max_scroll);
+                let visible = &wrapped[scroll..(scroll + MAX_RESULT_VIS).min(wrapped.len())];
+
+                // content width: leave one column for inner scrollbar when overflowing
+                let content_w = if has_overflow {
+                    inner.saturating_sub(2)
+                } else {
+                    inner.saturating_sub(1)
+                };
+
+                // inner scrollbar geometry
+                let sb_h = visible.len();
+                let sb_thumb_h = ((MAX_RESULT_VIS as f32 / wrapped.len().max(MAX_RESULT_VIS) as f32)
+                    .min(1.0)
+                    * sb_h as f32)
+                    .max(1.0) as usize;
+                let sb_thumb_y = if max_scroll == 0 {
+                    0
+                } else {
+                    ((scroll * (sb_h.saturating_sub(sb_thumb_h))) / max_scroll).min(sb_h.saturating_sub(sb_thumb_h))
+                };
+
+                for (i, line) in visible.iter().enumerate() {
                     let vis: String = line.chars().take(content_w).collect();
                     let pad = content_w.saturating_sub(vis.chars().count());
+                    let sb_char = if has_overflow {
+                        if i >= sb_thumb_y && i < sb_thumb_y + sb_thumb_h {
+                            '█'
+                        } else {
+                            '│'
+                        }
+                    } else {
+                        ' '
+                    };
                     lines.push(Line::from(Span::styled(
-                        format!("  │ {vis}{}│", " ".repeat(pad)),
+                        format!("  │ {vis}{}{sb_char}│", " ".repeat(pad)),
                         st,
                     )));
                 }

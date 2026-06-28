@@ -152,27 +152,32 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
             args,
             result,
             expanded,
+            result_scroll,
         } = &block.kind
         {
             let key = tool_call_key(block);
             let want = app.tool_expanded.get(&key).copied().unwrap_or(false);
-            if want != *expanded {
+            let scroll = app.tool_result_scroll.get(&key).copied().unwrap_or(0);
+            if want != *expanded || scroll != *result_scroll {
                 // content width inside the box borders
                 let content_w = (text_area.width as usize)
                     .saturating_sub(4 + 1)
                     .max(1);
                 let wrapped_count =
                     crate::layout::wrapped_tool_result_lines(result, content_w).len();
+                const MAX_RESULT_VIS: usize = 10;
+                let visible_count = wrapped_count.min(MAX_RESULT_VIS);
                 block.kind = crate::layout::BlockKind::ToolCall {
                     name: name.clone(),
                     args: args.clone(),
                     result: result.clone(),
                     expanded: want,
+                    result_scroll: scroll,
                 };
                 // collapsed: top+args+bottom = 3
-                // expanded with result: 3 + separator(1) + wrapped(N) = 4 + N
-                block.height = if want && wrapped_count > 0 {
-                    4 + wrapped_count
+                // expanded with result: 3 + separator(1) + visible(N) = 4 + N
+                block.height = if want && visible_count > 0 {
+                    4 + visible_count
                 } else {
                     3
                 };

@@ -68,6 +68,7 @@ pub struct App {
     pub available_models: Vec<String>,
     pub scrollbar_dragging: bool,
     pub tool_expanded: std::collections::HashMap<u64, bool>,
+    pub tool_result_scroll: std::collections::HashMap<u64, usize>,
     pub last_click: Option<(std::time::Instant, u16, u16)>,
     pub hovered_block: Option<usize>,
 }
@@ -154,6 +155,7 @@ impl App {
             available_models: vec![config.model.clone()],
             scrollbar_dragging: false,
             tool_expanded: std::collections::HashMap::new(),
+            tool_result_scroll: std::collections::HashMap::new(),
             last_click: None,
             hovered_block: None,
             session_items: Vec::new(),
