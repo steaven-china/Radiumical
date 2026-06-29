@@ -318,7 +318,7 @@ fn box_sep(label: &str, width: usize) -> String {
 
 fn box_bottom(width: usize) -> String {
     let fill = width.saturating_sub(4);
-    format!("  └{fill}┘", fill = "─".repeat(fill))
+    format!("  └{}┘", "─".repeat(fill))
 }
 
 fn box_content_line(content: &str, width: usize, right: Option<char>) -> String {
@@ -452,6 +452,22 @@ mod tests {
     use super::*;
     use crate::layout::measure_blocks;
     use crate::markdown::MarkdownRenderer;
+
+    #[test]
+    fn test_box_content_line_no_right_border_when_none() {
+        let line = box_content_line("hello", 30, None);
+        assert!(
+            !line.ends_with('│'),
+            "non-overflowing content should not have right border: {line:?}"
+        );
+        assert!(line.starts_with("  │ "));
+    }
+
+    #[test]
+    fn test_box_content_line_right_border_when_some() {
+        let line = box_content_line("hello", 30, Some('│'));
+        assert!(line.ends_with('│'), "overflowing content should have right border: {line:?}");
+    }
 
     #[test]
     fn test_markdown_heading_list_blockquote() {
