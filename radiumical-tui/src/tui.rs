@@ -24,6 +24,8 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/new", "New session / clear context"),
     ("/session", "Save/load sessions (commands)"),
     ("/sessions", "Session manager TUI"),
+    ("/skills", "List available skills"),
+    ("/skill <n>", "Activate/deactivate skill"),
     ("/cod on/off", "Chain of Draft experimental"),
     ("/debug <t>", "Debug info"),
     ("/end", "Jump to bottom"),

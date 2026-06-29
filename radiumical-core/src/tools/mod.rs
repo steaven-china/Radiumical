@@ -10,6 +10,7 @@ mod command;
 mod file;
 pub mod interact;
 mod search;
+mod skill;
 mod source_plugin;
 mod system;
 mod task;
@@ -19,6 +20,7 @@ pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
 pub use search::{FindFiles, SearchCode};
+pub use skill::{ListSkillsTool, LoadSkillTool};
 pub use source_plugin::SourceCodeTool;
 pub use system::{CronTab, ListDir, LspDiagnostics, SysInfo, TimeNow, TreeDir};
 pub use task::{GoalTool, OrchestrateTool, TodoList};
@@ -92,6 +94,8 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(MemoryTool),
         Box::new(PlaywrightTool),
         Box::new(SourceCodeTool),
+        Box::new(ListSkillsTool),
+        Box::new(LoadSkillTool),
     ]
 }
 

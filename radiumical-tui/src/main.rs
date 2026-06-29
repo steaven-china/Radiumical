@@ -83,8 +83,9 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    // Ensure default agent definitions exist
+    // Ensure default agent and skill definitions exist
     radiumical_core::agent_pool::ensure_defaults();
+    radiumical_core::skill::ensure_defaults();
 
     let provider_kind = match cli.provider.to_lowercase().as_str() {
         "openai" => ProviderKind::OpenAI,

@@ -239,6 +239,86 @@ impl App {
                 self.output.push(String::new());
                 return;
             }
+            "/skills" => {
+                self.output.push("> /skills".into());
+                let metas = self.skill_registry.all_meta();
+                if metas.is_empty() {
+                    self.output.push("  No skills installed.".into());
+                    self.output
+                        .push("  Place skills in ~/.radi/skills/{name}/SKILL.md".into());
+                } else {
+                    self.output
+                        .push(format!("  Available skills ({}):", metas.len()));
+                    for m in metas {
+                        let marker = if self.skill_registry.get(&m.name).is_some() {
+                            "●"
+                        } else {
+                            "○"
+                        };
+                        self.output
+                            .push(format!("  {} {:<16} {}", marker, m.name, m.description));
+                    }
+                    self.output.push(String::new());
+                    self.output.push("  ● = active  ○ = inactive".into());
+                    self.output
+                        .push("  /skill <name> to activate, /skill off <name> to deactivate".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            _ if task.starts_with("/skill ") => {
+                let rest = task[7..].trim();
+                if rest == "off" {
+                    self.skill_registry.deactivate_all();
+                    self.output.push("  All skills deactivated.".into());
+                } else if rest.starts_with("off ") {
+                    let name = rest[4..].trim();
+                    self.skill_registry.deactivate(name);
+                    self.output.push(format!("  Deactivated: {name}"));
+                } else if rest == "list" {
+                    self.output.push("> /skill list".into());
+                    let activated = self.skill_registry.activated();
+                    if activated.is_empty() {
+                        self.output.push("  No active skills.".into());
+                    } else {
+                        self.output.push("  Active skills:".into());
+                        for s in &activated {
+                            self.output
+                                .push(format!("  ● {:<16} {}", s.name, s.description));
+                        }
+                    }
+                } else {
+                    // Activate skill by name or auto-match
+                    let name = rest.to_string();
+                    if self.skill_registry.activate(&name).is_some() {
+                        self.output
+                            .push(format!("  Activated skill: {name}"));
+                    } else {
+                        // Try auto-match
+                        let matched = radiumical_core::skill::match_by_input(&name);
+                        if matched.is_empty() {
+                            self.output
+                                .push(format!("  Skill not found: {name}"));
+                        } else {
+                            let m = &matched[0];
+                            if self.skill_registry.activate(&m.name).is_some() {
+                                self.output.push(format!(
+                                    "  Auto-matched and activated: {}",
+                                    m.name
+                                ));
+                            }
+                        }
+                    }
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
             "/perf" => {
                 self.perf_visible = !self.perf_visible;
                 self.output.push("> /perf".into());
