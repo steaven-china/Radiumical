@@ -184,6 +184,8 @@ impl SettingsBoard {
             max_iterations: None,
             reasoning_effort: None,
             mode: None,
+            max_context_tokens: None,
+            context_compress_ratio: None,
         };
         for item in &self.items {
             match item.label.as_str() {

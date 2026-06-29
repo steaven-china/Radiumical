@@ -130,6 +130,22 @@ async fn main() -> Result<()> {
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
+    let file_cfg = radiumical_core::config::Config::load().unwrap_or_else(|_| {
+        radiumical_core::config::Config {
+            model: None,
+            provider: None,
+            api_key: None,
+            api_base: None,
+            heartbeat_secs: None,
+            llm_timeout_secs: None,
+            max_iterations: None,
+            reasoning_effort: None,
+            mode: None,
+            max_context_tokens: None,
+            context_compress_ratio: None,
+        }
+    });
+
     let mut config = SessionConfig {
         provider: provider_kind,
         model,
@@ -143,6 +159,8 @@ async fn main() -> Result<()> {
         concurrency: cli.concurrency,
         use_markdown: false, // TUI handles rendering
         mode: radiumical_core::types::AgentMode::Auto,
+        max_context_tokens: file_cfg.max_context_tokens.unwrap_or(1_000_000),
+        context_compress_ratio: file_cfg.context_compress_ratio.unwrap_or(0.8),
     };
 
     let mut provider = create_provider(

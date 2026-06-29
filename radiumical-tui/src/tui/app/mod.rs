@@ -133,6 +133,8 @@ impl App {
                         max_iterations: None,
                         reasoning_effort: None,
                         mode: None,
+                        max_context_tokens: None,
+                        context_compress_ratio: None,
                     }
                 }),
                 &config.mode,

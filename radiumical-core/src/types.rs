@@ -125,6 +125,10 @@ pub struct SessionConfig {
     pub use_markdown: bool,
     /// Agent operating mode
     pub mode: AgentMode,
+    /// Max context tokens before compression kicks in (default 120k)
+    pub max_context_tokens: usize,
+    /// Compress when context exceeds this ratio of max_context_tokens (default 0.8)
+    pub context_compress_ratio: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -185,6 +189,8 @@ impl Default for SessionConfig {
             concurrency: 8,
             use_markdown: true,
             mode: AgentMode::Auto,
+            max_context_tokens: 1_000_000,
+            context_compress_ratio: 0.8,
         }
     }
 }

@@ -15,6 +15,8 @@ pub struct Config {
     pub max_iterations: Option<usize>,
     pub reasoning_effort: Option<String>,
     pub mode: Option<String>,
+    pub max_context_tokens: Option<usize>,
+    pub context_compress_ratio: Option<f64>,
 }
 
 impl Config {
@@ -44,6 +46,8 @@ impl Config {
                 max_iterations: None,
                 reasoning_effort: None,
                 mode: None,
+                max_context_tokens: None,
+                context_compress_ratio: None,
             })
         }
     }

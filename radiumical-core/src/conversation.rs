@@ -272,16 +272,32 @@ impl Conversation {
     }
 
     /// Rough token count (1 token ≈ 4 chars).
-    #[allow(dead_code)]
-    pub fn estimated_tokens(&self) -> usize {
+    pub fn estimate_tokens(&self) -> usize {
         self.messages
             .iter()
-            .map(|m| match &m.content {
-                MessageContent::Text(s) => s.chars().count(),
-                _ => 0,
+            .map(|m| {
+                let text = match &m.content {
+                    MessageContent::Text(s) => s.chars().count(),
+                    _ => 0,
+                };
+                let reasoning = m
+                    .reasoning_content
+                    .as_ref()
+                    .map(|s| s.chars().count())
+                    .unwrap_or(0);
+                let tool_calls = m
+                    .tool_calls
+                    .as_ref()
+                    .map(|calls| {
+                        calls
+                            .iter()
+                            .map(|c| c.function.name.len() + c.function.arguments.len())
+                            .sum::<usize>()
+                    })
+                    .unwrap_or(0);
+                (text + reasoning + tool_calls) / 4
             })
-            .sum::<usize>()
-            / 4
+            .sum()
     }
 
     /// Truncate context to keep the last `max_tokens` worth of messages.
@@ -316,6 +332,32 @@ impl Conversation {
     /// Replace the in-memory messages and rewrite the JSONL backing file.
     pub fn reset_messages(&mut self, messages: Vec<Message>) {
         self.messages = messages;
+        self.rewrite_jsonl();
+    }
+
+    /// Read-only access to messages.
+    pub fn messages(&self) -> &[Message] {
+        &self.messages
+    }
+
+    /// Replace messages[1..split_at] with a single summary message.
+    /// Keeps messages[0] (system) and messages[split_at..] (recent) intact.
+    pub fn compress_range(&mut self, split_at: usize, summary: String) {
+        if split_at <= 1 || split_at >= self.messages.len() {
+            return;
+        }
+        let mut new_msgs = Vec::with_capacity(split_at + 2);
+        new_msgs.push(self.messages[0].clone());
+        new_msgs.push(Message {
+            role: Role::System,
+            content: MessageContent::Text(summary),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        });
+        new_msgs.extend_from_slice(&self.messages[split_at..]);
+        self.messages = new_msgs;
         self.rewrite_jsonl();
     }
 
@@ -444,7 +486,7 @@ mod tests {
         conv.push_user("Hello, how are you?");
         conv.push_assistant("I'm fine, thank you!", None, None);
         // 26 + 21 = 47 chars / 4 ≈ 11 tokens
-        let tokens = conv.estimated_tokens();
+        let tokens = conv.estimate_tokens();
         assert!(tokens > 0);
     }
 
