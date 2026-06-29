@@ -643,6 +643,7 @@ impl App {
         if let Ok(sessions) = self.session_pool.list() {
             let selected_name = self.session_tui.name_buffer.clone();
             self.session_tui.sessions = sessions;
+            // Try to keep selection on the same session, or first one.
             self.session_tui.selected = self
                 .session_tui
                 .sessions
@@ -650,6 +651,11 @@ impl App {
                 .position(|s| s.name == selected_name)
                 .unwrap_or(0)
                 .min(self.session_tui.sessions.len().saturating_sub(1));
+            // Sync name/desc from new selection.
+            if let Some(meta) = self.session_tui.sessions.get(self.session_tui.selected) {
+                self.session_tui.name_buffer = meta.name.clone();
+                self.session_tui.desc_buffer = meta.description.clone();
+            }
         }
     }
 }

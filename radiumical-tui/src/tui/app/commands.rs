@@ -9,6 +9,25 @@ impl App {
                 return;
             }
             "/new" => {
+                // Auto-save current session before clearing (avoid data loss).
+                if !self.session_items.is_empty() {
+                    let desc = self.history.first().cloned();
+                    let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let auto_name = format!("auto-{ts}");
+                    let _ = self.session_pool.save(
+                        &auto_name,
+                        &self.session_items,
+                        &self.model,
+                        &self.provider_name,
+                        mode,
+                        &self.thinking_effort,
+                        desc.as_deref(),
+                    );
+                }
                 self.output.clear();
                 self.output.push(String::new());
                 self.input.clear();
@@ -129,8 +148,12 @@ impl App {
             }
             _ if task == "/sessions" || task == "/session tui" => {
                 if let Ok(sessions) = self.session_pool.list() {
-                    let current_name = self.history.first().cloned();
-                    self.session_tui.open(sessions, current_name.as_deref(), None);
+                    self.session_tui.open(sessions, None, None);
+                    // Pre-fill with the most recent session name if available.
+                    if let Some(first) = self.session_tui.sessions.first() {
+                        self.session_tui.name_buffer = first.name.clone();
+                        self.session_tui.desc_buffer = first.description.clone();
+                    }
                 }
                 self.input.clear();
                 self.cursor = 0;
@@ -522,7 +545,9 @@ impl App {
                 .push(radiumical_core::session::SessionItem::User {
                     content: task.to_string(),
                 });
-            self.output.push(format!("> {task}"));
+            for line in task.lines() {
+                self.output.push(format!("> {line}"));
+            }
             self.output.push(String::new());
             self.stick_to_bottom = true;
             self.full_reasoning.clear();

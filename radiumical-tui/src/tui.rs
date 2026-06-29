@@ -185,15 +185,18 @@ pub fn run(
 
     let desc = app.history.first().cloned();
     let mode: radiumical_core::session::SessionMode = app.mode.clone().into();
-    let _ = app.session_pool.save(
-        "autosave",
-        &app.session_items,
-        &app.model,
-        &app.provider_name,
-        mode,
-        &app.thinking_effort,
-        desc.as_deref(),
-    );
+    // Only autosave if there are actual session items (not empty).
+    if !app.session_items.is_empty() {
+        let _ = app.session_pool.save(
+            "autosave",
+            &app.session_items,
+            &app.model,
+            &app.provider_name,
+            mode,
+            &app.thinking_effort,
+            desc.as_deref(),
+        );
+    }
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
