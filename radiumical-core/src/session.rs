@@ -1,5 +1,8 @@
-//! Session management — stored in ~/.radi/session/ as semantic JSONL.
-//! Each line is a typed record: meta / user / assistant / reasoning / tool / raw.
+//! Session management — stored in `~/.radi/sessions/{workspace_hash}/` as semantic JSONL.
+//!
+//! Each workspace gets its own session directory, so sessions from different
+//! projects never collide.  Each line is a typed record: meta / user / assistant
+//! / reasoning / tool / raw.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -248,29 +251,44 @@ fn hash_name(name: &str) -> String {
     format!("{:x}", h.finish())
 }
 
-pub struct Session;
+/// Derive a short, stable hash from a workspace path for directory naming.
+fn workspace_hash(workspace: &str) -> String {
+    let canonical = std::fs::canonicalize(workspace)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| workspace.to_string());
+    let mut h = DefaultHasher::new();
+    canonical.to_lowercase().hash(&mut h);
+    format!("{:x}", h.finish())
+}
 
-impl Session {
-    pub fn dir() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".radi")
-            .join("session")
+// ---------------------------------------------------------------------------
+// Core session I/O — all operations are parameterized by `dir`.
+// ---------------------------------------------------------------------------
+
+fn list_dir(dir: &Path) -> Result<Vec<SessionMeta>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
     }
-
-    pub fn list() -> Result<Vec<SessionMeta>> {
-        let dir = Self::dir();
-        if !dir.exists() {
-            return Ok(Vec::new());
-        }
-        let mut metas = Vec::new();
-        for entry in fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "jsonl") {
-                if let Ok(data) = fs::read_to_string(&path) {
-                    if let Some(first) = data.lines().next() {
-                        if let Ok(SessionItem::Meta {
+    let mut metas = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "jsonl") {
+            if let Ok(data) = fs::read_to_string(&path) {
+                if let Some(first) = data.lines().next() {
+                    if let Ok(SessionItem::Meta {
+                        name,
+                        created,
+                        updated,
+                        model,
+                        provider,
+                        mode,
+                        thinking_effort,
+                        description,
+                        message_count,
+                    }) = serde_json::from_str(first)
+                    {
+                        metas.push(SessionMeta {
                             name,
                             created,
                             updated,
@@ -280,141 +298,139 @@ impl Session {
                             thinking_effort,
                             description,
                             message_count,
-                        }) = serde_json::from_str(first)
-                        {
-                            metas.push(SessionMeta {
-                                name,
-                                created,
-                                updated,
-                                model,
-                                provider,
-                                mode,
-                                thinking_effort,
-                                description,
-                                message_count,
-                            });
-                        }
+                        });
                     }
                 }
             }
         }
-        metas.sort_by(|a, b| b.updated.cmp(&a.updated));
-        Ok(metas)
     }
+    metas.sort_by(|a, b| b.updated.cmp(&a.updated));
+    Ok(metas)
+}
 
-    pub fn save(
-        name: &str,
-        items: &[SessionItem],
-        model: &str,
-        provider: &str,
-        mode: SessionMode,
-        thinking_effort: &str,
-        description: Option<&str>,
-    ) -> Result<()> {
-        let dir = Self::dir();
-        fs::create_dir_all(&dir)?;
-        let path = dir.join(format!("{}.jsonl", hash_name(name)));
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-        let description = description.unwrap_or("").to_string();
-        let message_count = items
-            .iter()
-            .filter(|i| !matches!(i, SessionItem::Meta { .. }))
-            .count();
+#[allow(clippy::too_many_arguments)]
+fn save_dir(
+    dir: &Path,
+    name: &str,
+    items: &[SessionItem],
+    model: &str,
+    provider: &str,
+    mode: SessionMode,
+    thinking_effort: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    fs::create_dir_all(dir)?;
+    let path = dir.join(format!("{}.jsonl", hash_name(name)));
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let description = description.unwrap_or("").to_string();
+    let message_count = items
+        .iter()
+        .filter(|i| !matches!(i, SessionItem::Meta { .. }))
+        .count();
 
-        let mut records: Vec<SessionItem> = vec![SessionItem::Meta {
-            name: name.to_string(),
-            created: now.clone(),
-            updated: now,
-            model: model.to_string(),
-            provider: provider.to_string(),
+    let mut records: Vec<SessionItem> = vec![SessionItem::Meta {
+        name: name.to_string(),
+        created: now.clone(),
+        updated: now,
+        model: model.to_string(),
+        provider: provider.to_string(),
+        mode,
+        thinking_effort: thinking_effort.to_string(),
+        description,
+        message_count,
+    }];
+    records.extend_from_slice(items);
+
+    let lines: Vec<String> = records
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()?;
+    fs::write(&path, lines.join("\n"))?;
+    Ok(())
+}
+
+fn load_dir(dir: &Path, name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
+    let path = dir.join(format!("{}.jsonl", hash_name(name)));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let data = fs::read_to_string(&path)?;
+    let mut lines = data.lines();
+    let first = lines.next().context("session file is empty")?.to_string();
+    let meta = match serde_json::from_str::<SessionItem>(&first)? {
+        SessionItem::Meta {
+            name,
+            created,
+            updated,
+            model,
+            provider,
             mode,
-            thinking_effort: thinking_effort.to_string(),
+            thinking_effort,
             description,
             message_count,
-        }];
-        records.extend_from_slice(items);
-
-        let lines: Vec<String> = records
-            .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<Vec<_>, _>>()?;
-        fs::write(&path, lines.join("\n"))?;
-        Ok(())
+        } => SessionMeta {
+            name,
+            created,
+            updated,
+            model,
+            provider,
+            mode,
+            thinking_effort,
+            description,
+            message_count,
+        },
+        _ => anyhow::bail!("first record is not meta"),
+    };
+    let mut items = Vec::new();
+    for line in lines {
+        match serde_json::from_str::<SessionItem>(line)? {
+            SessionItem::Meta { .. } => {}
+            item => items.push(item),
+        }
     }
+    Ok(Some((meta, items)))
+}
 
-    pub fn load(name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
-        let dir = Self::dir();
-        let path = dir.join(format!("{}.jsonl", hash_name(name)));
-        if !path.exists() {
-            return Ok(None);
-        }
-        let data = fs::read_to_string(&path)?;
-        let mut lines = data.lines();
-        let first = lines.next().context("session file is empty")?.to_string();
-        let meta = match serde_json::from_str::<SessionItem>(&first)? {
-            SessionItem::Meta {
-                name,
-                created,
-                updated,
-                model,
-                provider,
-                mode,
-                thinking_effort,
-                description,
-                message_count,
-            } => SessionMeta {
-                name,
-                created,
-                updated,
-                model,
-                provider,
-                mode,
-                thinking_effort,
-                description,
-                message_count,
-            },
-            _ => anyhow::bail!("first record is not meta"),
-        };
-        let mut items = Vec::new();
-        for line in lines {
-            match serde_json::from_str::<SessionItem>(line)? {
-                SessionItem::Meta { .. } => {}
-                item => items.push(item),
-            }
-        }
-        Ok(Some((meta, items)))
-    }
-
-    pub fn delete(name: &str) -> Result<bool> {
-        let dir = Self::dir();
-        let path = dir.join(format!("{}.jsonl", hash_name(name)));
-        if path.exists() {
-            fs::remove_file(&path)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+fn delete_dir(dir: &Path, name: &str) -> Result<bool> {
+    let path = dir.join(format!("{}.jsonl", hash_name(name)));
+    if path.exists() {
+        fs::remove_file(&path)?;
+        Ok(true)
+    } else {
+        Ok(false)
     }
 }
 
-/// Pool-style session manager.
-///
-/// Sessions live on disk under a single directory. The pool provides a unified
-/// interface to list, load, save, and delete them, while keeping the in-memory
-/// active session isolated from the persistence layer.
+// ---------------------------------------------------------------------------
+// SessionPool — workspace-scoped session manager.
+//
+// Sessions live under `~/.radi/sessions/{workspace_hash}/` so different
+// projects never collide.  The pool provides a unified interface to list,
+// load, save, and delete sessions within the current workspace.
+// ---------------------------------------------------------------------------
+
 pub struct SessionPool {
     dir: PathBuf,
 }
 
 impl SessionPool {
+    /// Create a pool for a specific directory.
     pub fn new(dir: impl AsRef<Path>) -> Self {
         Self {
             dir: dir.as_ref().to_path_buf(),
         }
     }
 
-    pub fn default_pool() -> Self {
-        Self::new(Session::dir())
+    /// Create a pool scoped to the given workspace path.
+    ///
+    /// Sessions are stored under `~/.radi/sessions/{hash}/`.
+    pub fn for_workspace(workspace: &str) -> Self {
+        let dir = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".radi")
+            .join("sessions")
+            .join(workspace_hash(workspace));
+        Self::new(dir)
     }
 
     pub fn dir(&self) -> &Path {
@@ -422,7 +438,7 @@ impl SessionPool {
     }
 
     pub fn list(&self) -> Result<Vec<SessionMeta>> {
-        Session::list()
+        list_dir(&self.dir)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -436,8 +452,8 @@ impl SessionPool {
         thinking_effort: &str,
         description: Option<&str>,
     ) -> Result<()> {
-        fs::create_dir_all(&self.dir)?;
-        Session::save(
+        save_dir(
+            &self.dir,
             name,
             items,
             model,
@@ -449,13 +465,67 @@ impl SessionPool {
     }
 
     pub fn load(&self, name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
-        Session::load(name)
+        load_dir(&self.dir, name)
     }
 
     pub fn delete(&self, name: &str) -> Result<bool> {
-        Session::delete(name)
+        delete_dir(&self.dir, name)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Backward compat: static `Session` methods delegate to the legacy dir.
+// New code should use `SessionPool::for_workspace()` instead.
+// ---------------------------------------------------------------------------
+
+pub struct Session;
+
+impl Session {
+    pub fn dir() -> PathBuf {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".radi")
+            .join("session")
+    }
+
+    pub fn list() -> Result<Vec<SessionMeta>> {
+        list_dir(&Self::dir())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save(
+        name: &str,
+        items: &[SessionItem],
+        model: &str,
+        provider: &str,
+        mode: SessionMode,
+        thinking_effort: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        save_dir(
+            &Self::dir(),
+            name,
+            items,
+            model,
+            provider,
+            mode,
+            thinking_effort,
+            description,
+        )
+    }
+
+    pub fn load(name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
+        load_dir(&Self::dir(), name)
+    }
+
+    pub fn delete(name: &str) -> Result<bool> {
+        delete_dir(&Self::dir(), name)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -472,6 +542,20 @@ mod tests {
     fn test_hash_name_different() {
         let a = hash_name("hello");
         let b = hash_name("world");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_workspace_hash_deterministic() {
+        let a = workspace_hash("/home/user/project");
+        let b = workspace_hash("/home/user/project");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_workspace_hash_different() {
+        let a = workspace_hash("/home/user/project-a");
+        let b = workspace_hash("/home/user/project-b");
         assert_ne!(a, b);
     }
 
@@ -526,6 +610,16 @@ mod tests {
         assert!(deleted);
         let gone = Session::load("_test_session").unwrap();
         assert!(gone.is_none());
+    }
+
+    #[test]
+    fn test_pool_for_workspace_isolation() {
+        let pool_a = SessionPool::for_workspace("/tmp/workspace-a");
+        let pool_b = SessionPool::for_workspace("/tmp/workspace-b");
+        assert_ne!(pool_a.dir(), pool_b.dir());
+        // Both should be under ~/.radi/sessions/
+        assert!(pool_a.dir().to_string_lossy().contains("sessions"));
+        assert!(pool_b.dir().to_string_lossy().contains("sessions"));
     }
 
     #[test]

@@ -92,6 +92,7 @@ pub fn run(
     cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
     ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
     config: SessionConfig,
+    workspace: String,
 ) -> anyhow::Result<()> {
     use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
     use crossterm::execute;
@@ -116,7 +117,7 @@ pub fn run(
 
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut app = App::new(cmd_tx, ui_rx, &config);
+    let mut app = App::new(cmd_tx, ui_rx, &config, &workspace);
     // Auto-load previous session if available
     if let Ok(Some((_, items))) = radiumical_core::session::Session::load("autosave") {
         if !items.is_empty() {

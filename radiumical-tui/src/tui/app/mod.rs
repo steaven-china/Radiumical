@@ -82,6 +82,7 @@ impl App {
         cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
         ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
         config: &SessionConfig,
+        workspace: &str,
     ) -> Self {
         let mut out = vec![format!("Radiumical — {} @ {}", config.model, ".")];
         out.push(String::new());
@@ -179,7 +180,7 @@ impl App {
             last_click: None,
             hovered_block: None,
             session_items: Vec::new(),
-            session_pool: radiumical_core::session::SessionPool::default_pool(),
+            session_pool: radiumical_core::session::SessionPool::for_workspace(workspace),
             pending_choice: None,
         }
     }

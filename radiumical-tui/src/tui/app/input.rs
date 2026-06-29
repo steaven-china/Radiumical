@@ -662,8 +662,6 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_session_action_label() {
         use crate::session_tui::SessionAction;

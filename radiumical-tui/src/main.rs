@@ -188,8 +188,9 @@ async fn main() -> Result<()> {
 
     // ── Interactive mode: spawn TUI on a separate thread ──
     let tui_config = config.clone();
+    let tui_workspace = workspace.to_string_lossy().to_string();
     let tui_handle = std::thread::spawn(move || {
-        if let Err(e) = tui::run(cmd_tx, ui_rx, tui_config) {
+        if let Err(e) = tui::run(cmd_tx, ui_rx, tui_config, tui_workspace) {
             eprintln!("TUI error: {e}");
         }
     });
