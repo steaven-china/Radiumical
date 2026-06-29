@@ -9,6 +9,7 @@ use crate::conversation::Conversation;
 use crate::hooks::crlf::CRLFNormalizer;
 use crate::plugins::source::{RegexLinter, SourcePluginRegistry};
 use crate::provider::Provider;
+use crate::session::{items_to_messages, SessionItem};
 use crate::tools::{all_tools, Tool, ToolContext};
 use crate::types::{
     AgentMode, Message, MessageContent, ProviderEvent, Role, SessionConfig, ToolCall,
@@ -79,6 +80,17 @@ impl Harness {
     /// Update the agent operating mode.
     pub fn set_mode(&mut self, mode: AgentMode) {
         self.config.mode = mode;
+    }
+
+    /// Reset the conversation to an empty history, truncating the JSONL file.
+    pub fn reset_conversation(&mut self) {
+        self.conversation.reset_messages(Vec::new());
+    }
+
+    /// Load session items into the conversation history.
+    pub fn load_session_items(&mut self, items: &[SessionItem]) {
+        let messages = items_to_messages(items);
+        self.conversation.reset_messages(messages);
     }
 
     /// Access the source plugin registry.

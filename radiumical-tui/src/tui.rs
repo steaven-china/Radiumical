@@ -22,7 +22,8 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/models", "Model picker panel"),
     ("/model <n>", "Switch model"),
     ("/new", "New session / clear context"),
-    ("/session", "Save/load sessions"),
+    ("/session", "Save/load sessions (commands)"),
+    ("/sessions", "Session manager TUI"),
     ("/cod on/off", "Chain of Draft experimental"),
     ("/debug <t>", "Debug info"),
     ("/end", "Jump to bottom"),
@@ -181,10 +182,14 @@ pub fn run(
     })();
 
     let desc = app.history.first().cloned();
-    let _ = radiumical_core::session::Session::save(
+    let mode: radiumical_core::session::SessionMode = app.mode.clone().into();
+    let _ = app.session_pool.save(
         "autosave",
         &app.session_items,
         &app.model,
+        &app.provider_name,
+        mode,
+        &app.thinking_effort,
         desc.as_deref(),
     );
     execute!(

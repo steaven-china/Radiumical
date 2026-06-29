@@ -35,6 +35,7 @@ pub struct App {
     pub cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
     pub ui_rx: mpsc::Receiver<UiEvent>,
     pub session_items: Vec<radiumical_core::session::SessionItem>,
+    pub session_pool: radiumical_core::session::SessionPool,
     pub pending_choice: Option<(String, String, Vec<String>)>,
     pub should_quit: bool,
     pub history: Vec<String>,
@@ -55,6 +56,7 @@ pub struct App {
     pub dashboard: crate::dashboard::Dashboard,
     pub session_list_visible: bool,
     pub session_list: crate::board::ListBoard,
+    pub session_tui: crate::session_tui::SessionTui,
     pub blocks: Vec<crate::layout::Block>,
     pub render_cache: HashMap<u64, Vec<Line<'static>>>,
     pub markdown: crate::markdown::MarkdownRenderer,
@@ -151,6 +153,7 @@ impl App {
             dashboard: crate::dashboard::Dashboard::new(),
             session_list_visible: false,
             session_list: crate::board::ListBoard::new(" Sessions "),
+            session_tui: crate::session_tui::SessionTui::new(),
             blocks: Vec::new(),
             render_cache: HashMap::new(),
             markdown: crate::markdown::MarkdownRenderer::new(),
@@ -173,6 +176,7 @@ impl App {
             last_click: None,
             hovered_block: None,
             session_items: Vec::new(),
+            session_pool: radiumical_core::session::SessionPool::default_pool(),
             pending_choice: None,
         }
     }

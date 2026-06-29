@@ -28,6 +28,7 @@ impl App {
                 self.markdown = crate::markdown::MarkdownRenderer::new();
                 self.full_reasoning.clear();
                 self.show_full_reasoning = false;
+                let _ = self.cmd_tx.blocking_send(BackendCmd::ResetConversation);
                 self.output
                     .push(format!("Radiumical — {} @ {}", self.model, "."));
                 self.output.push(String::new());
@@ -126,6 +127,27 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
+            _ if task == "/sessions" || task == "/session tui" => {
+                if let Ok(sessions) = self.session_pool.list() {
+                    let current_name = self.history.first().cloned();
+                    self.session_tui.open(sessions, current_name.as_deref(), None);
+                }
+                self.input.clear();
+                self.cursor = 0;
+                self.hints.clear();
+                return;
+            }
+            _ if task == "/session" => {
+                self.output.push(
+                    "  /session save <name> [desc] | load <name> | list | delete <name> | tui".into(),
+                );
+                self.input.clear();
+                self.cursor = 0;
+                self.hints.clear();
+                self.stick_to_bottom = true;
+                self.output.push(String::new());
+                return;
+            }
             _ if task.starts_with("/session") => {
                 let rest = task[8..].trim();
                 let mut parts = rest.splitn(3, ' ');
@@ -134,10 +156,14 @@ impl App {
                     "save" => {
                         let name = parts.next().unwrap_or("default");
                         let desc = parts.next();
-                        match radiumical_core::session::Session::save(
+                        let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
+                        match self.session_pool.save(
                             name,
                             &self.session_items,
                             &self.model,
+                            &self.provider_name,
+                            mode,
+                            &self.thinking_effort,
                             desc,
                         ) {
                             Ok(()) => self.output.push(format!("  Session saved: {name}")),
@@ -146,17 +172,33 @@ impl App {
                     }
                     "load" => {
                         let name = parts.next().unwrap_or("default");
-                        match radiumical_core::session::Session::load(name) {
-                            Ok(Some((_, items))) => {
+                        match self.session_pool.load(name) {
+                            Ok(Some((meta, items))) => {
                                 self.session_items = items;
                                 self.render_session_items_to_output();
+                                self.mode = meta.mode.into();
+                                self.model = meta.model.clone();
+                                self.provider_name = meta.provider.clone();
+                                self.thinking_effort = meta.thinking_effort.clone();
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::SetMode(self.mode.clone()));
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::SetModel(self.model.clone()));
+                                let _ = self.cmd_tx.blocking_send(
+                                    BackendCmd::SetThinkingEffort(self.thinking_effort.clone()),
+                                );
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::LoadSession(self.session_items.clone()));
                                 self.output.push(format!("  Loaded: {name}"));
                             }
                             Ok(None) => self.output.push(format!("  Session not found: {name}")),
                             Err(e) => self.output.push(format!("  Load failed: {e}")),
                         }
                     }
-                    "list" => match radiumical_core::session::Session::list() {
+                    "list" => match self.session_pool.list() {
                         Ok(sessions) => {
                             if sessions.is_empty() {
                                 self.output.push("  No saved sessions".into());
@@ -178,7 +220,7 @@ impl App {
                     },
                     "delete" => {
                         let name = parts.next().unwrap_or("");
-                        match radiumical_core::session::Session::delete(name) {
+                        match self.session_pool.delete(name) {
                             Ok(true) => self.output.push(format!("  Deleted: {name}")),
                             Ok(false) => self.output.push(format!("  Not found: {name}")),
                             Err(e) => self.output.push(format!("  Delete failed: {e}")),
@@ -186,7 +228,7 @@ impl App {
                     }
                     _ => {
                         self.output.push(
-                            "  /session save <name> [desc] | load <name> | list | delete <name>"
+                            "  /session save <name> [desc] | load <name> | list | delete <name> | tui"
                                 .into(),
                         );
                     }

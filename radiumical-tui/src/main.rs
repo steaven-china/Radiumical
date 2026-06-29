@@ -2,6 +2,7 @@ mod board;
 mod dashboard;
 mod layout;
 mod markdown;
+mod session_tui;
 mod settings;
 mod tui;
 
@@ -293,6 +294,12 @@ async fn main() -> Result<()> {
                     }
                     Some(BackendCmd::SetThinkingEffort(effort)) => {
                         provider.set_reasoning_effort(Some(effort));
+                    }
+                    Some(BackendCmd::ResetConversation) => {
+                        runner.lock().await.reset_conversation();
+                    }
+                    Some(BackendCmd::LoadSession(items)) => {
+                        runner.lock().await.load_session_items(&items);
                     }
                     Some(BackendCmd::RefreshModels) => {
                         let ui_tx = ui_tx.clone();

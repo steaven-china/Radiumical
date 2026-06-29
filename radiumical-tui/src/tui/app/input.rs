@@ -1,4 +1,6 @@
+use crate::session_tui::SessionAction;
 use crate::tui::app::App;
+use crate::tui::BackendCmd;
 use crate::tui::matching_hints;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
@@ -47,6 +49,10 @@ impl App {
                 }
             }
             (KeyCode::Up, _) => {
+                if self.session_tui.visible {
+                    self.session_tui.select_prev();
+                    return;
+                }
                 if self.session_list_visible {
                     self.session_list.select_prev();
                     return;
@@ -77,6 +83,10 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
+                if self.session_tui.visible {
+                    self.session_tui.select_next();
+                    return;
+                }
                 if self.session_list_visible {
                     self.session_list.select_next();
                     return;
@@ -112,14 +122,34 @@ impl App {
                 self.update_hints();
             }
             (KeyCode::Enter, _) => {
+                if self.session_tui.visible {
+                    self.handle_session_tui_enter();
+                    return;
+                }
                 if self.session_list_visible {
                     if let Some(selected) = self.session_list.current() {
                         let name = selected.split(" (").next().unwrap_or(selected);
-                        if let Ok(Some((_, items))) = radiumical_core::session::Session::load(name)
+                        if let Ok(Some((meta, items))) = self.session_pool.load(name)
                         {
                             if !items.is_empty() {
                                 self.session_items = items;
                                 self.render_session_items_to_output();
+                                self.mode = meta.mode.into();
+                                self.model = meta.model.clone();
+                                self.provider_name = meta.provider.clone();
+                                self.thinking_effort = meta.thinking_effort.clone();
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::SetMode(self.mode.clone()));
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::SetModel(self.model.clone()));
+                                let _ = self.cmd_tx.blocking_send(
+                                    BackendCmd::SetThinkingEffort(self.thinking_effort.clone()),
+                                );
+                                let _ = self
+                                    .cmd_tx
+                                    .blocking_send(BackendCmd::LoadSession(self.session_items.clone()));
                                 self.welcome = false;
                             }
                         }
@@ -180,6 +210,18 @@ impl App {
                 self.handle_command(&task);
             }
             (KeyCode::Char(ch), mods) => {
+                if self.session_tui.visible {
+                    match self.session_tui.focus {
+                        crate::session_tui::SessionFocus::NameEdit => {
+                            self.session_tui.name_buffer.push(ch);
+                        }
+                        crate::session_tui::SessionFocus::DescEdit => {
+                            self.session_tui.desc_buffer.push(ch);
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 self.history_idx = None;
                 if mods.contains(KeyModifiers::CONTROL) {
                     match ch {
@@ -189,6 +231,16 @@ impl App {
                         'u' => {
                             self.input.drain(..self.cursor);
                             self.cursor = 0;
+                        }
+                        _ => {}
+                    }
+                } else if self.session_tui.visible {
+                    match self.session_tui.focus {
+                        crate::session_tui::SessionFocus::NameEdit => {
+                            self.session_tui.name_buffer.push(ch);
+                        }
+                        crate::session_tui::SessionFocus::DescEdit => {
+                            self.session_tui.desc_buffer.push(ch);
                         }
                         _ => {}
                     }
@@ -212,24 +264,31 @@ impl App {
                 self.update_hints();
             }
             (KeyCode::Left, _) => {
+                if self.session_tui.visible {
+                    self.session_tui.focus_left();
+                    return;
+                }
                 if self.dashboard.visible {
                     self.dashboard.left();
                     return;
                 }
-                if self.cursor > 0 {
-                    self.history_idx = None;
-                    self.cursor = self.prev_char_boundary(self.cursor);
+                if self.settings_board.visible {
+                    self.settings_board.adjust(-1);
+                    return;
                 }
+                self.cursor = self.prev_char_boundary(self.cursor);
             }
             (KeyCode::Right, _) => {
+                if self.session_tui.visible {
+                    self.session_tui.focus_right();
+                    return;
+                }
                 if self.dashboard.visible {
                     self.dashboard.right();
                     return;
                 }
-                if self.cursor < self.input.len() {
-                    self.history_idx = None;
-                    self.cursor = self.next_char_boundary(self.cursor);
-                }
+                self.history_idx = None;
+                self.cursor = self.next_char_boundary(self.cursor);
             }
             (KeyCode::Home, _) => {
                 self.history_idx = None;
@@ -245,27 +304,48 @@ impl App {
                 }
             }
             (KeyCode::Tab, _) => {
-                if self.confirm.visible {
-                    self.confirm.toggle();
+                if self.session_tui.visible {
+                    match self.session_tui.focus {
+                        crate::session_tui::SessionFocus::List => self.session_tui.focus_right(),
+                        crate::session_tui::SessionFocus::Actions => self.session_tui.focus_name(),
+                        crate::session_tui::SessionFocus::NameEdit => {
+                            self.session_tui.focus_desc()
+                        }
+                        crate::session_tui::SessionFocus::DescEdit => {
+                            self.session_tui.focus_left()
+                        }
+                        _ => {}
+                    }
                     return;
                 }
-                if self.input.starts_with('/') {
-                    if let Some(idx) = self.hint_selected {
-                        let max = self.hints.len().saturating_sub(1);
-                        self.hint_selected = Some((idx + 1).min(max));
-                        self.sync_hint_page();
-                    } else if !self.hints.is_empty() {
-                        self.hint_selected = Some(0);
-                        self.sync_hint_page();
-                    }
+                if self.input.starts_with('/') && !self.hints.is_empty() {
+                    self.hint_selected = Some(0);
+                    self.sync_hint_page();
                 }
             }
             (KeyCode::BackTab, _) => {
+                if self.session_tui.visible {
+                    match self.session_tui.focus {
+                        crate::session_tui::SessionFocus::Actions => self.session_tui.focus_left(),
+                        crate::session_tui::SessionFocus::NameEdit => {
+                            self.session_tui.focus_right()
+                        }
+                        crate::session_tui::SessionFocus::DescEdit => {
+                            self.session_tui.focus_name()
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 if self.hint_selected.is_some() {
                     self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
             (KeyCode::Esc, _) => {
+                if self.session_tui.visible {
+                    self.session_tui.close();
+                    return;
+                }
                 if self.session_list_visible {
                     self.session_list_visible = false;
                     return;
@@ -422,5 +502,168 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    fn handle_session_tui_enter(&mut self,
+    ) {
+        use crate::session_tui::{SessionAction, SessionFocus};
+        match self.session_tui.focus {
+            SessionFocus::List | SessionFocus::Actions => {
+                let action = self.session_tui.selected_action();
+                self.dispatch_session_action(action);
+            }
+            SessionFocus::NameEdit | SessionFocus::DescEdit => {
+                // Commit edit by moving focus back to actions
+                self.session_tui.focus_right();
+            }
+            SessionFocus::ConfirmDelete => {
+                self.dispatch_session_action(SessionAction::Delete);
+                self.session_tui.focus = SessionFocus::List;
+            }
+        }
+    }
+
+    fn dispatch_session_action(&mut self,
+        action: SessionAction,
+    ) {
+        use crate::session_tui::SessionFocus;
+        use radiumical_core::session::SessionMode;
+
+        match action {
+            SessionAction::New => {
+                self.handle_command("/new");
+                self.session_tui.close();
+            }
+            SessionAction::Load => {
+                let name = self.session_tui.name_buffer.trim().to_string();
+                if name.is_empty() {
+                    self.session_tui.set_message("Enter a session name to load");
+                    return;
+                }
+                match self.session_pool.load(&name) {
+                    Ok(Some((meta, items))) => {
+                        self.session_items = items;
+                        self.render_session_items_to_output();
+                        self.mode = meta.mode.into();
+                        self.model = meta.model.clone();
+                        self.provider_name = meta.provider.clone();
+                        self.thinking_effort = meta.thinking_effort.clone();
+                        let _ = self
+                            .cmd_tx
+                            .blocking_send(BackendCmd::SetMode(self.mode.clone()));
+                        let _ = self
+                            .cmd_tx
+                            .blocking_send(BackendCmd::SetModel(self.model.clone()));
+                        let _ = self.cmd_tx.blocking_send(BackendCmd::SetThinkingEffort(
+                            self.thinking_effort.clone(),
+                        ));
+                        let _ = self
+                            .cmd_tx
+                            .blocking_send(BackendCmd::LoadSession(self.session_items.clone()));
+                        self.session_tui.close();
+                        self.toasts.push(crate::board::Toast::new(
+                            format!("Loaded session: {name}"),
+                            crate::board::ToastLevel::Info,
+                            std::time::Duration::from_secs(3),
+                        ));
+                    }
+                    Ok(None) => {
+                        self.session_tui.set_message(format!("Session not found: {name}"));
+                    }
+                    Err(e) => {
+                        self.session_tui.set_message(format!("Load failed: {e}"));
+                    }
+                }
+            }
+            SessionAction::Save => {
+                let name = self.session_tui.name_buffer.trim().to_string();
+                if name.is_empty() {
+                    self.session_tui.set_message("Enter a session name to save");
+                    return;
+                }
+                let desc = self.session_tui.desc_buffer.trim();
+                let desc = if desc.is_empty() { None } else { Some(desc.to_string()) };
+                let mode: SessionMode = self.mode.clone().into();
+                match self.session_pool.save(
+                    &name,
+                    &self.session_items,
+                    &self.model,
+                    &self.provider_name,
+                    mode,
+                    &self.thinking_effort,
+                    desc.as_deref(),
+                ) {
+                    Ok(()) => {
+                        self.session_tui.clear_message();
+                        self.session_tui.set_message(format!("Saved: {name}"));
+                        self.refresh_session_tui_list();
+                    }
+                    Err(e) => {
+                        self.session_tui.set_message(format!("Save failed: {e}"));
+                    }
+                }
+            }
+            SessionAction::Delete => {
+                let name = self.session_tui.name_buffer.trim().to_string();
+                if name.is_empty() {
+                    self.session_tui.set_message("No session selected to delete");
+                    return;
+                }
+                if self.session_tui.focus != SessionFocus::ConfirmDelete {
+                    self.session_tui.set_message(format!(
+                        "Press Enter again to confirm deleting '{name}'"
+                    ));
+                    self.session_tui.focus = SessionFocus::ConfirmDelete;
+                    return;
+                }
+                match self.session_pool.delete(&name) {
+                    Ok(true) => {
+                        self.session_tui.clear_message();
+                        self.session_tui.set_message(format!("Deleted: {name}"));
+                        self.refresh_session_tui_list();
+                        self.session_tui.name_buffer.clear();
+                        self.session_tui.desc_buffer.clear();
+                        self.session_tui.focus = SessionFocus::List;
+                    }
+                    Ok(false) => {
+                        self.session_tui.set_message(format!("Not found: {name}"));
+                        self.session_tui.focus = SessionFocus::List;
+                    }
+                    Err(e) => {
+                        self.session_tui.set_message(format!("Delete failed: {e}"));
+                        self.session_tui.focus = SessionFocus::List;
+                    }
+                }
+            }
+        }
+    }
+
+    fn refresh_session_tui_list(&mut self,
+    ) {
+        if let Ok(sessions) = self.session_pool.list() {
+            let selected_name = self.session_tui.name_buffer.clone();
+            self.session_tui.sessions = sessions;
+            self.session_tui.selected = self
+                .session_tui
+                .sessions
+                .iter()
+                .position(|s| s.name == selected_name)
+                .unwrap_or(0)
+                .min(self.session_tui.sessions.len().saturating_sub(1));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_action_label() {
+        use crate::session_tui::SessionAction;
+        assert_eq!(SessionAction::Load.label(), "[ Load  ]");
+        assert_eq!(SessionAction::Save.label(), "[ Save  ]");
+        assert_eq!(SessionAction::Delete.label(), "[ Delete]");
+        assert_eq!(SessionAction::New.label(), "[ New   ]");
     }
 }

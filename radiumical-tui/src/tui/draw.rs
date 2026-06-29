@@ -117,6 +117,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.session_list_visible {
         app.session_list.render(f, chunks[0]);
     }
+    // Session manager overlay
+    if app.session_tui.visible {
+        app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
+    }
+
     // Render confirm dialog
     app.confirm.render(f, area);
     // Settings panel

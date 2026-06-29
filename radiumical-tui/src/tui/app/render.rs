@@ -103,11 +103,19 @@ impl App {
                     self.output.push(format!("\x01[思考] {content}"));
                 }
                 SessionItem::Tool {
-                    name, args, result, ..
+                    id,
+                    name,
+                    args,
+                    result,
                 } => {
-                    let width = box_width(name.len(), args.chars().count(), result.as_deref());
-                    self.output.push(box_top(name, width));
-                    self.output.push(box_args_line(&args, width));
+                    let header = name.clone();
+                    let width = box_width(header.len(), args.chars().count(), result.as_deref());
+                    // Embed the tool-call id at the end of the top line so
+                    // mouse hit-testing and expansion state remain valid after
+                    // a session reload, matching the runtime path in events.rs.
+                    self.output
+                        .push(format!("{}\x02{}", box_top(&header, width), id));
+                    self.output.push(box_args_line(args, width));
                     if let Some(result) = result {
                         for line in result.lines() {
                             self.output.push(box_result_line(line, width));

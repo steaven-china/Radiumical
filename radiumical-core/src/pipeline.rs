@@ -9,6 +9,7 @@ pub use crate::harness::ToolHook;
 use crate::agent::Agent;
 use crate::harness::Harness;
 use crate::provider::Provider;
+use crate::session::SessionItem;
 use crate::types::{AgentMode, SessionConfig, UiEvent};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
@@ -30,6 +31,14 @@ impl PipelineRunner {
 
     pub fn set_mode(&mut self, mode: AgentMode) {
         self.harness.set_mode(mode);
+    }
+
+    pub fn reset_conversation(&mut self) {
+        self.harness.reset_conversation();
+    }
+
+    pub fn load_session_items(&mut self, items: &[SessionItem]) {
+        self.harness.load_session_items(items);
     }
 
     pub async fn run(

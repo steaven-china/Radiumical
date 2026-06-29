@@ -5,15 +5,52 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use crate::types::{AgentMode, Message, MessageContent, Role, ToolCall, ToolResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMeta {
     pub name: String,
     pub created: String,
+    pub updated: String,
     pub model: String,
+    pub provider: String,
+    #[serde(default)]
+    pub mode: SessionMode,
+    #[serde(default)]
+    pub thinking_effort: String,
     pub description: String,
     pub message_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionMode {
+    #[default]
+    Auto,
+    Plan,
+    Exec,
+}
+
+impl From<AgentMode> for SessionMode {
+    fn from(m: AgentMode) -> Self {
+        match m {
+            AgentMode::Auto => SessionMode::Auto,
+            AgentMode::Plan => SessionMode::Plan,
+            AgentMode::Exec => SessionMode::Exec,
+        }
+    }
+}
+
+impl From<SessionMode> for AgentMode {
+    fn from(m: SessionMode) -> Self {
+        match m {
+            SessionMode::Auto => AgentMode::Auto,
+            SessionMode::Plan => AgentMode::Plan,
+            SessionMode::Exec => AgentMode::Exec,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +60,14 @@ pub enum SessionItem {
     Meta {
         name: String,
         created: String,
+        updated: String,
         model: String,
+        #[serde(default)]
+        provider: String,
+        #[serde(default)]
+        mode: SessionMode,
+        #[serde(default)]
+        thinking_effort: String,
         description: String,
         message_count: usize,
     },
@@ -45,13 +89,166 @@ pub enum SessionItem {
     Raw { lines: Vec<String> },
 }
 
-pub struct Session;
+impl SessionItem {
+    pub fn as_user(&self) -> Option<&str> {
+        match self {
+            SessionItem::User { content } => Some(content),
+            _ => None,
+        }
+    }
+}
+
+/// Rebuild LLM conversation messages from saved session items.
+///
+/// - User items become user messages.
+/// - Assistant items become assistant messages.
+/// - Reasoning items are attached as `reasoning_content` to the preceding
+///   assistant message when possible.
+/// - Tool items become assistant `tool_calls` followed by tool result messages.
+/// - Raw/error lines are dropped from the conversation history.
+pub fn items_to_messages(items: &[SessionItem]) -> Vec<Message> {
+    let mut out: Vec<Message> = Vec::new();
+    let mut pending_reasoning: Option<String> = None;
+
+    for item in items {
+        match item {
+            SessionItem::Meta { .. } => {}
+            SessionItem::User { content } => {
+                out.push(Message {
+                    role: Role::User,
+                    content: MessageContent::Text(content.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: None,
+                });
+            }
+            SessionItem::Assistant { content } => {
+                out.push(Message {
+                    role: Role::Assistant,
+                    content: MessageContent::Text(content.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: pending_reasoning.take(),
+                });
+            }
+            SessionItem::Reasoning { content } => {
+                if let Some(existing) = &mut pending_reasoning {
+                    existing.push_str(content);
+                } else {
+                    pending_reasoning = Some(content.clone());
+                }
+            }
+            SessionItem::Tool {
+                id,
+                name,
+                args,
+                result,
+            } => {
+                // Merge the tool call into the most recent assistant message
+                // when possible, matching the natural LLM response structure.
+                match out.last_mut() {
+                    Some(Message {
+                        role: Role::Assistant,
+                        tool_calls: Some(calls),
+                        ..
+                    }) => {
+                        calls.push(ToolCall {
+                            id: id.clone(),
+                            call_type: "function".into(),
+                            function: crate::types::FunctionCall {
+                                name: name.clone(),
+                                arguments: args.clone(),
+                            },
+                        });
+                    }
+                    Some(Message {
+                        role: Role::Assistant,
+                        tool_calls: None,
+                        ..
+                    }) => {
+                        if let Some(last) = out.last_mut() {
+                            last.tool_calls = Some(vec![ToolCall {
+                                id: id.clone(),
+                                call_type: "function".into(),
+                                function: crate::types::FunctionCall {
+                                    name: name.clone(),
+                                    arguments: args.clone(),
+                                },
+                            }]);
+                        }
+                    }
+                    _ => {
+                        out.push(Message {
+                            role: Role::Assistant,
+                            content: MessageContent::Text(String::new()),
+                            tool_calls: Some(vec![ToolCall {
+                                id: id.clone(),
+                                call_type: "function".into(),
+                                function: crate::types::FunctionCall {
+                                    name: name.clone(),
+                                    arguments: args.clone(),
+                                },
+                            }]),
+                            tool_call_id: None,
+                            name: None,
+                            reasoning_content: pending_reasoning.take(),
+                        });
+                    }
+                }
+
+                if let Some(result) = result {
+                    out.push(Message {
+                        role: Role::Tool,
+                        content: MessageContent::Text(result.clone()),
+                        tool_calls: None,
+                        tool_call_id: Some(id.clone()),
+                        name: Some(name.clone()),
+                        reasoning_content: None,
+                    });
+                }
+            }
+            SessionItem::Raw { .. } => {}
+        }
+    }
+
+    if let Some(reasoning) = pending_reasoning.take() {
+        if let Some(last) = out.last_mut() {
+            if last.role == Role::Assistant && last.reasoning_content.is_none() {
+                last.reasoning_content = Some(reasoning);
+            }
+        }
+    }
+
+    out
+}
+
+/// Convert a tool result message back to the short `ToolResult` shape used by
+/// the conversation layer.
+#[allow(dead_code)]
+pub fn tool_result_from_message(msg: &Message) -> Option<ToolResult> {
+    if msg.role != Role::Tool {
+        return None;
+    }
+    let content = match &msg.content {
+        MessageContent::Text(s) => s.clone(),
+        _ => String::new(),
+    };
+    Some(ToolResult {
+        tool_call_id: msg.tool_call_id.clone().unwrap_or_default(),
+        content,
+        is_error: false,
+    })
+}
 
 fn hash_name(name: &str) -> String {
     let mut h = DefaultHasher::new();
     name.hash(&mut h);
     format!("{:x}", h.finish())
 }
+
+pub struct Session;
 
 impl Session {
     pub fn dir() -> PathBuf {
@@ -70,13 +267,17 @@ impl Session {
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "jsonl") {
+            if path.extension().is_some_and(|e| e == "jsonl") {
                 if let Ok(data) = fs::read_to_string(&path) {
                     if let Some(first) = data.lines().next() {
                         if let Ok(SessionItem::Meta {
                             name,
                             created,
+                            updated,
                             model,
+                            provider,
+                            mode,
+                            thinking_effort,
                             description,
                             message_count,
                         }) = serde_json::from_str(first)
@@ -84,7 +285,11 @@ impl Session {
                             metas.push(SessionMeta {
                                 name,
                                 created,
+                                updated,
                                 model,
+                                provider,
+                                mode,
+                                thinking_effort,
                                 description,
                                 message_count,
                             });
@@ -93,7 +298,7 @@ impl Session {
                 }
             }
         }
-        metas.sort_by(|a, b| b.created.cmp(&a.created));
+        metas.sort_by(|a, b| b.updated.cmp(&a.updated));
         Ok(metas)
     }
 
@@ -101,19 +306,29 @@ impl Session {
         name: &str,
         items: &[SessionItem],
         model: &str,
+        provider: &str,
+        mode: SessionMode,
+        thinking_effort: &str,
         description: Option<&str>,
     ) -> Result<()> {
         let dir = Self::dir();
         fs::create_dir_all(&dir)?;
         let path = dir.join(format!("{}.jsonl", hash_name(name)));
-        let created = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
         let description = description.unwrap_or("").to_string();
-        let message_count = items.len();
+        let message_count = items
+            .iter()
+            .filter(|i| !matches!(i, SessionItem::Meta { .. }))
+            .count();
 
         let mut records: Vec<SessionItem> = vec![SessionItem::Meta {
             name: name.to_string(),
-            created,
+            created: now.clone(),
+            updated: now,
             model: model.to_string(),
+            provider: provider.to_string(),
+            mode,
+            thinking_effort: thinking_effort.to_string(),
             description,
             message_count,
         }];
@@ -121,7 +336,7 @@ impl Session {
 
         let lines: Vec<String> = records
             .iter()
-            .map(|r| serde_json::to_string(r))
+            .map(serde_json::to_string)
             .collect::<Result<Vec<_>, _>>()?;
         fs::write(&path, lines.join("\n"))?;
         Ok(())
@@ -140,13 +355,21 @@ impl Session {
             SessionItem::Meta {
                 name,
                 created,
+                updated,
                 model,
+                provider,
+                mode,
+                thinking_effort,
                 description,
                 message_count,
             } => SessionMeta {
                 name,
                 created,
+                updated,
                 model,
+                provider,
+                mode,
+                thinking_effort,
                 description,
                 message_count,
             },
@@ -171,6 +394,66 @@ impl Session {
         } else {
             Ok(false)
         }
+    }
+}
+
+/// Pool-style session manager.
+///
+/// Sessions live on disk under a single directory. The pool provides a unified
+/// interface to list, load, save, and delete them, while keeping the in-memory
+/// active session isolated from the persistence layer.
+pub struct SessionPool {
+    dir: PathBuf,
+}
+
+impl SessionPool {
+    pub fn new(dir: impl AsRef<Path>) -> Self {
+        Self {
+            dir: dir.as_ref().to_path_buf(),
+        }
+    }
+
+    pub fn default_pool() -> Self {
+        Self::new(Session::dir())
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn list(&self) -> Result<Vec<SessionMeta>> {
+        Session::list()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save(
+        &self,
+        name: &str,
+        items: &[SessionItem],
+        model: &str,
+        provider: &str,
+        mode: SessionMode,
+        thinking_effort: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        fs::create_dir_all(&self.dir)?;
+        Session::save(
+            name,
+            items,
+            model,
+            provider,
+            mode,
+            thinking_effort,
+            description,
+        )
+    }
+
+    pub fn load(&self, name: &str) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
+        Session::load(name)
+    }
+
+    pub fn delete(&self, name: &str) -> Result<bool> {
+        Session::delete(name)
     }
 }
 
@@ -214,14 +497,26 @@ mod tests {
                 result: Some("content".into()),
             },
         ];
-        let result = Session::save("_test_session", &items, "test-model", Some("test desc"));
+        let result = Session::save(
+            "_test_session",
+            &items,
+            "test-model",
+            "openai",
+            SessionMode::Auto,
+            "max",
+            Some("test desc"),
+        );
         assert!(result.is_ok());
         let loaded = Session::load("_test_session").unwrap();
         assert!(loaded.is_some());
         let (meta, loaded_items) = loaded.unwrap();
         assert_eq!(meta.name, "_test_session");
         assert_eq!(meta.model, "test-model");
+        assert_eq!(meta.provider, "openai");
+        assert_eq!(meta.mode, SessionMode::Auto);
+        assert_eq!(meta.thinking_effort, "max");
         assert_eq!(meta.description, "test desc");
+        assert_eq!(meta.message_count, 3);
         assert_eq!(loaded_items.len(), 3);
         match &loaded_items[2] {
             SessionItem::Tool { result, .. } => assert_eq!(result.as_deref(), Some("content")),
@@ -231,5 +526,64 @@ mod tests {
         assert!(deleted);
         let gone = Session::load("_test_session").unwrap();
         assert!(gone.is_none());
+    }
+
+    #[test]
+    fn test_items_to_messages_rebuilds_history() {
+        let items = vec![
+            SessionItem::User {
+                content: "hi".into(),
+            },
+            SessionItem::Reasoning {
+                content: "let me think".into(),
+            },
+            SessionItem::Assistant {
+                content: "hello".into(),
+            },
+            SessionItem::Tool {
+                id: "call_1".into(),
+                name: "read_file".into(),
+                args: "{\"path\":\"x\"}".into(),
+                result: Some("data".into()),
+            },
+            SessionItem::User {
+                content: "thanks".into(),
+            },
+        ];
+        let msgs = items_to_messages(&items);
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[0].role, Role::User);
+        assert_eq!(msgs[1].role, Role::Assistant);
+        assert_eq!(msgs[1].reasoning_content.as_deref(), Some("let me think"));
+        assert!(msgs[1].tool_calls.is_some());
+        assert_eq!(msgs[1].tool_calls.as_ref().unwrap().len(), 1);
+        assert_eq!(msgs[2].role, Role::Tool);
+        assert_eq!(msgs[3].role, Role::User);
+    }
+
+    #[test]
+    fn test_items_to_messages_skips_meta_and_raw() {
+        let items = vec![
+            SessionItem::Meta {
+                name: "x".into(),
+                created: "now".into(),
+                updated: "now".into(),
+                model: "m".into(),
+                provider: "p".into(),
+                mode: SessionMode::Auto,
+                thinking_effort: "".into(),
+                description: "".into(),
+                message_count: 0,
+            },
+            SessionItem::Raw {
+                lines: vec!["error".into()],
+            },
+            SessionItem::User {
+                content: "u".into(),
+            },
+        ];
+        let msgs = items_to_messages(&items);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].role, Role::User);
     }
 }

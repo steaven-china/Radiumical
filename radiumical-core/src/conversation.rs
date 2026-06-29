@@ -313,6 +313,17 @@ impl Conversation {
         self.messages.clear();
     }
 
+    /// Replace the in-memory messages and rewrite the JSONL backing file.
+    pub fn reset_messages(&mut self, messages: Vec<Message>) {
+        self.messages = messages;
+        self.rewrite_jsonl();
+    }
+
+    /// Set or clear the JSONL persistence path.
+    pub fn set_jsonl_path(&mut self, path: Option<PathBuf>) {
+        self.jsonl_path = path;
+    }
+
     // ── JSONL persistence ──
 
     fn flush(&self) {
@@ -320,6 +331,23 @@ impl Conversation {
             if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
                 if let Some(last) = self.messages.last() {
                     if let Ok(json) = serde_json::to_string(last) {
+                        let _ = writeln!(f, "{json}");
+                    }
+                }
+            }
+        }
+    }
+
+    fn rewrite_jsonl(&self) {
+        if let Some(ref path) = self.jsonl_path {
+            if let Ok(mut f) = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(path)
+            {
+                for msg in &self.messages {
+                    if let Ok(json) = serde_json::to_string(msg) {
                         let _ = writeln!(f, "{json}");
                     }
                 }

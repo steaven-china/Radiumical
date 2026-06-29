@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::providers::ProviderSource;
+use crate::session::SessionItem;
 
 // ── Chat types ──
 
@@ -251,6 +252,7 @@ pub enum UiEvent {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum BackendCmd {
     RunTask(String),
     Cancel,
@@ -261,6 +263,10 @@ pub enum BackendCmd {
     RefreshModels,
     FetchProviders,
     FetchModels(ProviderSource),
+    /// Reset the backend conversation history (e.g. /new).
+    ResetConversation,
+    /// Load a saved session into the backend conversation.
+    LoadSession(Vec<SessionItem>),
 }
 
 // ═══ Slash hints ═══
