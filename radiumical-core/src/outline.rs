@@ -8,10 +8,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 const OUTLINE_FILE: &str = ".radi/outline.json";
 const MAX_OUTLINE_CHARS: usize = 12_000;
+const MAX_FILES_OUTLINED: usize = 500;
+
+static OUTLINE_CACHE: Mutex<Option<(WorkspaceOutline, PathBuf)>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutlineItem {
@@ -69,6 +73,16 @@ impl WorkspaceOutline {
 
 /// Generate or load a cached workspace outline.
 pub fn load_or_generate(workspace: &Path) -> Result<WorkspaceOutline> {
+    // Fast path: in-memory cache keyed by workspace path.
+    {
+        let guard = OUTLINE_CACHE.lock().unwrap();
+        if let Some((cached, path)) = guard.as_ref() {
+            if path == workspace {
+                return Ok(cached.clone());
+            }
+        }
+    }
+
     let cache_path = workspace.join(OUTLINE_FILE);
 
     let source_files = collect_source_files(workspace)?;
@@ -132,6 +146,11 @@ pub fn load_or_generate(workspace: &Path) -> Result<WorkspaceOutline> {
     let json = serde_json::to_string_pretty(&outline)?;
     fs::write(&cache_path, json)?;
 
+    {
+        let mut guard = OUTLINE_CACHE.lock().unwrap();
+        *guard = Some((outline.clone(), workspace.to_path_buf()));
+    }
+
     Ok(outline)
 }
 
@@ -140,6 +159,9 @@ fn collect_source_files(workspace: &Path) -> Result<Vec<PathBuf>> {
     let mut stack = vec![workspace.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
+        if files.len() >= MAX_FILES_OUTLINED {
+            break;
+        }
         let entries = fs::read_dir(&dir)
             .with_context(|| format!("read directory {}", dir.display()))?;
         for entry in entries.flatten() {
