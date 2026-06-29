@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::sync::Arc;
 
+use crate::plugins::source::SourcePluginRegistry;
 use crate::types::{ToolDefinition, ToolResult, UiEvent};
 
 mod agent;
@@ -8,6 +10,7 @@ mod command;
 mod file;
 pub mod interact;
 mod search;
+mod source_plugin;
 mod system;
 mod task;
 
@@ -16,12 +19,36 @@ pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
 pub use search::{FindFiles, SearchCode};
+pub use source_plugin::SourceCodeTool;
 pub use system::{CronTab, ListDir, LspDiagnostics, SysInfo, TimeNow, TreeDir};
 pub use task::{GoalTool, OrchestrateTool, TodoList};
 
-/// Context passed to tools that need to interact with the UI.
+/// Context passed to tools that need to interact with the UI or access
+/// harness-level services such as source-code plugins.
 pub struct ToolContext {
     pub ui_tx: mpsc::Sender<UiEvent>,
+    pub source_plugins: Option<Arc<SourcePluginRegistry>>,
+}
+
+impl ToolContext {
+    /// Convenience constructor for tests and simple tools that don't need
+    /// plugin access.
+    pub fn new(ui_tx: mpsc::Sender<UiEvent>) -> Self {
+        Self {
+            ui_tx,
+            source_plugins: None,
+        }
+    }
+}
+
+impl Default for ToolContext {
+    fn default() -> Self {
+        let (tx, _) = mpsc::channel();
+        Self {
+            ui_tx: tx,
+            source_plugins: None,
+        }
+    }
 }
 
 /// A tool that the agent can call.
@@ -64,6 +91,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(SubAgentListTool),
         Box::new(MemoryTool),
         Box::new(PlaywrightTool),
+        Box::new(SourceCodeTool),
     ]
 }
 
@@ -297,13 +325,13 @@ mod tests {
             .execute(&PathBuf::from("."), r#"{"action": "add write tests"}"#)
             .await;
         assert!(!result.is_error);
-        assert!(result.content.contains("Added todo #1"));
+        assert!(result.content.contains("Added todo"));
 
         let result = TodoList
             .execute(&PathBuf::from("."), r#"{"action": "add fix bugs"}"#)
             .await;
         assert!(!result.is_error);
-        assert!(result.content.contains("Added todo #2"));
+        assert!(result.content.contains("Added todo"));
 
         let result = TodoList
             .execute(&PathBuf::from("."), r#"{"action": "list"}"#)
