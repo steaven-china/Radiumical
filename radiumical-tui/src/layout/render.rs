@@ -364,12 +364,11 @@ fn render_tool_result_lines(
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let right = if has_overflow {
-                if i >= sb_thumb_y && i < sb_thumb_y + sb_thumb_h {
-                    Some('█')
-                } else {
-                    Some('│')
-                }
+            let right = if has_overflow
+                && i >= sb_thumb_y
+                && i < sb_thumb_y + sb_thumb_h
+            {
+                Some('█')
             } else {
                 None
             };
