@@ -9,6 +9,7 @@ pub mod hooks;
 pub mod lsp;
 pub mod memory;
 pub mod orchestrator;
+pub mod outline;
 pub mod perf;
 pub mod pipeline;
 pub mod plugins;

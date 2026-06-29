@@ -99,7 +99,7 @@ impl Harness {
         let llm_timeout = Duration::from_secs(self.config.llm_timeout_secs);
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
 
-        let mut messages = self.conversation.build_context(&task);
+        let mut messages = self.conversation.build_context(&task, Some(&workspace));
         if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string()) {
             messages.push(user_msg(&ctx));
         }

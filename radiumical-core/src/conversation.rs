@@ -3,7 +3,7 @@
 use crate::types::{Message, MessageContent, Role, ToolCall, ToolResult};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Manages the full conversation history with JSONL persistence.
 pub struct Conversation {
@@ -91,9 +91,9 @@ impl Conversation {
 
     // ── Context assembly ──
 
-    /// Build the full message array for an LLM request: [system, ...history, new_user_msg].
+    /// Build the full message array for an LLM request: [system, outline, ...history, new_user_msg].
     /// Sanitizes: strips orphaned tool_calls without matching tool results.
-    pub fn build_context(&self, user_task: &str) -> Vec<Message> {
+    pub fn build_context(&self, user_task: &str, workspace: Option<&Path>) -> Vec<Message> {
         let mut ctx = vec![Message {
             role: Role::System,
             content: MessageContent::Text(self.system_prompt.clone()),
@@ -102,6 +102,21 @@ impl Conversation {
             name: None,
             reasoning_content: None,
         }];
+
+        // Inject workspace outline if available
+        if let Some(ws) = workspace {
+            let outline_text = crate::outline::formatted_outline(ws);
+            if !outline_text.is_empty() {
+                ctx.push(Message {
+                    role: Role::System,
+                    content: MessageContent::Text(outline_text),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: None,
+                });
+            }
+        }
 
         // Sanitize history: drop any assistant tool_calls that lack matching tool results
         let mut sanitized: Vec<Message> = Vec::new();
@@ -334,7 +349,7 @@ mod tests {
         conv.push_user("Previous question");
         conv.push_assistant("Previous answer", None, None);
 
-        let ctx = conv.build_context("New task");
+        let ctx = conv.build_context("New task", None);
         assert_eq!(ctx.len(), 4); // system + user + assistant + new user
         assert!(matches!(ctx[0].role, Role::System));
         assert!(matches!(ctx[1].role, Role::User));
@@ -367,8 +382,7 @@ mod tests {
             reasoning_content: None,
         });
 
-        let ctx = conv.build_context("Next task");
-        // The orphan assistant message should be stripped
+        let ctx = conv.build_context("Next task", None);
         let assistant_msgs: Vec<_> = ctx
             .iter()
             .filter(|m| matches!(m.role, Role::Assistant))
@@ -401,7 +415,7 @@ mod tests {
             },
         );
 
-        let ctx = conv.build_context("Next task");
+        let ctx = conv.build_context("Next task", None);
         let tool_msgs: Vec<_> = ctx
             .iter()
             .filter(|m| matches!(m.role, Role::Tool))
