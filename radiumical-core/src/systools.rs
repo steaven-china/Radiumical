@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_tree_shallow() {
-        let result = tree(&PathBuf::from("src"), 1);
-        assert!(result.contains("main.rs") || result.contains("tui"));
+        let result = tree(&PathBuf::from("."), 1);
+        assert!(result.contains("src") || result.contains("lib.rs"));
     }
 }

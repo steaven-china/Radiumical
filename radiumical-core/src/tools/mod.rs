@@ -144,16 +144,18 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
 
     fn uuid_simple() -> String {
-        let t = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        format!("{t:x}")
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!("{t:x}_{n:x}")
     }
 
     fn setup_temp_dir(files: &[(&str, &str)]) -> PathBuf {
