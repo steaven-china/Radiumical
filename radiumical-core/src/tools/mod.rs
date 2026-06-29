@@ -6,6 +6,7 @@ use crate::plugins::source::SourcePluginRegistry;
 use crate::types::{ToolDefinition, ToolResult, UiEvent};
 
 mod agent;
+mod agent_pool;
 mod command;
 mod file;
 pub mod interact;
@@ -16,6 +17,7 @@ mod system;
 mod task;
 
 pub use agent::{MemoryTool, PlaywrightTool, SubAgentListTool, SubAgentTool};
+pub use agent_pool::{ListAgentsTool, LoadAgentTool};
 pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
@@ -96,6 +98,8 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(SourceCodeTool),
         Box::new(ListSkillsTool),
         Box::new(LoadSkillTool),
+        Box::new(ListAgentsTool),
+        Box::new(LoadAgentTool),
     ]
 }
 
