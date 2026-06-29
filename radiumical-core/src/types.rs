@@ -179,6 +179,367 @@ pub enum ContentPart {
     Text { text: String },
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── base64_encode / base64_decode ──
+
+    #[test]
+    fn base64_empty() {
+        let encoded = base64_encode(b"");
+        assert_eq!(encoded, "");
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, b"");
+    }
+
+    #[test]
+    fn base64_single_byte() {
+        let data = b"\x00";
+        let encoded = base64_encode(data);
+        assert_eq!(encoded, "AA==");
+        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    }
+
+    #[test]
+    fn base64_two_bytes() {
+        let data = b"\xff\x00";
+        let encoded = base64_encode(data);
+        assert_eq!(encoded, "/wA=");
+        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    }
+
+    #[test]
+    fn base64_three_bytes() {
+        let data = b"\xff\xff\xff";
+        let encoded = base64_encode(data);
+        assert_eq!(encoded, "////");
+        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    }
+
+    #[test]
+    fn base64_roundtrip_binary_blob() {
+        let data: Vec<u8> = (0..=255).collect();
+        let encoded = base64_encode(&data);
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn base64_ascii_text() {
+        let data = b"Hello, World!";
+        let encoded = base64_encode(data);
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn base64_decode_invalid_char_returns_none() {
+        assert!(base64_decode("!!!!").is_none());
+        assert!(base64_decode("abc*").is_none());
+    }
+
+    #[test]
+    fn base64_decode_short_input_returns_none() {
+        assert!(base64_decode("A").is_none());
+    }
+
+    #[test]
+    fn base64_large_data_roundtrip() {
+        let data = vec![0xABu8; 10_000];
+        let encoded = base64_encode(&data);
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    // ── compress / decompress round-trip ──
+
+    #[test]
+    fn compress_decompress_empty() {
+        let input = "";
+        let compressed = compress_text(input).unwrap();
+        assert!(compressed.starts_with(LZ4_PREFIX));
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_small() {
+        let input = "Hello, World!";
+        let compressed = compress_text(input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_exactly_1kb() {
+        let input = "x".repeat(1024);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_large() {
+        let input = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(200);
+        assert!(input.len() > 10_000);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_unicode() {
+        let input = "😀🎉💻🚀✨αβγδελΩΣΠ".repeat(50);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_cjk() {
+        let input = "日本語テスト文字列です。这是中文测试文本。한국어 테스트 문자열입니다.".repeat(80);
+        assert!(input.len() > 1024);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_newlines_and_special() {
+        let input = "line1\nline2\r\nline3\tindented\n\n".repeat(100);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_repeated_patterns() {
+        let input = "ABCD".repeat(5000);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn compress_decompress_null_bytes() {
+        let input = "\x00hello\x00world\x00".repeat(200);
+        let compressed = compress_text(&input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn decompress_invalid_returns_none() {
+        assert!(decompress_text("not compressed").is_none());
+        assert!(decompress_text(&format!("{LZ4_PREFIX}!!!bad_base64!!!")).is_none());
+        assert!(decompress_text(&format!("{LZ4_PREFIX}{}", base64_encode(b"garbage"))).is_none());
+    }
+
+    // ── MessageContent::from_text auto-compression threshold ──
+
+    #[test]
+    fn from_text_empty() {
+        let mc = MessageContent::from_text(String::new());
+        assert!(!mc.is_compressed());
+        assert_eq!(mc.text(), "");
+    }
+
+    #[test]
+    fn from_text_small_no_compress() {
+        let input = "Hello, World!";
+        let mc = MessageContent::from_text(input.to_string());
+        assert!(!mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn from_text_exactly_at_threshold_no_compress() {
+        let input = "x".repeat(COMPRESS_THRESHOLD);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(!mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn from_text_just_above_threshold_compresses() {
+        let input = "x".repeat(COMPRESS_THRESHOLD + 1);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn from_text_large_compresses() {
+        let input = "Some large content. ".repeat(200);
+        assert!(input.len() > COMPRESS_THRESHOLD);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn from_text_cjk_above_threshold_compresses() {
+        let input = "中文测试".repeat(200);
+        assert!(input.len() > COMPRESS_THRESHOLD);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    // ── MessageContent::text() ──
+
+    #[test]
+    fn text_uncompressed_returns_borrowed() {
+        let input = "hello world".to_string();
+        let mc = MessageContent::Text(input.clone());
+        let cow = mc.text();
+        assert!(matches!(cow, Cow::Borrowed(_)));
+        assert_eq!(&*cow, "hello world");
+    }
+
+    #[test]
+    fn text_compressed_returns_owned() {
+        let input = "x".repeat(2000);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(mc.is_compressed());
+        let cow = mc.text();
+        assert!(matches!(cow, Cow::Owned(_)));
+        assert_eq!(&*cow, input);
+    }
+
+    #[test]
+    fn text_parts_returns_empty() {
+        let mc = MessageContent::Parts(vec![ContentPart::Text {
+            text: "ignored".into(),
+        }]);
+        assert_eq!(mc.text(), "");
+    }
+
+    #[test]
+    fn text_compressed_invalid_returns_empty() {
+        let mc = MessageContent::Text(format!("{LZ4_PREFIX}bad"));
+        assert_eq!(mc.text(), "");
+    }
+
+    // ── MessageContent::raw_str() vs text() ──
+
+    #[test]
+    fn raw_str_uncompressed_equals_text() {
+        let input = "hello world".to_string();
+        let mc = MessageContent::Text(input.clone());
+        assert_eq!(mc.raw_str(), "hello world");
+        assert_eq!(mc.raw_str(), mc.text().as_ref());
+    }
+
+    #[test]
+    fn raw_str_compressed_differs_from_text() {
+        let input = "x".repeat(2000);
+        let mc = MessageContent::from_text(input);
+        let raw = mc.raw_str();
+        assert!(raw.starts_with(LZ4_PREFIX));
+        assert_ne!(raw, mc.text().as_ref());
+        assert!(!raw.starts_with("xxxx"));
+    }
+
+    #[test]
+    fn raw_str_parts_returns_empty() {
+        let mc = MessageContent::Parts(vec![ContentPart::Text {
+            text: "ignored".into(),
+        }]);
+        assert_eq!(mc.raw_str(), "");
+    }
+
+    // ── MessageContent::is_compressed() ──
+
+    #[test]
+    fn is_compressed_uncompressed_text() {
+        let mc = MessageContent::Text("hello".to_string());
+        assert!(!mc.is_compressed());
+    }
+
+    #[test]
+    fn is_compressed_compressed_text() {
+        let mc = MessageContent::from_text("x".repeat(2000));
+        assert!(mc.is_compressed());
+    }
+
+    #[test]
+    fn is_compressed_parts() {
+        let mc = MessageContent::Parts(vec![]);
+        assert!(!mc.is_compressed());
+    }
+
+    #[test]
+    fn is_compressed_empty_not_compressed() {
+        let mc = MessageContent::from_text(String::new());
+        assert!(!mc.is_compressed());
+    }
+
+    #[test]
+    fn is_compressed_threshold_boundary() {
+        let mc_below = MessageContent::from_text("x".repeat(COMPRESS_THRESHOLD));
+        assert!(!mc_below.is_compressed(), "at threshold should not compress");
+
+        let mc_above = MessageContent::from_text("x".repeat(COMPRESS_THRESHOLD + 1));
+        assert!(mc_above.is_compressed(), "above threshold should compress");
+    }
+
+    // ── serialization round-trip ──
+
+    #[test]
+    fn serde_message_text_uncompressed() {
+        let msg = Message {
+            role: Role::User,
+            content: MessageContent::Text("hello".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let deser: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.role, Role::User);
+        assert_eq!(deser.content.text(), "hello");
+    }
+
+    #[test]
+    fn serde_message_text_compressed() {
+        let input = "x".repeat(2000);
+        let msg = Message {
+            role: Role::User,
+            content: MessageContent::from_text(input.clone()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let deser: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.role, Role::User);
+        assert!(deser.content.is_compressed());
+        assert_eq!(deser.content.text(), input);
+    }
+
+    #[test]
+    fn serde_message_parts() {
+        let msg = Message {
+            role: Role::User,
+            content: MessageContent::Parts(vec![ContentPart::Text {
+                text: "part1".into(),
+            }]),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let deser: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.role, Role::User);
+        assert!(matches!(deser.content, MessageContent::Parts(_)));
+    }
+}
+
 // ── Tool types ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

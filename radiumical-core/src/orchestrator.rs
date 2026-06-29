@@ -487,3 +487,672 @@ fn format_plan(plan: &Plan) -> String {
 
     format!("{title}{stats}\n{}", lines.join("\n"))
 }
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn make_orch() -> Orchestrator {
+        Orchestrator::new(None)
+    }
+
+    fn make_orch_with_plan() -> Orchestrator {
+        let mut orch = make_orch();
+        orch.create(
+            "Test Plan",
+            vec![
+                ("Task 1".to_string(), vec![]),
+                ("Task 2".to_string(), vec![1]),
+                ("Task 3".to_string(), vec![]),
+            ],
+        );
+        orch
+    }
+
+    // ─── 1. Plan creation ───────────────────────────────────────────────
+
+    #[test]
+    fn test_create_sets_title_and_next_id() {
+        let orch = make_orch_with_plan();
+        let plan = orch.plan();
+        assert_eq!(plan.title, "Test Plan");
+        assert_eq!(plan.next_id, 4);
+    }
+
+    #[test]
+    fn test_create_assigns_ids_sequentially() {
+        let orch = make_orch_with_plan();
+        let plan = orch.plan();
+        assert_eq!(plan.tasks[0].id, 1);
+        assert_eq!(plan.tasks[1].id, 2);
+        assert_eq!(plan.tasks[2].id, 3);
+    }
+
+    #[test]
+    fn test_create_assigns_order_sequentially() {
+        let orch = make_orch_with_plan();
+        let plan = orch.plan();
+        assert_eq!(plan.tasks[0].order, 1);
+        assert_eq!(plan.tasks[1].order, 2);
+        assert_eq!(plan.tasks[2].order, 3);
+    }
+
+    #[test]
+    fn test_create_stores_dependencies() {
+        let orch = make_orch_with_plan();
+        let plan = orch.plan();
+        assert!(plan.tasks[0].deps.is_empty());
+        assert_eq!(plan.tasks[1].deps, vec![1]);
+        assert!(plan.tasks[2].deps.is_empty());
+    }
+
+    #[test]
+    fn test_create_all_tasks_start_pending() {
+        let orch = make_orch_with_plan();
+        for t in &orch.plan().tasks {
+            assert_eq!(t.status, TaskStatus::Pending);
+        }
+    }
+
+    #[test]
+    fn test_create_empty_tasks() {
+        let mut orch = make_orch();
+        orch.create("Empty", vec![]);
+        assert!(orch.is_empty());
+        assert_eq!(orch.plan().next_id, 1);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let orch = make_orch();
+        assert!(orch.is_empty());
+        let orch = make_orch_with_plan();
+        assert!(!orch.is_empty());
+    }
+
+    #[test]
+    fn test_list_empty_plan() {
+        let orch = make_orch();
+        let out = orch.list();
+        assert!(out.contains("No plan"));
+    }
+
+    #[test]
+    fn test_list_shows_tasks() {
+        let orch = make_orch_with_plan();
+        let out = orch.list();
+        assert!(out.contains("Test Plan"));
+        assert!(out.contains("Task 1"));
+        assert!(out.contains("Task 2"));
+        assert!(out.contains("← deps: #1"));
+    }
+
+    // ─── 2. start() ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_start_blocks_on_unmet_deps() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.start(2);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Cannot start #2"));
+        assert!(err.contains("dependencies #1 not done"));
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn test_start_succeeds_when_deps_met() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+                ("C".to_string(), vec![1]),
+            ],
+        );
+        orch.start(1).unwrap();
+        orch.done(1).unwrap();
+
+        let result = orch.start(3);
+        assert!(result.is_ok());
+        let t3 = orch.plan().tasks.iter().find(|t| t.id == 3).unwrap();
+        assert_eq!(t3.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_start_deactivates_previous_active() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![]),
+            ],
+        );
+        orch.start(1).unwrap();
+        orch.start(2).unwrap();
+
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t1.status, TaskStatus::Pending);
+        assert_eq!(t2.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_start_nonexistent_task() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.start(99);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task not found");
+    }
+
+    // ─── 3. done() ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_done_marks_task_done() {
+        let mut orch = make_orch_with_plan();
+        orch.start(1).unwrap();
+        orch.done(1).unwrap();
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn test_done_auto_starts_next_ready() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+            ],
+        );
+        orch.start(1).unwrap();
+
+        orch.done(1).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_done_no_auto_start_when_active_exists() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+            ],
+        );
+        orch.start(1).unwrap();
+
+        orch.done(2).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Done);
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_done_multiple_ready_starts_first_by_order() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+                ("C".to_string(), vec![1]),
+            ],
+        );
+        orch.start(1).unwrap();
+        orch.done(1).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        let t3 = orch.plan().tasks.iter().find(|t| t.id == 3).unwrap();
+        assert_eq!(t2.status, TaskStatus::Active);
+        assert_eq!(t3.status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn test_done_nonexistent_task() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.done(99);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task not found");
+    }
+
+    // ─── 4. block() / skip() ────────────────────────────────────────────
+
+    #[test]
+    fn test_block_sets_status() {
+        let mut orch = make_orch_with_plan();
+        orch.block(1, None).unwrap();
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.status, TaskStatus::Blocked);
+    }
+
+    #[test]
+    fn test_block_with_reason() {
+        let mut orch = make_orch_with_plan();
+        let out = orch.block(2, Some("need more info")).unwrap();
+        assert!(out.contains("need more info"));
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Blocked);
+    }
+
+    #[test]
+    fn test_block_nonexistent_task() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.block(99, None);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task not found");
+    }
+
+    #[test]
+    fn test_skip_sets_status() {
+        let mut orch = make_orch_with_plan();
+        orch.skip(1).unwrap();
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.status, TaskStatus::Skipped);
+    }
+
+    #[test]
+    fn test_skip_output_contains_title() {
+        let mut orch = make_orch_with_plan();
+        let out = orch.skip(2).unwrap();
+        assert!(out.contains("Task 2"));
+        assert!(out.contains("Skipped"));
+    }
+
+    #[test]
+    fn test_skip_nonexistent_task() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.skip(99);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task not found");
+    }
+
+    // ─── 5. get_ready_tasks() ────────────────────────────────────────────
+
+    #[test]
+    fn test_get_ready_tasks_returns_tasks_with_deps_met() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("No deps".to_string(), vec![]),
+                ("Dep on 1".to_string(), vec![1]),
+            ],
+        );
+        let ready: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
+        assert_eq!(ready, vec![1]);
+
+        orch.start(1).unwrap();
+        orch.done(1).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Active);
+        let ready: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
+        assert!(ready.is_empty());
+    }
+
+    #[test]
+    fn test_get_ready_tasks_excludes_unmet_deps() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![2]),
+            ],
+        );
+        let ready_ids: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
+        assert!(ready_ids.contains(&1));
+        assert!(!ready_ids.contains(&2));
+    }
+
+    #[test]
+    fn test_get_ready_tasks_excludes_non_pending() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![]),
+                ("C".to_string(), vec![]),
+                ("D".to_string(), vec![]),
+            ],
+        );
+        orch.start(1).unwrap();
+        orch.block(2, None).unwrap();
+        orch.skip(3).unwrap();
+        orch.start(4).unwrap();
+        orch.done(4).unwrap();
+
+        let ready: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
+        assert!(ready.is_empty());
+    }
+
+    #[test]
+    fn test_get_ready_tasks_skipped_is_not_done_for_deps() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+            ],
+        );
+        orch.skip(1).unwrap(); // Skipped ≠ Done
+
+        let ready: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
+        assert!(!ready.contains(&2));
+    }
+
+    // ─── 6. add() / remove() ────────────────────────────────────────────
+
+    #[test]
+    fn test_add_assigns_ids_from_next_id() {
+        let mut orch = make_orch_with_plan();
+        orch.add(vec![
+            ("Task 4".to_string(), vec![]),
+            ("Task 5".to_string(), vec![1, 3]),
+        ])
+        .unwrap();
+
+        let plan = orch.plan();
+        assert_eq!(plan.tasks.len(), 5);
+        assert_eq!(plan.next_id, 6);
+
+        let t4 = plan.tasks.iter().find(|t| t.id == 4).unwrap();
+        assert_eq!(t4.title, "Task 4");
+        assert_eq!(t4.order, 4);
+
+        let t5 = plan.tasks.iter().find(|t| t.id == 5).unwrap();
+        assert_eq!(t5.title, "Task 5");
+        assert_eq!(t5.deps, vec![1, 3]);
+        assert_eq!(t5.order, 5);
+        assert_eq!(t5.status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn test_add_preserves_existing_tasks() {
+        let mut orch = make_orch_with_plan();
+        orch.add(vec![("Task 4".to_string(), vec![])]).unwrap();
+
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.title, "Task 1");
+        assert_eq!(t1.status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn test_remove_deletes_task() {
+        let mut orch = make_orch_with_plan();
+        orch.remove(2).unwrap();
+        assert!(orch.plan().tasks.iter().find(|t| t.id == 2).is_none());
+        assert_eq!(orch.plan().tasks.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_cleans_deps_pointing_to_removed_task() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+                ("C".to_string(), vec![1, 2]),
+            ],
+        );
+
+        orch.remove(1).unwrap();
+
+        let tb = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert!(!tb.deps.contains(&1));
+
+        let tc = orch.plan().tasks.iter().find(|t| t.id == 3).unwrap();
+        assert!(!tc.deps.contains(&1));
+        assert!(tc.deps.contains(&2));
+    }
+
+    #[test]
+    fn test_remove_nonexistent_task() {
+        let mut orch = make_orch_with_plan();
+        let result = orch.remove(99);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task not found");
+    }
+
+    // ─── 7. build_context_prompt() ──────────────────────────────────────
+
+    #[test]
+    fn test_build_context_prompt_empty() {
+        let orch = make_orch();
+        assert!(orch.build_context_prompt().is_none());
+    }
+
+    #[test]
+    fn test_build_context_prompt_has_header_and_footer() {
+        let orch = make_orch_with_plan();
+        let prompt = orch.build_context_prompt().unwrap();
+        assert!(prompt.starts_with("[Current Orchestration Plan]"));
+        assert!(prompt.contains("Use orchestrate tool to advance the plan"));
+    }
+
+    #[test]
+    fn test_build_context_prompt_lists_ready() {
+        let orch = make_orch_with_plan();
+        let prompt = orch.build_context_prompt().unwrap();
+        assert!(prompt.contains("ready:"));
+        assert!(prompt.contains("#1 Task 1"));
+        assert!(prompt.contains("#3 Task 3"));
+    }
+
+    #[test]
+    fn test_build_context_prompt_lists_pending_with_unmet_deps() {
+        let orch = make_orch_with_plan();
+        let prompt = orch.build_context_prompt().unwrap();
+        assert!(prompt.contains("pending (deps unmet):"));
+        assert!(prompt.contains("#2 Task 2"));
+    }
+
+    #[test]
+    fn test_build_context_prompt_lists_active() {
+        let mut orch = make_orch_with_plan();
+        orch.start(1).unwrap();
+        let prompt = orch.build_context_prompt().unwrap();
+        assert!(prompt.contains("active:"));
+        assert!(prompt.contains("#1 Task 1"));
+    }
+
+    #[test]
+    fn test_build_context_prompt_lists_blocked() {
+        let mut orch = make_orch_with_plan();
+        orch.block(1, None).unwrap();
+        let prompt = orch.build_context_prompt().unwrap();
+        assert!(prompt.contains("blocked:"));
+        assert!(prompt.contains("#1 Task 1"));
+    }
+
+    // ─── 8. save / load persistence ─────────────────────────────────────
+
+    #[test]
+    fn test_save_and_load_roundtrip() {
+        let session = "__test_orch_save_load__";
+        let test_file = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".radi")
+            .join("orchestrator")
+            .join(format!("{session}.json"));
+
+        let _ = fs::remove_file(&test_file);
+
+        {
+            let mut orch = Orchestrator::new(Some(session));
+            orch.create(
+                "Persistent",
+                vec![
+                    ("Alpha".to_string(), vec![]),
+                    ("Beta".to_string(), vec![1]),
+                ],
+            );
+            orch.start(1).unwrap();
+            orch.done(1).unwrap();
+        }
+
+        {
+            let orch = Orchestrator::new(Some(session));
+            let plan = orch.plan();
+            assert_eq!(plan.title, "Persistent");
+            assert_eq!(plan.tasks.len(), 2);
+            assert_eq!(plan.tasks[0].id, 1);
+            assert_eq!(plan.tasks[0].title, "Alpha");
+            assert_eq!(plan.tasks[0].status, TaskStatus::Done);
+            assert_eq!(plan.tasks[1].id, 2);
+            assert_eq!(plan.tasks[1].title, "Beta");
+            assert_eq!(plan.tasks[1].deps, vec![1]);
+            assert_eq!(plan.tasks[1].status, TaskStatus::Active);
+        }
+
+        let _ = fs::remove_file(&test_file);
+    }
+
+    #[test]
+    fn test_no_session_name_no_persistence() {
+        let mut orch = make_orch();
+        orch.create("Ephemeral", vec![("X".to_string(), vec![])]);
+        drop(orch);
+
+        let orch2 = make_orch();
+        assert!(orch2.is_empty());
+        assert_ne!(orch2.plan().title, "Ephemeral");
+    }
+
+    // ─── 9. Edge cases & task-status helpers ────────────────────────────
+
+    #[test]
+    fn test_task_status_icon_values() {
+        assert_eq!(TaskStatus::Pending.icon(), "○");
+        assert_eq!(TaskStatus::Active.icon(), "◉");
+        assert_eq!(TaskStatus::Done.icon(), "✓");
+        assert_eq!(TaskStatus::Blocked.icon(), "⊘");
+        assert_eq!(TaskStatus::Skipped.icon(), "→");
+    }
+
+    #[test]
+    fn test_task_status_label_values() {
+        assert_eq!(TaskStatus::Pending.label(), "pending");
+        assert_eq!(TaskStatus::Active.label(), "active");
+        assert_eq!(TaskStatus::Done.label(), "done");
+        assert_eq!(TaskStatus::Blocked.label(), "blocked");
+        assert_eq!(TaskStatus::Skipped.label(), "skipped");
+    }
+
+    #[test]
+    fn test_start_on_already_active_task_reactivates() {
+        let mut orch = make_orch_with_plan();
+        orch.start(1).unwrap();
+        orch.start(1).unwrap();
+        let t1 = orch.plan().tasks.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(t1.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_done_chain_resolves_dependencies() {
+        let mut orch = make_orch();
+        orch.create(
+            "Chain",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+                ("C".to_string(), vec![2]),
+            ],
+        );
+
+        orch.start(1).unwrap();
+        orch.done(1).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Active);
+
+        orch.done(2).unwrap();
+
+        let t2 = orch.plan().tasks.iter().find(|t| t.id == 2).unwrap();
+        assert_eq!(t2.status, TaskStatus::Done);
+        let t3 = orch.plan().tasks.iter().find(|t| t.id == 3).unwrap();
+        assert_eq!(t3.status, TaskStatus::Active);
+    }
+
+    #[test]
+    fn test_get_active_tasks() {
+        let mut orch = make_orch_with_plan();
+        assert!(orch.get_active_tasks().is_empty());
+        orch.start(1).unwrap();
+        let active = orch.get_active_tasks();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, 1);
+    }
+
+    #[test]
+    fn test_get_blocked_tasks() {
+        let mut orch = make_orch_with_plan();
+        assert!(orch.get_blocked_tasks().is_empty());
+        orch.block(2, None).unwrap();
+        let blocked = orch.get_blocked_tasks();
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].id, 2);
+    }
+
+    #[test]
+    fn test_create_replaces_previous_plan() {
+        let mut orch = make_orch();
+        orch.create("First", vec![("X".to_string(), vec![])]);
+        assert_eq!(orch.plan().tasks.len(), 1);
+
+        orch.create("Second", vec![("A".to_string(), vec![]), ("B".to_string(), vec![])]);
+        assert_eq!(orch.plan().tasks.len(), 2);
+        assert_eq!(orch.plan().title, "Second");
+        assert_eq!(orch.plan().next_id, 3);
+    }
+
+    #[test]
+    fn test_remove_clears_all_deps_across_multiple_tasks() {
+        let mut orch = make_orch();
+        orch.create(
+            "P",
+            vec![
+                ("A".to_string(), vec![]),
+                ("B".to_string(), vec![1]),
+                ("C".to_string(), vec![1]),
+                ("D".to_string(), vec![1, 2]),
+            ],
+        );
+
+        orch.remove(1).unwrap();
+
+        for t in &orch.plan().tasks {
+            assert!(!t.deps.contains(&1));
+        }
+    }
+
+    #[test]
+    fn test_plan_default_is_empty() {
+        let plan = Plan::default();
+        assert!(plan.title.is_empty());
+        assert!(plan.tasks.is_empty());
+        assert_eq!(plan.next_id, 0);
+    }
+
+    #[test]
+    fn test_task_status_partial_eq() {
+        assert_eq!(TaskStatus::Pending, TaskStatus::Pending);
+        assert_ne!(TaskStatus::Pending, TaskStatus::Done);
+    }
+}
