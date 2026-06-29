@@ -18,6 +18,7 @@ pub mod provider;
 pub mod providers;
 pub mod session;
 pub mod skill;
+pub mod mcp;
 pub mod subagent;
 pub mod systools;
 pub mod tools;

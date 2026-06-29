@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::Arc;
 
 use crate::plugins::source::SourcePluginRegistry;
@@ -12,6 +11,7 @@ mod file;
 pub mod interact;
 pub mod layout_page;
 mod layout_tool;
+pub mod mcp_tool;
 mod search;
 mod skill;
 mod source_plugin;
@@ -24,6 +24,7 @@ pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
 pub use layout_tool::LayoutPageTool;
+pub use mcp_tool::McpToolAdapter;
 pub use search::{FindFiles, SearchCode};
 pub use skill::{ListSkillsTool, LoadSkillTool};
 pub use source_plugin::SourceCodeTool;
@@ -33,14 +34,12 @@ pub use task::{GoalTool, OrchestrateTool, TodoList};
 /// Context passed to tools that need to interact with the UI or access
 /// harness-level services such as source-code plugins.
 pub struct ToolContext {
-    pub ui_tx: mpsc::Sender<UiEvent>,
+    pub ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
     pub source_plugins: Option<Arc<SourcePluginRegistry>>,
 }
 
 impl ToolContext {
-    /// Convenience constructor for tests and simple tools that don't need
-    /// plugin access.
-    pub fn new(ui_tx: mpsc::Sender<UiEvent>) -> Self {
+    pub fn new(ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>) -> Self {
         Self {
             ui_tx,
             source_plugins: None,
@@ -50,7 +49,7 @@ impl ToolContext {
 
 impl Default for ToolContext {
     fn default() -> Self {
-        let (tx, _) = mpsc::channel();
+        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
         Self {
             ui_tx: tx,
             source_plugins: None,
