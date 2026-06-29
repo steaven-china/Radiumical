@@ -191,7 +191,8 @@ impl PipelineRunner {
                                 ui_tx: ui_tx.clone(),
                             };
                             let result =
-                                exec_with_timeout(tool.as_ref(), &ws, &args, tool_timeout, &ctx).await;
+                                exec_with_timeout(tool.as_ref(), &ws, &args, tool_timeout, &ctx)
+                                    .await;
 
                             let mut final_result = result;
                             for hook in &self.tool_hooks {

@@ -40,7 +40,10 @@ impl App {
                 let on_scrollbar = _col >= self.output_width as u16;
                 let total = self.rendered_total;
                 let needs_scrollbar = total > self.output_vis;
-                if on_scrollbar && needs_scrollbar && row > output_top && row < output_top + output_h
+                if on_scrollbar
+                    && needs_scrollbar
+                    && row > output_top
+                    && row < output_top + output_h
                 {
                     self.scrollbar_dragging = true;
                     self.set_scroll_from_thumb(row, output_top, output_h);

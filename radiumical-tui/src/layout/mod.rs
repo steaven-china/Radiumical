@@ -70,11 +70,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         // Logo block: first line has █ and looks like ASCII art.
         // Reject lines that contain XML-like tags (e.g. <environment_details>)
         // to avoid treating structured metadata as the logo.
-        if line.contains('█')
-            && line.len() > 30
-            && !line.contains('<')
-            && !line.contains('>')
-        {
+        if line.contains('█') && line.len() > 30 && !line.contains('<') && !line.contains('>') {
             let start = i;
             i += 1;
             while i < output.len()
@@ -447,7 +443,10 @@ mod tests {
         let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0].kind, BlockKind::Reasoning));
-        assert_eq!(blocks[0].height, 1, "collapsed reasoning height should be 1");
+        assert_eq!(
+            blocks[0].height, 1,
+            "collapsed reasoning height should be 1"
+        );
 
         let mut md = MarkdownRenderer::new();
         let lines = blocks[0].render(80, 0, &mut md, false);
@@ -458,9 +457,16 @@ mod tests {
         let multi = vec!["\x01[思考] line one\nline two\nline three".to_string()];
         let blocks_full = measure_blocks(&multi, 80, true);
         assert_eq!(blocks_full.len(), 1);
-        assert_eq!(blocks_full[0].height, 3, "expanded reasoning height should match line count");
+        assert_eq!(
+            blocks_full[0].height, 3,
+            "expanded reasoning height should match line count"
+        );
         let lines_full = blocks_full[0].render(80, 0, &mut md, true);
-        assert_eq!(lines_full.len(), 3, "expanded reasoning should render 3 lines");
+        assert_eq!(
+            lines_full.len(),
+            3,
+            "expanded reasoning should render 3 lines"
+        );
     }
 
     #[test]

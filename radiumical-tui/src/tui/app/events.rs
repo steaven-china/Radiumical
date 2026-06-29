@@ -27,7 +27,10 @@ pub(crate) fn strip_metadata_tags(s: &str) -> String {
         }
     }
     // Also drop any stray closing tag fragment.
-    out.split(close).collect::<Vec<_>>().join("").replace(open, "")
+    out.split(close)
+        .collect::<Vec<_>>()
+        .join("")
+        .replace(open, "")
 }
 
 pub(crate) fn box_width(name_len: usize, args_len: usize, result: Option<&str>) -> usize {
@@ -45,7 +48,10 @@ pub(crate) fn box_top(name: &str, width: usize) -> String {
 
 pub(crate) fn box_args_line(args: &str, width: usize) -> String {
     let inner = width.saturating_sub(4);
-    let visible = args.chars().take(inner.saturating_sub(2)).collect::<String>();
+    let visible = args
+        .chars()
+        .take(inner.saturating_sub(2))
+        .collect::<String>();
     let dots = if args.chars().count() > inner.saturating_sub(2) {
         "…"
     } else {
@@ -58,7 +64,10 @@ pub(crate) fn box_args_line(args: &str, width: usize) -> String {
 
 pub(crate) fn box_result_line(line: &str, width: usize) -> String {
     let inner = width.saturating_sub(4);
-    let visible = line.chars().take(inner.saturating_sub(1)).collect::<String>();
+    let visible = line
+        .chars()
+        .take(inner.saturating_sub(1))
+        .collect::<String>();
     let pad = inner.saturating_sub(visible.chars().count() + 1);
     format!("  │ {visible}{}│", " ".repeat(pad))
 }
@@ -170,7 +179,9 @@ impl App {
                 // Pair result with the most recent tool call
                 let mut tool_name = String::new();
                 let mut tool_args = String::new();
-                if let Some(SessionItem::Tool { name, args, result, .. }) = self
+                if let Some(SessionItem::Tool {
+                    name, args, result, ..
+                }) = self
                     .session_items
                     .iter_mut()
                     .rev()
@@ -182,11 +193,8 @@ impl App {
                 }
 
                 if !tool_name.is_empty() {
-                    let width = box_width(
-                        tool_name.len(),
-                        tool_args.chars().count(),
-                        Some(&content),
-                    );
+                    let width =
+                        box_width(tool_name.len(), tool_args.chars().count(), Some(&content));
                     for line in content.lines() {
                         self.output.push(box_result_line(line, width));
                     }
@@ -222,7 +230,11 @@ impl App {
                     for (i, opt) in options.iter().enumerate() {
                         self.output.push(format!("    {}. {opt}", i + 1));
                     }
-                    let sep = if mode == "multi" { "comma-separated" } else { "a" };
+                    let sep = if mode == "multi" {
+                        "comma-separated"
+                    } else {
+                        "a"
+                    };
                     self.output.push(format!("  Enter {sep} number:"));
                 }
                 self.output.push(String::new());
@@ -233,9 +245,7 @@ impl App {
                 self.provider_picker.set_providers(sources);
                 if let Some(source) = first {
                     self.provider_name = source.name.clone();
-                    let _ = self
-                        .cmd_tx
-                        .blocking_send(BackendCmd::FetchModels(source));
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::FetchModels(source));
                 }
             }
             UiEvent::ModelsLoaded(mut models) => {

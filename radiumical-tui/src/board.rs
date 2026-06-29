@@ -142,12 +142,8 @@ impl BoardState {
         if let Some((sx, sy, ow, oh)) = self.drag_start {
             let dx = mouse_x as i32 - sx as i32;
             let dy = mouse_y as i32 - sy as i32;
-            let new_w = (ow as i32 + dx)
-                .max(MIN_W as i32)
-                .min(MAX_W as i32) as u16;
-            let new_h = (oh as i32 + dy)
-                .max(MIN_H as i32)
-                .min(MAX_H as i32) as u16;
+            let new_w = (ow as i32 + dx).max(MIN_W as i32).min(MAX_W as i32) as u16;
+            let new_h = (oh as i32 + dy).max(MIN_H as i32).min(MAX_H as i32) as u16;
             self.w = new_w.min(area.width.saturating_sub(2));
             self.h = new_h.min(area.height.saturating_sub(2));
         }
@@ -165,10 +161,6 @@ impl BoardState {
         if !self.visible {
             return;
         }
-        let r = self.rect(area);
-        // Dimmed scrim behind panel only
-        let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
-        f.render_widget(scrim, r);
         self.render(f, area, content);
     }
 
@@ -178,26 +170,26 @@ impl BoardState {
             return;
         }
         let r = stack.push(self.corner, self.w, self.h, area);
-        let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
-        f.render_widget(scrim, r);
         let mut para = Paragraph::new(content).wrap(Wrap { trim: false });
         if self.show_border {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(self.border_fg));
+                .border_style(Style::default().fg(self.border_fg))
+                .style(Style::default().bg(Color::Rgb(20, 20, 25)));
             let block = if self.title.is_empty() {
                 block
             } else {
                 block.title(self.title.as_str())
             };
             para = para.block(block);
+        } else {
+            para = para.style(Style::default().bg(Color::Rgb(20, 20, 25)));
         }
         f.render_widget(para, r);
     }
 
     /// Render using the persistent state.
-    #[allow(dead_code)]
     #[allow(dead_code)]
     pub fn render(&self, f: &mut Frame, area: Rect, content: Text) {
         if !self.visible {
@@ -209,13 +201,16 @@ impl BoardState {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(self.border_fg));
+                .border_style(Style::default().fg(self.border_fg))
+                .style(Style::default().bg(Color::Rgb(20, 20, 25)));
             let block = if self.title.is_empty() {
                 block
             } else {
                 block.title(self.title.as_str())
             };
             para = para.block(block);
+        } else {
+            para = para.style(Style::default().bg(Color::Rgb(20, 20, 25)));
         }
         f.render_widget(para, r);
     }
@@ -434,8 +429,7 @@ impl ProviderPicker {
                     (self.provider_selected + self.providers.len() - 1) % self.providers.len();
             }
         } else if !self.models.is_empty() {
-            self.model_selected =
-                (self.model_selected + self.models.len() - 1) % self.models.len();
+            self.model_selected = (self.model_selected + self.models.len() - 1) % self.models.len();
         }
     }
 
@@ -443,18 +437,36 @@ impl ProviderPicker {
         self.focus_providers = !self.focus_providers;
     }
 
+    pub fn toggle(
+        &mut self,
+        cmd_tx: &tokio::sync::mpsc::Sender<crate::tui::BackendCmd>,
+    ) -> bool {
+        self.visible = !self.visible;
+        if self.visible {
+            let _ = cmd_tx.blocking_send(crate::tui::BackendCmd::FetchProviders);
+        }
+        self.visible
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+    }
+
     pub fn render_stacked(&self, f: &mut Frame, area: Rect, stack: &mut BoardStack) {
         if !self.visible {
             return;
         }
-        let r = stack.push(self.corner, self.w, self.h, area);
-        let scrim = Paragraph::new("").style(Style::default().bg(Color::Rgb(20, 20, 25)));
-        f.render_widget(scrim, r);
+        const MIN_W: u16 = 24;
+        const MIN_H: u16 = 6;
+        let w = self.w.max(MIN_W).min(area.width.saturating_sub(2));
+        let h = self.h.max(MIN_H).min(area.height.saturating_sub(2));
+        let r = stack.push(self.corner, w, h, area);
 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::Rgb(80, 80, 90)))
+            .style(Style::default().bg(Color::Rgb(20, 20, 25)))
             .title(self.title.as_str());
         let inner = block.inner(r);
         f.render_widget(block, r);
@@ -483,7 +495,10 @@ impl ProviderPicker {
                         Style::default()
                     };
                     Line::from(Span::styled(
-                        format!("{prefix}{} ({}) [{}]", source.name, source.api_type, key_mark),
+                        format!(
+                            "{prefix}{} ({}) [{}]",
+                            source.name, source.api_type, key_mark
+                        ),
                         style,
                     ))
                 })
@@ -604,7 +619,10 @@ pub enum FieldValue {
     String(String),
     Password(String),
     Integer(i64),
-    Enum { options: Vec<String>, selected: usize },
+    Enum {
+        options: Vec<String>,
+        selected: usize,
+    },
     Boolean(bool),
 }
 
@@ -744,7 +762,11 @@ impl FormBoard {
                     field.display_value()
                 };
                 let display = if matches!(field.value, FieldValue::Boolean(_)) {
-                    let marker = if field.value.bool_value() { "[x] " } else { "[ ] " };
+                    let marker = if field.value.bool_value() {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    };
                     format!("{}{}", marker, field.label)
                 } else {
                     format!("{}: {}", field.label, value)

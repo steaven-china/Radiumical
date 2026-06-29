@@ -236,7 +236,9 @@ pub enum UiEvent {
         args: String,
     },
     ToolDone,
-    ToolResult { content: String },
+    ToolResult {
+        content: String,
+    },
     Choice {
         id: String,
         mode: String,

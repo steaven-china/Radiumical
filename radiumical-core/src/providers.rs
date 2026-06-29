@@ -127,7 +127,11 @@ impl ProviderRegistry {
         let modified = fs::metadata(&path)?
             .modified()
             .unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
-        if SystemTime::now().duration_since(modified).unwrap_or(Duration::MAX) > CACHE_MAX_AGE {
+        if SystemTime::now()
+            .duration_since(modified)
+            .unwrap_or(Duration::MAX)
+            > CACHE_MAX_AGE
+        {
             return Ok(None);
         }
 
@@ -204,11 +208,25 @@ pub async fn discover_models(
         request = request.header("anthropic-version", version.clone());
     }
 
+    let is_ollama_native = source
+        .models_endpoint
+        .as_deref()
+        .map_or(false, |ep| ep.ends_with("/api/tags"));
+
     match request.send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json::<OpenAiModelList>().await {
-            Ok(list) => list.data.into_iter().map(|m| m.id).collect(),
-            Err(_) => source.models.clone().unwrap_or_default(),
-        },
+        Ok(resp) if resp.status().is_success() => {
+            if is_ollama_native {
+                match resp.json::<OllamaModelList>().await {
+                    Ok(list) => list.models.into_iter().map(|m| m.name).collect(),
+                    Err(_) => source.models.clone().unwrap_or_default(),
+                }
+            } else {
+                match resp.json::<OpenAiModelList>().await {
+                    Ok(list) => list.data.into_iter().map(|m| m.id).collect(),
+                    Err(_) => source.models.clone().unwrap_or_default(),
+                }
+            }
+        }
         _ => source.models.clone().unwrap_or_default(),
     }
 }
@@ -280,6 +298,16 @@ struct OpenAiModelEntry {
     id: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct OllamaModelList {
+    models: Vec<OllamaModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaModelEntry {
+    name: String,
+}
+
 /// Convenience: discover models from every supported source concurrently.
 pub async fn discover_all_models(
     client: &reqwest::Client,
@@ -342,6 +370,28 @@ mod tests {
         assert_eq!(
             s.models_url(),
             Some("https://api.example.com/v1/models".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_model_list_formats() {
+        let openai: OpenAiModelList =
+            serde_json::from_str(r#"{"data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}"#).unwrap();
+        assert_eq!(
+            openai.data.into_iter().map(|m| m.id).collect::<Vec<_>>(),
+            vec!["gpt-4", "gpt-3.5-turbo"]
+        );
+
+        let ollama: OllamaModelList =
+            serde_json::from_str(r#"{"models":[{"name":"qwen2.5:14b"},{"name":"llama3.2"}]}"#)
+                .unwrap();
+        assert_eq!(
+            ollama
+                .models
+                .into_iter()
+                .map(|m| m.name)
+                .collect::<Vec<_>>(),
+            vec!["qwen2.5:14b", "llama3.2"]
         );
     }
 }

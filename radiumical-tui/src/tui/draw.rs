@@ -4,7 +4,7 @@ use radiumical_core::types::AgentMode;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block as RBlock, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block as RBlock, BorderType, Borders, Paragraph};
 use ratatui::Frame;
 
 // ═══ Draw ═══
@@ -36,6 +36,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app.help_board
             .render_stacked(f, chunks[0], Text::from(lines), &mut stack);
     }
+    if app.dashboard.visible {
+        app.dashboard.render(f, chunks[0]);
+    }
     if app.show_model_picker {
         let mut stack = crate::board::BoardStack::new();
         if app.welcome && app.show_help_overlay && chunks[0].height > 12 {
@@ -45,6 +48,24 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 app.help_board.w,
                 app.help_board.h,
                 chunks[0],
+            );
+        }
+        if app.dashboard.visible {
+            // Push dashboard area so provider picker stacks above it
+            let dw = (chunks[0].width as f32 * 0.65) as u16;
+            let dh = (chunks[0].height as f32 * 0.65) as u16;
+            let dx = (chunks[0].width - dw) / 2;
+            let dy = (chunks[0].height - dh) / 2;
+            let _ = stack.push(
+                crate::board::Corner::TopLeft,
+                dw,
+                dh,
+                Rect {
+                    x: chunks[0].x + dx,
+                    y: chunks[0].y + dy,
+                    width: dw,
+                    height: dh,
+                },
             );
         }
         app.provider_picker.render_stacked(f, chunks[0], &mut stack);
@@ -92,10 +113,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.perf_visible {
         draw_perf_overlay(f, area, app);
     }
-    // Dashboard (// toggle)
-    if app.dashboard.visible {
-        app.dashboard.render(f, chunks[0]);
-    }
     // Session list popup
     if app.session_list_visible {
         app.session_list.render(f, chunks[0]);
@@ -111,29 +128,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_hint_row(f, bottom[1 + i], n, d, selected);
     }
     draw_status(f, bottom[bottom.len() - 1], app);
-}
-
-#[allow(dead_code)]
-pub fn overlay_panel(f: &mut Frame, area: Rect, title: &str, content_lines: Vec<Line>) -> Rect {
-    let max_w = content_lines.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
-    let w = (max_w + 4).min(area.width.saturating_sub(4));
-    let h = (content_lines.len() as u16 + 2).min(area.height.saturating_sub(4));
-    let x = (area.width.saturating_sub(w)) / 2;
-    let y = (area.height.saturating_sub(h)) / 2;
-    let r = Rect {
-        x: area.x + x,
-        y: area.y + y,
-        width: w,
-        height: h,
-    };
-    f.render_widget(Clear, r);
-    let block = RBlock::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(format!(" {title} "))
-        .border_style(Style::default().fg(Color::Cyan));
-    f.render_widget(Paragraph::new(Text::from(content_lines)).block(block), r);
-    r
 }
 
 fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
@@ -160,10 +154,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     app.output_width = text_area.width as usize;
     f.render_widget(Clear, area);
 
-    app.blocks = measure_blocks(&app.output,
-        text_area.width,
-        app.show_full_reasoning,
-    );
+    app.blocks = measure_blocks(&app.output, text_area.width, app.show_full_reasoning);
     for block in &mut app.blocks {
         if let crate::layout::BlockKind::ToolCall {
             name,
@@ -178,9 +169,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
             let scroll = app.tool_result_scroll.get(&key).copied().unwrap_or(0);
             if want != *expanded || scroll != *result_scroll {
                 // content width inside the box borders
-                let content_w = (text_area.width as usize)
-                    .saturating_sub(4 + 1)
-                    .max(1);
+                let content_w = (text_area.width as usize).saturating_sub(4 + 1).max(1);
                 let wrapped_count =
                     crate::layout::wrapped_tool_result_lines(result, content_w).len();
                 const MAX_RESULT_VIS: usize = 10;

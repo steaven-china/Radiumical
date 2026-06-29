@@ -50,8 +50,7 @@ impl Config {
 
     pub fn save(&self) -> Result<()> {
         let dir = Self::dir();
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("create config dir {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| format!("create config dir {}", dir.display()))?;
         let path = Self::path();
         let data = toml::to_string_pretty(self)?;
         fs::write(&path, data)?;

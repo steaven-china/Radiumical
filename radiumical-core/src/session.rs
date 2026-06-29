@@ -135,10 +135,7 @@ impl Session {
         }
         let data = fs::read_to_string(&path)?;
         let mut lines = data.lines();
-        let first = lines
-            .next()
-            .context("session file is empty")?
-            .to_string();
+        let first = lines.next().context("session file is empty")?.to_string();
         let meta = match serde_json::from_str::<SessionItem>(&first)? {
             SessionItem::Meta {
                 name,

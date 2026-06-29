@@ -8,10 +8,26 @@ use ratatui::{
 
 #[derive(Debug, Clone)]
 pub enum SettingKind {
-    String { value: String, mask: bool },
-    U64 { value: u64, min: u64, max: u64, step: u64 },
-    Usize { value: usize, min: usize, max: usize, step: usize },
-    Enum { value: String, options: Vec<String> },
+    String {
+        value: String,
+        mask: bool,
+    },
+    U64 {
+        value: u64,
+        min: u64,
+        max: u64,
+        step: u64,
+    },
+    Usize {
+        value: usize,
+        min: usize,
+        max: usize,
+        step: usize,
+    },
+    Enum {
+        value: String,
+        options: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -48,15 +64,24 @@ impl SettingItem {
 }
 
 impl SettingsBoard {
-    pub fn from_config(config: &radiumical_core::config::Config, mode: &radiumical_core::types::AgentMode) -> Self {
+    pub fn from_config(
+        config: &radiumical_core::config::Config,
+        mode: &radiumical_core::types::AgentMode,
+    ) -> Self {
         let provider = config.provider.clone().unwrap_or_else(|| "deepseek".into());
-        let model = config.model.clone().unwrap_or_else(|| "deepseek-v4-pro".into());
+        let model = config
+            .model
+            .clone()
+            .unwrap_or_else(|| "deepseek-v4-pro".into());
         let api_key = config.api_key.clone().unwrap_or_default();
         let api_base = config.api_base.clone().unwrap_or_default();
         let heartbeat_secs = config.heartbeat_secs.unwrap_or(10);
         let llm_timeout_secs = config.llm_timeout_secs.unwrap_or(120);
         let max_iterations = config.max_iterations.unwrap_or(32);
-        let reasoning_effort = config.reasoning_effort.clone().unwrap_or_else(|| "max".into());
+        let reasoning_effort = config
+            .reasoning_effort
+            .clone()
+            .unwrap_or_else(|| "max".into());
         let mode_str = match mode {
             radiumical_core::types::AgentMode::Auto => "auto",
             radiumical_core::types::AgentMode::Plan => "plan",
@@ -74,20 +99,34 @@ impl SettingsBoard {
                     label: "Provider".into(),
                     kind: SettingKind::Enum {
                         value: provider,
-                        options: vec!["openai".into(), "deepseek".into(), "anthropic".into(), "ollama".into()],
+                        options: vec![
+                            "openai".into(),
+                            "deepseek".into(),
+                            "anthropic".into(),
+                            "ollama".into(),
+                        ],
                     },
                 },
                 SettingItem {
                     label: "Model".into(),
-                    kind: SettingKind::String { value: model, mask: false },
+                    kind: SettingKind::String {
+                        value: model,
+                        mask: false,
+                    },
                 },
                 SettingItem {
                     label: "API key".into(),
-                    kind: SettingKind::String { value: api_key, mask: true },
+                    kind: SettingKind::String {
+                        value: api_key,
+                        mask: true,
+                    },
                 },
                 SettingItem {
                     label: "API base".into(),
-                    kind: SettingKind::String { value: api_base, mask: false },
+                    kind: SettingKind::String {
+                        value: api_base,
+                        mask: false,
+                    },
                 },
                 SettingItem {
                     label: "Mode".into(),
@@ -125,7 +164,10 @@ impl SettingsBoard {
                 },
                 SettingItem {
                     label: "Reasoning effort".into(),
-                    kind: SettingKind::String { value: reasoning_effort, mask: false },
+                    kind: SettingKind::String {
+                        value: reasoning_effort,
+                        mask: false,
+                    },
                 },
             ],
         }
@@ -241,9 +283,16 @@ impl SettingsBoard {
     }
 
     pub fn adjust(&mut self, delta: i32) {
-        let Some(item) = self.items.get_mut(self.selected) else { return };
+        let Some(item) = self.items.get_mut(self.selected) else {
+            return;
+        };
         match &mut item.kind {
-            SettingKind::U64 { value, min, max, step } => {
+            SettingKind::U64 {
+                value,
+                min,
+                max,
+                step,
+            } => {
                 let new_val = if delta < 0 {
                     value.saturating_sub(*step)
                 } else {
@@ -251,7 +300,12 @@ impl SettingsBoard {
                 };
                 *value = new_val.clamp(*min, *max);
             }
-            SettingKind::Usize { value, min, max, step } => {
+            SettingKind::Usize {
+                value,
+                min,
+                max,
+                step,
+            } => {
                 let new_val = if delta < 0 {
                     value.saturating_sub(*step)
                 } else {
@@ -275,7 +329,9 @@ impl SettingsBoard {
     }
 
     pub fn can_edit(&self) -> bool {
-        let Some(item) = self.items.get(self.selected) else { return false };
+        let Some(item) = self.items.get(self.selected) else {
+            return false;
+        };
         matches!(item.kind, SettingKind::String { .. })
     }
 
@@ -372,15 +428,24 @@ impl SettingsBoard {
         if !self.visible {
             return;
         }
-        let h = (self.items.len() as u16 + 4).min(area.height.saturating_sub(4)).max(6);
-        let label_w = self.items.iter().map(|i| i.label.chars().count()).max().unwrap_or(12) as u16;
+        let h = (self.items.len() as u16 + 4)
+            .min(area.height.saturating_sub(4))
+            .max(6);
+        let label_w = self
+            .items
+            .iter()
+            .map(|i| i.label.chars().count())
+            .max()
+            .unwrap_or(12) as u16;
         let value_w = self
             .items
             .iter()
             .map(|i| i.display_value().chars().count())
             .max()
             .unwrap_or(20) as u16;
-        let w = (label_w + value_w + 12).min(area.width.saturating_sub(4)).max(40);
+        let w = (label_w + value_w + 12)
+            .min(area.width.saturating_sub(4))
+            .max(40);
         let x = (area.width.saturating_sub(w)) / 2;
         let y = (area.height.saturating_sub(h)) / 2;
         let r = Rect {
@@ -420,7 +485,10 @@ impl SettingsBoard {
                 } else {
                     Style::default().fg(Color::Rgb(180, 180, 190))
                 };
-                spans.push(Span::styled(format!("{:<width$}", item.label, width = max_label), label_style));
+                spans.push(Span::styled(
+                    format!("{:<width$}", item.label, width = max_label),
+                    label_style,
+                ));
                 spans.push(Span::raw("  "));
                 let is_editing = self.editing == Some(i);
                 let value = if is_editing {
@@ -429,14 +497,16 @@ impl SettingsBoard {
                     item.display_value()
                 };
                 let truncated = if value.chars().count() > max_value {
-                    value.chars().take(max_value.saturating_sub(1)).collect::<String>() + "…"
+                    value
+                        .chars()
+                        .take(max_value.saturating_sub(1))
+                        .collect::<String>()
+                        + "…"
                 } else {
                     value
                 };
                 let value_style = if is_editing {
-                    Style::default()
-                        .bg(Color::Rgb(40, 60, 80))
-                        .fg(Color::White)
+                    Style::default().bg(Color::Rgb(40, 60, 80)).fg(Color::White)
                 } else if selected {
                     Style::default().bg(Color::Rgb(45, 45, 55)).fg(Color::White)
                 } else {

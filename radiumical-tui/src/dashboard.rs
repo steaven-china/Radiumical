@@ -1,4 +1,5 @@
 //! Dashboard — encapsulated nav hub with categories + items.
+use radiumical_core::types::AgentMode;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -20,7 +21,8 @@ pub enum DashAction {
     ShowModels,
     ShowSettings,
     ShowHelp,
-    ToggleThinking,
+    SetMode(AgentMode),
+    ToggleReasoning,
     SessionNew,
     SessionSave,
     SessionLoad,
@@ -39,10 +41,11 @@ impl Dashboard {
             item_idx: 0,
             in_items: false,
             sections: vec![
-                ("Navigate", &["Models", "Settings", "Help"] as &[&str]),
+                ("Agent", &["Auto", "Plan", "Exec"] as &[&str]),
+                ("View", &["Models", "Settings", "Help", "Reasoning"]),
                 ("Session", &["New", "Save", "Load", "List", "Delete"]),
-                ("Debug", &["Diagnostics", "Tools", "Thinking"]),
-                ("View", &["About"]),
+                ("Debug", &["Diagnostics", "Tools"]),
+                ("About", &["About"]),
             ],
         }
     }
@@ -93,9 +96,13 @@ impl Dashboard {
         let (cat, items) = self.sections.get(self.cat_idx)?;
         let item = items.get(self.item_idx)?;
         Some(match (*cat, *item) {
-            ("Navigate", "Models") => DashAction::ShowModels,
-            ("Navigate", "Settings") => DashAction::ShowSettings,
-            ("Navigate", "Help") => DashAction::ShowHelp,
+            ("Agent", "Auto") => DashAction::SetMode(AgentMode::Auto),
+            ("Agent", "Plan") => DashAction::SetMode(AgentMode::Plan),
+            ("Agent", "Exec") => DashAction::SetMode(AgentMode::Exec),
+            ("View", "Models") => DashAction::ShowModels,
+            ("View", "Settings") => DashAction::ShowSettings,
+            ("View", "Help") => DashAction::ShowHelp,
+            ("View", "Reasoning") => DashAction::ToggleReasoning,
             ("Session", "New") => DashAction::SessionNew,
             ("Session", "Save") => DashAction::SessionSave,
             ("Session", "Load") => DashAction::SessionLoad,
@@ -103,8 +110,7 @@ impl Dashboard {
             ("Session", "Delete") => DashAction::SessionDelete,
             ("Debug", "Diagnostics") => DashAction::Diagnostics,
             ("Debug", "Tools") => DashAction::ShowTools,
-            ("Debug", "Thinking") => DashAction::ToggleThinking,
-            ("View", "About") => DashAction::About,
+            ("About", "About") => DashAction::About,
             _ => return None,
         })
     }

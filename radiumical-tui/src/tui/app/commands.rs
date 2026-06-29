@@ -19,7 +19,7 @@ impl App {
                 self.welcome = true;
                 self.show_help_overlay = true;
                 self.show_model_picker = false;
-                self.provider_picker.visible = false;
+                self.provider_picker.close();
                 self.hint_selected = None;
                 self.help_board.visible = false;
                 self.blocks.clear();
@@ -53,7 +53,7 @@ impl App {
                 self.welcome = false;
                 self.show_help_overlay = false;
                 self.show_model_picker = false;
-                self.provider_picker.visible = false;
+                self.provider_picker.close();
                 self.hint_selected = None;
                 self.help_board.visible = false;
                 return;
@@ -186,7 +186,8 @@ impl App {
                     }
                     _ => {
                         self.output.push(
-                            "  /session save <name> [desc] | load <name> | list | delete <name>".into(),
+                            "  /session save <name> [desc] | load <name> | list | delete <name>"
+                                .into(),
                         );
                     }
                 }
@@ -253,7 +254,9 @@ impl App {
                 let has_history = !self.session_items.is_empty();
                 if has_history {
                     let prompt = "Review the changes made in this session and suggest improvements. Check for bugs, style issues, missing tests, and dead code. Report findings concisely.";
-                    let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(prompt.into()));
+                    let _ = self
+                        .cmd_tx
+                        .blocking_send(BackendCmd::RunTask(prompt.into()));
                     self.output.push("> /review".into());
                     self.output.push("  Reviewing session…".into());
                 } else {
@@ -274,7 +277,8 @@ impl App {
             "/tools" => {
                 self.output.push("> /tools".into());
                 let tools = radiumical_core::tools::all_tools();
-                self.output.push(format!("  Available tools ({}):", tools.len()));
+                self.output
+                    .push(format!("  Available tools ({}):", tools.len()));
                 for t in tools {
                     let def = t.definition();
                     let marker = match self.mode {
@@ -292,9 +296,7 @@ impl App {
                     };
                     self.output.push(format!(
                         "  {} {:<14} {}",
-                        marker,
-                        def.function.name,
-                        def.function.description
+                        marker, def.function.name, def.function.description
                     ));
                 }
                 self.output.push(String::new());
@@ -304,26 +306,18 @@ impl App {
                 return;
             }
             "/provider" => {
-                self.show_model_picker = !self.show_model_picker;
-                self.provider_picker.visible = self.show_model_picker;
-                if self.show_model_picker {
-                    let _ = self.cmd_tx.blocking_send(BackendCmd::FetchProviders);
-                }
+                self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
                 self.input.clear();
                 self.cursor = 0;
                 return;
             }
             _ if task == "/models" => {
-                self.show_model_picker = !self.show_model_picker;
-                self.provider_picker.visible = self.show_model_picker;
-                if self.show_model_picker {
-                    let _ = self.cmd_tx.blocking_send(BackendCmd::FetchProviders);
-                    if self.available_models.len() <= 1 {
-                        let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
-                        self.output.push("> /models".into());
-                        self.output.push("  Refreshing models…".into());
-                        self.output.push(String::new());
-                    }
+                self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
+                if self.show_model_picker && self.available_models.len() <= 1 {
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
+                    self.output.push("> /models".into());
+                    self.output.push("  Refreshing models…".into());
+                    self.output.push(String::new());
                 }
                 self.input.clear();
                 self.cursor = 0;

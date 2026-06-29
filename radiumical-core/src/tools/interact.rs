@@ -116,10 +116,13 @@ impl Tool for ChoiceTool {
         let options_str = args["options"].as_str().unwrap_or("");
 
         if mode == "input" {
-            let id = format!("choice_{}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis());
+            let id = format!(
+                "choice_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            );
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
             set_choice_tx(tx);
             let _ = ctx.ui_tx.send(UiEvent::Choice {
@@ -154,10 +157,13 @@ impl Tool for ChoiceTool {
             };
         }
 
-        let id = format!("choice_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis());
+        let id = format!(
+            "choice_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
         let (tx, rx) = tokio::sync::oneshot::channel::<String>();
         set_choice_tx(tx);
         let _ = ctx.ui_tx.send(UiEvent::Choice {

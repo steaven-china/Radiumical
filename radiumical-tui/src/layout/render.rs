@@ -4,7 +4,10 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::{tool::format_tool_args, tool::wrapped_tool_result_lines, text::strip_markdown, text::wrap_text_to_width, Block, BlockKind};
+use super::{
+    text::strip_markdown, text::wrap_text_to_width, tool::format_tool_args,
+    tool::wrapped_tool_result_lines, Block, BlockKind,
+};
 use crate::markdown::MarkdownRenderer;
 
 const DIM: Color = Color::Rgb(100, 100, 110);
@@ -176,12 +179,7 @@ impl Block {
                     .bg(Color::Rgb(35, 35, 42));
                 if show_full {
                     raw.lines()
-                        .map(|l| {
-                            Line::from(Span::styled(
-                                format!("[思考] {l}"),
-                                style,
-                            ))
-                        })
+                        .map(|l| Line::from(Span::styled(format!("[思考] {l}"), style)))
                         .collect()
                 } else {
                     let preview: String = raw.chars().take(40).collect();
@@ -214,14 +212,20 @@ impl Block {
 
                 let mut lines = Vec::new();
                 lines.push(Line::from(Span::styled(box_top(name, box_w), st)));
-                lines.push(Line::from(Span::styled(box_args_line(&args_disp, box_w), st)));
+                lines.push(Line::from(Span::styled(
+                    box_args_line(&args_disp, box_w),
+                    st,
+                )));
 
                 if !*expanded || result_text.is_empty() {
                     lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
                     return lines;
                 }
 
-                lines.push(Line::from(Span::styled(box_sep("├── result (exp) ", box_w), st)));
+                lines.push(Line::from(Span::styled(
+                    box_sep("├── result (exp) ", box_w),
+                    st,
+                )));
                 lines.extend(render_tool_result_lines(
                     &result_text,
                     box_w,
@@ -233,7 +237,10 @@ impl Block {
 
             BlockKind::Text => {
                 let raw = &self.source_lines[0];
-                let leading = raw.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+                let leading = raw
+                    .chars()
+                    .take_while(|c| c.is_whitespace())
+                    .collect::<String>();
                 let s = raw.trim_start();
                 if s.is_empty() {
                     return vec![Line::from("")];
@@ -242,19 +249,13 @@ impl Block {
                 if let Some(rest) = s.strip_prefix("+ ") {
                     return vec![Line::from(vec![
                         Span::raw(leading),
-                        Span::styled(
-                            format!("+ {rest}"),
-                            Style::default().fg(Color::Green),
-                        ),
+                        Span::styled(format!("+ {rest}"), Style::default().fg(Color::Green)),
                     ])];
                 }
                 if let Some(rest) = s.strip_prefix("- ") {
                     return vec![Line::from(vec![
                         Span::raw(leading),
-                        Span::styled(
-                            format!("- {rest}"),
-                            Style::default().fg(Color::Red),
-                        ),
+                        Span::styled(format!("- {rest}"), Style::default().fg(Color::Red)),
                     ])];
                 }
                 // Truncate read_file output (lines matching "  NNN | ..."), Ctrl+O to expand
@@ -266,10 +267,7 @@ impl Block {
                     let preview: String = s.chars().take(40).collect();
                     return vec![Line::from(vec![
                         Span::raw(leading),
-                        Span::styled(
-                            format!("{preview}…"),
-                            Style::default().fg(Color::DarkGray),
-                        ),
+                        Span::styled(format!("{preview}…"), Style::default().fg(Color::DarkGray)),
                     ])];
                 }
                 let mut spans = vec![Span::raw(leading)];
@@ -340,8 +338,7 @@ fn render_tool_result_lines(
     let st = Style::default().fg(BORDER);
 
     let sb_h = visible.len();
-    let sb_thumb_h = ((MAX_RESULT_VIS as f32 / wrapped.len().max(MAX_RESULT_VIS) as f32)
-        .min(1.0)
+    let sb_thumb_h = ((MAX_RESULT_VIS as f32 / wrapped.len().max(MAX_RESULT_VIS) as f32).min(1.0)
         * sb_h as f32)
         .max(1.0) as usize;
     let sb_thumb_y = if max_scroll == 0 {

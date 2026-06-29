@@ -19,7 +19,11 @@ struct Args {
     output: Option<String>,
 
     /// Comma-separated list of required columns that must be non-empty.
-    #[arg(long, value_delimiter = ',', default_value = "provider,name,api_type,api_base")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "provider,name,api_type,api_base"
+    )]
     required: Vec<String>,
 }
 
@@ -69,17 +73,17 @@ fn main() -> Result<()> {
                 .position(|h| h.eq_ignore_ascii_case(name))
                 .and_then(|i| {
                     let v = record.get(i).unwrap_or("").trim();
-                    if v.is_empty() { None } else { Some(v.to_string()) }
+                    if v.is_empty() {
+                        None
+                    } else {
+                        Some(v.to_string())
+                    }
                 })
         };
 
         for req in &args.required {
             if get(req).is_none() {
-                anyhow::bail!(
-                    "row {} is missing required column '{}'",
-                    idx + 2,
-                    req
-                );
+                anyhow::bail!("row {} is missing required column '{}'", idx + 2, req);
             }
         }
 
@@ -88,8 +92,15 @@ fn main() -> Result<()> {
             let key = header.trim().to_lowercase().replace(' ', "_");
             let known = matches!(
                 key.as_str(),
-                "provider" | "name" | "api_type" | "api_base" | "key_env"
-                    | "models_endpoint" | "auth_header" | "version_header" | "models"
+                "provider"
+                    | "name"
+                    | "api_type"
+                    | "api_base"
+                    | "key_env"
+                    | "models_endpoint"
+                    | "auth_header"
+                    | "version_header"
+                    | "models"
             );
             if !known {
                 let v = record.get(i).unwrap_or("").trim();

@@ -7,7 +7,7 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        if self.show_model_picker {
+        if self.provider_picker.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {}
                 _ => {
@@ -115,7 +115,8 @@ impl App {
                 if self.session_list_visible {
                     if let Some(selected) = self.session_list.current() {
                         let name = selected.split(" (").next().unwrap_or(selected);
-                        if let Ok(Some((_, items))) = radiumical_core::session::Session::load(name) {
+                        if let Ok(Some((_, items))) = radiumical_core::session::Session::load(name)
+                        {
                             if !items.is_empty() {
                                 self.session_items = items;
                                 self.render_session_items_to_output();
@@ -128,10 +129,9 @@ impl App {
                 }
                 if let Some((id, _mode, _opts)) = self.pending_choice.take() {
                     let value = self.input.trim().to_string();
-                    let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::ChoiceResponse {
-                        id,
-                        value,
-                    });
+                    let _ = self
+                        .cmd_tx
+                        .blocking_send(crate::tui::BackendCmd::ChoiceResponse { id, value });
                     self.input.clear();
                     self.cursor = 0;
                     self.hints.clear();
@@ -285,13 +285,13 @@ impl App {
                     return;
                 }
                 if self.thinking {
-                        let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
+                    let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
                     self.thinking = false;
                     self.thinking_cancelled = true;
                 }
                 self.show_help_overlay = false;
                 self.show_model_picker = false;
-                self.provider_picker.visible = false;
+                self.provider_picker.close();
                 self.hint_selected = None;
                 self.hint_page = 0;
                 self.help_board.visible = false;
@@ -300,15 +300,11 @@ impl App {
         }
     }
 
-    fn handle_provider_picker_key(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-    ) {
+    fn handle_provider_picker_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                self.show_model_picker = false;
-                self.provider_picker.visible = false;
+                self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
             }
             (KeyCode::Up, _) => self.provider_picker.select_prev(),
             (KeyCode::Down, _) => self.provider_picker.select_next(),
@@ -332,8 +328,8 @@ impl App {
                         crate::board::ToastLevel::Info,
                         std::time::Duration::from_secs(3),
                     ));
+                    self.provider_picker.close();
                     self.show_model_picker = false;
-                    self.provider_picker.visible = false;
                 }
             }
             _ => {}

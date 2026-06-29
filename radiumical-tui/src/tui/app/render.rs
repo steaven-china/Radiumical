@@ -59,11 +59,8 @@ impl App {
                 ));
             }
             "blocks" => {
-                let blocks = crate::layout::measure_blocks(
-                    &self.output,
-                    80,
-                    self.show_full_reasoning,
-                );
+                let blocks =
+                    crate::layout::measure_blocks(&self.output, 80, self.show_full_reasoning);
                 self.output.push(format!("  Blocks: {}", blocks.len()));
                 for (i, b) in blocks.iter().enumerate() {
                     self.output
@@ -106,10 +103,7 @@ impl App {
                     self.output.push(format!("\x01[思考] {content}"));
                 }
                 SessionItem::Tool {
-                    name,
-                    args,
-                    result,
-                    ..
+                    name, args, result, ..
                 } => {
                     let width = box_width(name.len(), args.chars().count(), result.as_deref());
                     self.output.push(box_top(name, width));
