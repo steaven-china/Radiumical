@@ -223,7 +223,7 @@ impl Block {
                 }
 
                 lines.push(Line::from(Span::styled(
-                    box_sep("├── result (exp) ", box_w),
+                    box_sep("├── result ", box_w),
                     st,
                 )));
                 lines.extend(render_tool_result_lines(

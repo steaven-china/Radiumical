@@ -160,11 +160,18 @@ impl App {
                 } else {
                     name.clone()
                 };
+                let id = format!(
+                    "tc_{}_{}",
+                    self.next_tool_id,
+                    self.session_items.len()
+                );
+                self.next_tool_id += 1;
                 let width = box_width(header.len(), args.chars().count(), None);
-                self.output.push(box_top(&header, width));
+                // Embed id as an invisible marker in the box top line so mouse
+                // hit-testing can recover a stable key for expansion/scroll state.
+                self.output.push(format!("{}\x02{}", id, box_top(&header, width)));
                 self.output.push(box_args_line(&args, width));
 
-                let id = format!("tc_{}", self.session_items.len());
                 self.session_items.push(SessionItem::Tool {
                     id,
                     name,

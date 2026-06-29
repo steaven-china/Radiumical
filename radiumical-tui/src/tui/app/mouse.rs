@@ -178,10 +178,17 @@ impl App {
     }
 }
 
-pub fn tool_call_key(block: &crate::layout::Block) -> u64 {
+pub fn tool_call_key(block: &crate::layout::Block) -> String {
+    // Use the unique ID embedded in the first source line header.
+    if let Some(first) = block.source_lines.first() {
+        if let Some(id_end) = first.find('\x02') {
+            return first[..id_end].to_string();
+        }
+    }
+    // Fallback for legacy/tool-less blocks.
     let mut hasher = DefaultHasher::new();
     std::mem::discriminant(&block.kind).hash(&mut hasher);
     block.source_lines.first().hash(&mut hasher);
     block.source_lines.get(1).hash(&mut hasher);
-    hasher.finish()
+    format!("fallback_{}", hasher.finish())
 }
