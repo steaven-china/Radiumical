@@ -173,19 +173,19 @@ impl Block {
 
             BlockKind::Reasoning => {
                 let s = &self.source_lines[0];
-                let raw = s[1..].trim_start_matches("[思考] ").trim();
+                let raw = s[1..].trim_start_matches("[thinking] ").trim();
                 let style = Style::default()
                     .fg(Color::Rgb(170, 170, 180))
                     .bg(Color::Rgb(35, 35, 42));
                 if show_full {
                     raw.lines()
-                        .map(|l| Line::from(Span::styled(format!("[思考] {l}"), style)))
+                        .map(|l| Line::from(Span::styled(format!("[thinking] {l}"), style)))
                         .collect()
                 } else {
                     let preview: String = raw.chars().take(40).collect();
                     let dots = if raw.chars().count() > 40 { "…" } else { "" };
                     vec![Line::from(Span::styled(
-                        format!("[思考] {preview}{dots}"),
+                        format!("[thinking] {preview}{dots}"),
                         style,
                     ))]
                 }

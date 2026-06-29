@@ -231,7 +231,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
 
         // Reasoning
         if line.starts_with("\x01") {
-            let raw = line[1..].trim_start_matches("[思考] ").trim();
+            let raw = line[1..].trim_start_matches("[thinking] ").trim();
             let height = if show_full_reasoning {
                 raw.lines().count().max(1)
             } else {
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_reasoning_block() {
-        let input = vec!["\x01[思考] Analyzing code structure...".to_string()];
+        let input = vec!["\x01[thinking] Analyzing code structure...".to_string()];
 
         let blocks = measure_blocks(&input, 80, false);
         assert_eq!(blocks.len(), 1);
@@ -458,10 +458,10 @@ mod tests {
         let mut md = MarkdownRenderer::new();
         let lines = blocks[0].render(80, 0, &mut md, false);
         let content = &lines[0].spans[0].content;
-        assert!(content.contains("[思考]"), "should contain [思考]");
+        assert!(content.contains("[thinking]"), "should contain [thinking]");
 
         // Expanded multi-line reasoning
-        let multi = vec!["\x01[思考] line one\nline two\nline three".to_string()];
+        let multi = vec!["\x01[thinking] line one\nline two\nline three".to_string()];
         let blocks_full = measure_blocks(&multi, 80, true);
         assert_eq!(blocks_full.len(), 1);
         assert_eq!(

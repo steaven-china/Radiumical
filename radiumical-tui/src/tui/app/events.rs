@@ -119,10 +119,10 @@ impl App {
                     if last.starts_with("\x01") {
                         last.push_str(&rc);
                     } else {
-                        self.output.push(format!("\x01[思考] {rc}"));
+                        self.output.push(format!("\x01[thinking] {rc}"));
                     }
                 } else {
-                    self.output.push(format!("\x01[思考] {rc}"));
+                    self.output.push(format!("\x01[thinking] {rc}"));
                 }
                 // Aggregate into session reasoning item
                 if let Some(SessionItem::Reasoning { content }) = self.session_items.last_mut() {

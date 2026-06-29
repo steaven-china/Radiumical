@@ -100,7 +100,7 @@ impl App {
                     if content.is_empty() {
                         continue;
                     }
-                    self.output.push(format!("\x01[思考] {content}"));
+                    self.output.push(format!("\x01[thinking] {content}"));
                 }
                 SessionItem::Tool {
                     id,

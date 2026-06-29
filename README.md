@@ -1,12 +1,14 @@
 # Radiumical
 
 <p align="center">
-  <img src="https://img.shields.io/badge/language-Rust-orange?style=flat-square" alt="Rust">
+  <img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/platform-cross--platform-green?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-green?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/binary-11%20MB-orange?style=flat-square" alt="Binary">
+  <img src="https://img.shields.io/badge/memory-<30%20MB%20idle-brightgreen?style=flat-square" alt="Memory">
 </p>
 
-**Radiumical** is a powerful agentic CLI tool for coding. It lives in your terminal, understands your codebase, and helps you ship — whether that's fixing bugs, refactoring, or exploring unfamiliar code.
+A lightweight, Rust-native agentic coding assistant for your terminal. 11 MB binary, 24 MB idle memory, 21 providers, full TUI.
 
 ```
 ██████╗  █████╗ ██████╗ ██╗██╗   ██╗███╗   ███╗██╗ ██████╗ █████╗ ██╗
@@ -17,221 +19,177 @@
 ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝
 ```
 
----
+## Features
 
-## ✨ Features
+### Core
 
-- **🤖 LLM Agent Loop** — Reads your code, plans changes, executes tools, and iterates until done.
-- **🖥️ Rich TUI** — Built with [ratatui](https://ratatui.rs), 60 FPS rendering, markdown output, scrollable history.
-- **🔧 17 Built-in Tools** — `read_file`, `write_file`, `edit_file`, `search_code`, `find_files`, `run_command`, LSP diagnostics, system info, and more.
-- **🌐 Multi-Provider** — Supports OpenAI, DeepSeek, Anthropic, Ollama, and any OpenAI-compatible API.
-- **📋 Slash Commands** — `/plan`, `/exec`, `/auto`, `/review`, `/tools`, `/session`, `/models`, and more.
-- **🎯 Three Agent Modes**:
-  - **Auto** — Full capabilities, all tools available.
-  - **Plan** — Read-only: explore code without making changes.
-  - **Exec** — Write mode: make edits and run commands.
-- **💾 Session Management** — Save, load, list, and delete conversation sessions.
-- **📝 JSONL Conversation Logging** — Full message history persisted to `conversation.jsonl`.
-- **🎨 Markdown Rendering** — Code blocks, tables, headings, inline styles via `pulldown-cmark`.
-- **🔍 LSP Diagnostics** — Auto-detect language and run `cargo check`, `ruff`, `eslint`, `go vet`.
-- **⚡ Async Pipeline** — Tokio-based, parallel tool execution, cancellable, with configurable timeouts.
-- **🖱️ Mouse Support** — Click, scroll, drag-resize panels, select text.
-- **📊 Performance Monitor** — Built-in FPS counter and frame-timing overlay (`/perf`).
-- **🔤 CRLF Auto-Normalization** — Cross-platform line ending handling out of the box.
+- **21 Providers** — OpenAI, Anthropic, Google, DeepSeek, Mistral, Groq, Cohere, Ollama, OpenRouter, and any OpenAI-compatible API
+- **20+ Built-in Tools** — File read/write/edit, code search, shell execution, LSP diagnostics, directory tree, system info, memory, sub-agent, and more
+- **3 Agent Modes** — Auto (full access), Plan (read-only exploration), Exec (write & execute)
+- **Context Compression** — Auto LLM summarization when conversation exceeds 80% of max context tokens (default 1M)
+- **Session-level Orchestration** — Agent creates multi-step plans with dependencies, auto-executes in order, shared conversation context
 
----
+### TUI
 
-## 📦 Installation
+- **ratatui Full-screen TUI** — 60 FPS rendering, real-time markdown, code syntax highlighting
+- **Collapsible Tool Call Boxes** — Double-click to expand/collapse, embedded scrollbar thumb
+- **Session Manager** — `/sessions` opens full-screen session manager with load/save/delete/new
+- **Provider Picker** — `/provider` to switch provider and model
+- **Settings Overlay** — `/settings` to modify configuration inline
+- **Dashboard** — `//` opens navigation panel
+- **Mouse Support** — Scroll wheel, double-click tool calls, scrollbar drag
 
-### Prerequisites
+### Extensibility
 
-- [Rust](https://rustup.rs) toolchain (latest stable)
-- An API key for your LLM provider (e.g., DeepSeek, OpenAI)
+- **MCP Client** — Configure in `~/.radi/mcp.json`, async stdio JSON-RPC with timeout
+- **Skills System** — Follows [agentskills.io](https://agentskills.io) spec, `~/.radi/skills/{name}/SKILL.md`, agent loads on-demand via `list_skills`/`load_skill` tools
+- **Agent Pool** — Custom agent roles in `~/.radi/agents/{name}.md`, agent switches via `list_agents`/`load_agent` tools
+- **Layout DSL** — `layout_page` tool with grid/table/split/cols/rows/box layouts
 
-### Build from Source
+### Performance
+
+- **lz4 Transparent Compression** — Messages >1KB auto-compressed, transparent decompression
+- **zstd JSONL Persistence** — Conversation stored as `.jsonl.zst`, 5-100x disk savings
+- **Provider Response Cache** — LLM responses cached, disable with `RADI_DISABLE_LLM_CACHE=1`
+- **Fully Async** — UiEvent channel uses `tokio::sync::mpsc::unbounded`, zero blocking in async context
+- **Workspace-scoped Sessions** — Sessions isolated per project under `~/.radi/sessions/{hash}/`
+
+## Installation
 
 ```bash
 git clone https://github.com/steaven-china/Radiumical.git
-cd radiumical
+cd Radiumical
 cargo build --release
+# binary: target/release/radiumical(.exe)
 ```
 
-The binary will be at `target/release/radiumical` (or `radiumical.exe` on Windows).
-
-### Install via Cargo
+## Quick Start
 
 ```bash
-cargo install --path .
-```
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Set your API key (pick one)
+# Set API key
 export DEEPSEEK_API_KEY="sk-..."
-export OPENAI_API_KEY="sk-..."
 
-# Launch interactive TUI (defaults to DeepSeek)
+# Launch TUI
 radiumical
 
-# Use a different provider
+# Specify provider/model
 radiumical -p openai -m gpt-4o
 
-# Run a one-shot task (non-interactive)
+# Non-interactive mode
 radiumical -t "Fix the bug in src/main.rs"
 
-# Specify workspace
-radiumical -w /path/to/project
-
-# Use local Ollama
+# Local Ollama
 radiumical -p ollama -m codellama
 ```
 
----
-
-## ⌨️ Usage
-
-### CLI Options
+## CLI Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-t, --task` | Task to execute (skips TUI) | — |
+| `-t, --task` | Non-interactive task | — |
 | `-w, --workspace` | Workspace directory | `.` |
-| `-p, --provider` | Provider: `openai`, `deepseek`, `anthropic`, `ollama` | `deepseek` |
+| `-p, --provider` | Provider | `deepseek` |
 | `-m, --model` | Model name | auto-detected |
-| `-k, --api-key` | API key | `$DEEPSEEK_API_KEY` / `$OPENAI_API_KEY` |
+| `-k, --api-key` | API key | `$DEEPSEEK_API_KEY` |
 | `--api-base` | Custom API base URL | provider default |
-| `--max-iterations` | Max tool-calling loops | `32` |
-| `--concurrency` | Max parallel tool executions | `8` |
-| `--llm-timeout` | LLM request timeout (seconds) | `120` |
-| `--tool-timeout` | Tool execution timeout (seconds) | `300` |
-| `--heartbeat` | Heartbeat interval (seconds, 0=off) | `10` |
-| `-v, --verbose` | Debug logging | `false` |
+| `--max-iterations` | Max tool-call loops | `32` |
+| `--concurrency` | Parallel tool executions | `8` |
+| `--llm-timeout` | LLM timeout (seconds) | `120` |
+| `--tool-timeout` | Tool timeout (seconds) | `300` |
 
-### Interactive Mode Keys
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit task |
-| `Shift+Enter` | Newline in input |
-| `Ctrl+C` | Quit |
-| `Ctrl+O` | Toggle reasoning display |
-| `Ctrl+Shift+C` | Copy all output to clipboard |
-| `↑` / `↓` | Navigate history / hints |
-| `PgUp` / `PgDn` | Scroll output (or hint pages) |
-| `//` | Toggle Dashboard |
-
-### Slash Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/help`, `/?` | Show help overlay |
-| `/plan` | Read-only mode (explore, no edits) |
-| `/exec` | Write mode (make changes) |
-| `/auto` | Full auto mode |
-| `/review` | Self-review recent changes |
-| `/tools`, `/t` | List available tools |
-| `/models` | Model picker panel |
-| `/model <n>` | Switch model |
-| `/session save <name>` | Save conversation to named session |
-| `/session load <name>` | Load a saved session |
-| `/session list` | List all saved sessions |
-| `/session delete <name>` | Delete a session |
-| `/settings`, `/config` | Show configuration |
-| `/clear`, `/cls` | Clear screen |
-| `/perf` | Toggle performance monitor |
-| `/exit`, `/q` | Quit |
+| `/help` | Show help |
+| `/plan` / `/exec` / `/auto` | Switch mode |
+| `/review` | Self-review changes |
+| `/tools` | List available tools |
+| `/sessions` | Session manager TUI |
+| `/session save/load/list/delete` | Session operations |
+| `/skills` | List available skills |
+| `/skill <name>` | Activate a skill |
+| `/provider` | Provider/model picker |
+| `/settings` | Configuration overlay |
+| `/new` | New session (auto-saves current) |
+| `/perf` | Performance monitor |
 
----
+## Configuration
 
-## 🔧 Configuration
-
-Place a `config.toml` in the workspace root to set persistent defaults:
+`~/.radi/config.toml`:
 
 ```toml
 provider = "deepseek"
 model = "deepseek-v4-pro"
-heartbeat_secs = 10
+max_context_tokens = 1000000
+context_compress_ratio = 0.8
 llm_timeout_secs = 180
-max_iterations = 32
+tool_timeout_secs = 300
 ```
 
-CLI arguments always take priority over config file values.
+`~/.radi/mcp.json`:
 
----
-
-## 🧰 Built-in Tools
-
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read file contents with line numbers and pagination |
-| `write_file` | Create or overwrite a file |
-| `edit_file` | Targeted search-and-replace edits with auto CRLF/LF normalization |
-| `search_code` | Regex grep across the workspace |
-| `find_files` | Glob pattern file search |
-| `run_command` | Execute shell commands with timeout |
-| `todo_list` | Manage a task list |
-| `plan` | Step-by-step planning |
-| `goal` | Goal/sub-goal decomposition |
-| `choice` | Prompt the user for a choice |
-| `diagnostics` | Language-aware linting/checking |
-| `sysinfo` | System information (OS, CPU, memory, disk) |
-| `list_dir` | Directory listing with sizes |
-| `tree` | Directory tree view (max depth 3) |
-| `time_now` | Current date and time |
-| `cron_info` | Crontab listing |
-| `annotate` | Virtual annotations on file lines |
-
----
-
-## 🏗️ Architecture
-
-```
-src/
-├── main.rs          # Entry point, CLI parsing, backend loop
-├── pipeline.rs       # Agent loop: LLM → tool → LLM
-├── provider.rs       # LLM provider abstraction (OpenAI-compatible)
-├── tools.rs          # Tool trait + 17 tool implementations
-├── conversation.rs   # JSONL-backed persistent conversation
-├── session.rs        # Named session save/load
-├── types.rs          # Core types: Message, ToolCall, SessionConfig, AgentMode
-├── commands.rs       # Slash command registry
-├── config.rs         # config.toml persistence
-├── markdown.rs       # Markdown → ratatui Line converter
-├── layout.rs         # Two-pass output block layout engine
-├── tui.rs            # TUI runner, channels, slash hints, logo
-├── tui/
-│   ├── app.rs        # TUI application state & key handling
-│   └── draw.rs       # Output/input/status rendering
-├── board.rs          # Reusable UI widgets (panels, toasts, confirm dialogs)
-├── dashboard.rs      # Navigation hub with categories
-├── lsp.rs            # Language detection & diagnostics
-├── systools.rs       # System tools (sysinfo, list_dir, tree, cron)
-├── perf.rs           # Performance monitor (FPS, frame times)
-├── hooks/
-│   ├── mod.rs
-│   └── crlf.rs       # CRLF ↔ LF auto-normalization hook
-└── layout.rs         # Output block measurement & layout
+```json
+{
+  "mcpServers": {
+    "fs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  }
+}
 ```
 
-### Data Flow
+## Architecture
 
 ```
-User Input → Commands/Slash Dispatch
+radiumical-core/              Core library
+├── src/
+│   ├── harness.rs            Agent runtime: LLM ↔ Tool loop, context compression, orchestrator
+│   ├── pipeline.rs           PipelineRunner wrapper
+│   ├── conversation.rs       zstd JSONL persistent conversation
+│   ├── provider.rs           LLM Provider trait
+│   ├── providers.rs          21 providers + registry (embedded fallback)
+│   ├── session.rs            SessionPool, workspace-scoped isolation, items_to_messages
+│   ├── skill/                agentskills.io standard skill system
+│   ├── agent_pool/           Agent role pool
+│   ├── mcp.rs                MCP async stdio client with timeout
+│   ├── orchestrator.rs       Multi-step plan + dependency tracking
+│   ├── tools/                20+ Tool implementations
+│   ├── types.rs              Core types + lz4 transparent compression
+│   └── ...
+
+radiumical-tui/               TUI frontend
+├── src/
+│   ├── main.rs               Entry point, backend loop, MCP init
+│   ├── tui.rs                TUI runner, event loop
+│   ├── tui/
+│   │   ├── app/              App state, event handling, mouse, commands
+│   │   └── draw.rs           Two-pass rendering: measure → render
+│   ├── layout/               Block layout engine
+│   ├── session_tui.rs        Full-screen session manager
+│   ├── board.rs              UI widgets (toast, confirm, picker)
+│   └── markdown.rs           Markdown → ratatui Line converter
+```
+
+## Data Flow
+
+```
+User input → slash command / plain task
     ↓
-PipelineRunner.run()
+BackendCmd → PipelineRunner.run()
+    ↓
+Harness.run() ←── orchestrator plan injects next task
     ↓  (loop)
-Provider.chat() → SSE stream → ProviderEvents
+Provider.chat() → SSE stream → ProviderEvent
     ↓
-ToolCall → execute with timeout → ToolResult
-    ↓  (repeat until done)
-Final response → TUI output buffer → ratatui render
+ToolCall → execute (MCP/native) → ToolResult
+    ↓  (repeat until done / context compression triggered)
+Final response → UiEvent → TUI output buffer → ratatui render
+    ↓
+Session save (zstd JSONL) ← lz4 transparent compression
 ```
 
----
-
-## 📄 License
+## License
 
 MIT
