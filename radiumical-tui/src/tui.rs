@@ -1,7 +1,6 @@
 //! Ratatui TUI — async frontend/backend.
 use crossterm::event::Event;
 use radiumical_core::types::SessionConfig;
-use std::sync::mpsc;
 use std::time::Instant;
 
 // ═══ Channels ═══
@@ -91,7 +90,7 @@ use self::app::App;
 
 pub fn run(
     cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-    ui_rx: mpsc::Receiver<UiEvent>,
+    ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
     config: SessionConfig,
 ) -> anyhow::Result<()> {
     use crossterm::event::{DisableMouseCapture, EnableMouseCapture};

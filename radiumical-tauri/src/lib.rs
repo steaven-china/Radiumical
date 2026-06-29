@@ -19,13 +19,13 @@ async fn run_task(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
-    let (ui_tx, ui_rx) = std::sync::mpsc::channel::<radiumical_core::types::UiEvent>();
+    let (ui_tx, mut ui_rx) = tokio::sync::mpsc::unbounded_channel::<radiumical_core::types::UiEvent>();
     let (_, cancel_rx) = tokio::sync::watch::channel(false);
 
     // Spawn pipeline in background, emit events to frontend
     let handle = app.clone();
     tokio::spawn(async move {
-        while let Ok(event) = ui_rx.recv() {
+        while let Some(event) = ui_rx.recv().await {
             match event {
                 radiumical_core::types::UiEvent::LlmChunk(chunk) => {
                     let _ = handle.emit("llm-chunk", chunk);
@@ -82,12 +82,20 @@ async fn run_task(
                 radiumical_core::types::UiEvent::Error(e) => {
                     let _ = handle.emit("llm-error", e);
                 }
+                radiumical_core::types::UiEvent::Toast {
+                    message, level, ..
+                } => {
+                    let _ = handle.emit(
+                        "toast",
+                        serde_json::json!({ "message": message, "level": level }),
+                    );
+                }
             }
         }
     });
 
     let mut runner = state.runner.lock().await;
-    let result = runner.run(task, workspace, None, ui_tx, cancel_rx).await;
+    let result = runner.run(task, workspace, &[], None, ui_tx, cancel_rx).await;
     drop(runner);
     result.map_err(|e| e.to_string())?;
     Ok("Done.".into())

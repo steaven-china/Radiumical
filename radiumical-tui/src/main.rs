@@ -14,7 +14,7 @@ use radiumical_core::provider::create_provider;
 use radiumical_core::providers::{discover_models, ProviderRegistry, DEFAULT_REGISTRY_URL};
 use radiumical_core::types::{ProviderKind, SessionConfig};
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use tui::{BackendCmd, UiEvent};
 
 /// Radiumical — a lean, fast CLI coding agent.
@@ -175,14 +175,14 @@ async fn main() -> Result<()> {
     radiumical_core::subagent::set_defaults(config.clone(), Arc::clone(&provider));
 
     // ── Channels for frontend ↔ backend communication ──
-    let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>();
+    let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<UiEvent>();
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<BackendCmd>(8);
 
     // ── Non-interactive mode (--task) ──
     if let Some(task) = cli.task {
         let mut runner = PipelineRunner::new(config.clone(), provider);
         let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        runner.run(task, workspace, None, ui_tx, cancel_rx).await?;
+        runner.run(task, workspace, &[], None, ui_tx, cancel_rx).await?;
         return Ok(());
     }
 
@@ -211,6 +211,29 @@ async fn main() -> Result<()> {
     };
     let cmd_pool = CommandPool::new();
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+
+    // ── MCP servers ──
+    let mcp_config = radiumical_core::mcp::load_config();
+    let mut mcp_clients: Vec<Arc<radiumical_core::mcp::McpClient>> = Vec::new();
+    for (name, server_cfg) in &mcp_config.servers {
+        match radiumical_core::mcp::McpClient::spawn(name, server_cfg) {
+            Ok(client) => {
+                match client.list_tools() {
+                    Ok(tools) => {
+                        eprintln!("MCP '{name}': {} tools loaded", tools.len());
+                        mcp_clients.push(Arc::new(client));
+                    }
+                    Err(e) => {
+                        eprintln!("MCP '{name}': tools/list failed: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("MCP '{name}': spawn failed: {e}");
+            }
+        }
+    }
+    // MCP tools will be added per-task in the harness run loop.
 
     loop {
         tokio::select! {
@@ -277,10 +300,23 @@ async fn main() -> Result<()> {
                                 let ui_tx = ui_tx.clone();
                                 let cancel_rx = cancel_rx.clone();
                                 let workspace = workspace.clone();
+                                // Build MCP tool adapters.
+                                let mcp_tools: Vec<Box<dyn radiumical_core::tools::Tool>> = mcp_clients
+                                    .iter()
+                                    .flat_map(|client| {
+                                        let tools = client.list_tools().unwrap_or_default();
+                                        tools.into_iter().map(move |info| {
+                                            Box::new(radiumical_core::tools::McpToolAdapter {
+                                                info,
+                                                client: Arc::clone(client),
+                                            }) as Box<dyn radiumical_core::tools::Tool>
+                                        })
+                                    })
+                                    .collect();
                                 tokio::spawn(async move {
                                     let mut runner = runner.lock().await;
                                     if let Err(e) = runner
-                                        .run(task, workspace, hb_cancel, ui_tx.clone(), cancel_rx)
+                                        .run(task, workspace, &mcp_tools, hb_cancel, ui_tx.clone(), cancel_rx)
                                         .await
                                     {
                                         let _ = ui_tx.send(UiEvent::Error(e.to_string()));
@@ -332,15 +368,21 @@ async fn main() -> Result<()> {
                         let registry = registry.clone();
                         let ui_tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            match registry.fetch_or_cache(DEFAULT_REGISTRY_URL).await {
-                                Ok(sources) => {
-                                    let _ = ui_tx.send(UiEvent::ProvidersLoaded(sources));
-                                }
-                                Err(e) => {
-                                    let _ = ui_tx.send(UiEvent::Error(format!(
-                                        "Provider registry error: {e}"
-                                    )));
-                                }
+                            // Try online first, fall back to embedded list.
+                            let (sources, from_online) = match registry
+                                .fetch_or_cache(DEFAULT_REGISTRY_URL)
+                                .await
+                            {
+                                Ok(s) => (s, true),
+                                Err(_) => (registry.embedded_fallback(), false),
+                            };
+                            let _ = ui_tx.send(UiEvent::ProvidersLoaded(sources));
+                            if !from_online {
+                                let _ = ui_tx.send(UiEvent::Toast {
+                                    message: "Using bundled provider list (offline)".into(),
+                                    level: "warn".into(),
+                                    duration_secs: 5,
+                                });
                             }
                         });
                     }

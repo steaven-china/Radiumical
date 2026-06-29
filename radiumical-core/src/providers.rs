@@ -20,6 +20,9 @@ pub const DEFAULT_REGISTRY_URL: &str = "https://radiumical.dev/providers.jsonl";
 const CACHE_FILE_NAME: &str = "providers.jsonl";
 const CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60); // 1 day
 
+/// Bundled fallback provider list (always available, never stale).
+const EMBEDDED_PROVIDERS: &str = include_str!("../../providers-record/providers.jsonl");
+
 /// A single provider endpoint entry from the registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderSource {
@@ -139,18 +142,26 @@ impl ProviderRegistry {
         parse_jsonl(&text).map(Some)
     }
 
-    /// Fetch remote registry, falling back to local cache on failure.
+    /// Fetch remote registry, falling back to local cache, then embedded list.
     pub async fn fetch_or_cache(&self, url: &str) -> Result<Vec<ProviderSource>> {
         match self.fetch(url).await {
             Ok(sources) => Ok(sources),
             Err(e) => {
                 if let Ok(Some(cached)) = self.load_cache() {
-                    Ok(cached)
-                } else {
-                    Err(e)
+                    return Ok(cached);
+                }
+                // Last resort: use the bundled fallback.
+                match parse_jsonl(EMBEDDED_PROVIDERS) {
+                    Ok(embedded) => Ok(embedded),
+                    Err(_) => Err(e), // Return original fetch error
                 }
             }
         }
+    }
+
+    /// Load the embedded (bundled) provider list. Always succeeds.
+    pub fn embedded_fallback(&self) -> Vec<ProviderSource> {
+        parse_jsonl(EMBEDDED_PROVIDERS).unwrap_or_default()
     }
 
     fn save_cache(&self, text: &str) -> Result<()> {

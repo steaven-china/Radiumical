@@ -1,9 +1,16 @@
+use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::providers::ProviderSource;
 use crate::session::SessionItem;
 
 // ── Chat types ──
+
+/// Threshold for lz4 transparent compression (1 KB).
+const COMPRESS_THRESHOLD: usize = 1024;
+
+/// Magic prefix indicating lz4-compressed text content.
+const LZ4_PREFIX: &str = "\x00lz4:";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -14,7 +21,7 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>, // for tool results, who produced it
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
 }
@@ -36,13 +43,133 @@ pub enum MessageContent {
 }
 
 impl MessageContent {
-    #[allow(dead_code)]
-    pub fn text(&self) -> &str {
+    pub fn text(&self) -> Cow<'_, str> {
+        match self {
+            MessageContent::Text(s) => {
+                if s.starts_with(LZ4_PREFIX) {
+                    match decompress_text(s) {
+                        Some(decompressed) => Cow::Owned(decompressed),
+                        None => Cow::Borrowed(""),
+                    }
+                } else {
+                    Cow::Borrowed(s.as_str())
+                }
+            }
+            MessageContent::Parts(_) => Cow::Borrowed(""),
+        }
+    }
+
+    /// Get raw text without decompression (for callers that handle compression themselves).
+    pub fn raw_str(&self) -> &str {
         match self {
             MessageContent::Text(s) => s.as_str(),
             MessageContent::Parts(_) => "",
         }
     }
+
+    /// Create Text, compressing with lz4 if > 1KB.
+    pub fn from_text(text: String) -> Self {
+        if text.len() > COMPRESS_THRESHOLD {
+            if let Some(compressed) = compress_text(&text) {
+                return MessageContent::Text(compressed);
+            }
+        }
+        MessageContent::Text(text)
+    }
+
+    /// Return raw text without decompression (for serialization).
+    pub fn raw_text(&self) -> &str {
+        match self {
+            MessageContent::Text(s) => s.as_str(),
+            MessageContent::Parts(_) => "",
+        }
+    }
+
+    /// Return true if this content is lz4-compressed.
+    pub fn is_compressed(&self) -> bool {
+        matches!(self, MessageContent::Text(s) if s.starts_with(LZ4_PREFIX))
+    }
+}
+
+/// Compress text with lz4, returning prefixed string. Returns None on failure.
+pub fn compress_text(text: &str) -> Option<String> {
+    let compressed = lz4_flex::compress_prepend_size(text.as_bytes());
+    let encoded = base64_encode(&compressed);
+    Some(format!("{LZ4_PREFIX}{encoded}"))
+}
+
+/// Decompress lz4-prefixed text. Returns None on failure.
+pub fn decompress_text(s: &str) -> Option<String> {
+    let encoded = s.strip_prefix(LZ4_PREFIX)?;
+    let compressed = base64_decode(encoded)?;
+    let bytes = lz4_flex::decompress_size_prepended(&compressed).ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+/// Minimal base64 encode (no external dep needed for this use case).
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() * 4 / 3) + 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    for chunk in bytes.chunks(4) {
+        if chunk.len() < 2 {
+            return None;
+        }
+        let a = val(chunk[0])? as u32;
+        let b = val(chunk[1])? as u32;
+        let c = if chunk.len() > 2 && chunk[2] != b'=' {
+            val(chunk[2])? as u32
+        } else {
+            0
+        };
+        let d = if chunk.len() > 3 && chunk[3] != b'=' {
+            val(chunk[3])? as u32
+        } else {
+            0
+        };
+        let triple = (a << 18) | (b << 12) | (c << 6) | d;
+        out.push((triple >> 16) as u8);
+        if chunk.len() > 2 && chunk[2] != b'=' {
+            out.push((triple >> 8) as u8);
+        }
+        if chunk.len() > 3 && chunk[3] != b'=' {
+            out.push(triple as u8);
+        }
+    }
+    Some(out)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +192,7 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
     pub name: String,
-    pub arguments: String, // JSON string
+    pub arguments: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,7 +206,7 @@ pub struct ToolDefinition {
 pub struct FunctionDef {
     pub name: String,
     pub description: String,
-    pub parameters: serde_json::Value, // JSON Schema
+    pub parameters: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +382,11 @@ pub enum UiEvent {
     ThinkingDone,
     ProvidersLoaded(Vec<ProviderSource>),
     ModelsLoaded(Vec<String>),
+    Toast {
+        message: String,
+        level: String,
+        duration_secs: u64,
+    },
 }
 
 #[derive(Debug, Clone)]

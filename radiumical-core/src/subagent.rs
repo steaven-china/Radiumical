@@ -64,7 +64,7 @@ pub async fn spawn(
     config: SessionConfig,
     provider: Arc<dyn Provider>,
 ) {
-    let (ui_tx, _ui_rx) = std::sync::mpsc::channel::<crate::types::UiEvent>();
+    let (ui_tx, _ui_rx) = tokio::sync::mpsc::unbounded_channel::<crate::types::UiEvent>();
     let agent_config = build_agent_config(&config, agent_name.as_deref());
     let mut runner = PipelineRunner::new(agent_config, provider);
     let workspace = std::env::current_dir().unwrap_or_default();
@@ -85,7 +85,7 @@ pub async fn spawn(
     tokio::spawn(async move {
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         let result = runner
-            .run(task.clone(), workspace, None, ui_tx, cancel_rx)
+            .run(task.clone(), workspace, &[], None, ui_tx, cancel_rx)
             .await;
         let mut reg = registry().lock().unwrap();
         if let Some(entry) = reg.get_mut(&id) {

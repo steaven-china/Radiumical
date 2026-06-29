@@ -2,7 +2,6 @@ use crate::tui::{BackendCmd, UiEvent, LOGO};
 use radiumical_core::types::{AgentMode, SessionConfig};
 use ratatui::text::Line;
 use std::collections::HashMap;
-use std::sync::mpsc;
 use std::time::Instant;
 
 pub mod commands;
@@ -33,7 +32,7 @@ pub struct App {
     pub model: String,
     pub provider_name: String,
     pub cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-    pub ui_rx: mpsc::Receiver<UiEvent>,
+    pub ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
     pub session_items: Vec<radiumical_core::session::SessionItem>,
     pub session_pool: radiumical_core::session::SessionPool,
     pub pending_choice: Option<(String, String, Vec<String>)>,
@@ -81,7 +80,7 @@ pub struct App {
 impl App {
     pub fn new(
         cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-        ui_rx: mpsc::Receiver<UiEvent>,
+        ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
         config: &SessionConfig,
     ) -> Self {
         let mut out = vec![format!("Radiumical — {} @ {}", config.model, ".")];
@@ -225,8 +224,8 @@ impl App {
         let lines = lines.max(0.0);
         let max = self.rendered_total.saturating_sub(self.output_vis.max(1)) as f32;
         if self.stick_to_bottom {
-            self.scroll = max.max(0.0);
             self.stick_to_bottom = false;
+            // scroll is already at max, just unset stick — next scroll will move
         }
         self.scroll = (self.scroll + lines).min(max.max(0.0)).max(0.0);
         if lines > 0.0 {
@@ -237,6 +236,9 @@ impl App {
     pub fn scroll_down(&mut self, lines: f32) {
         let lines = lines.max(0.0);
         let max = self.rendered_total.saturating_sub(self.output_vis.max(1)) as f32;
+        if self.stick_to_bottom {
+            self.stick_to_bottom = false;
+        }
         self.scroll = (self.scroll - lines).max(0.0);
         self.scroll = self.scroll.min(max.max(0.0));
         if lines > 0.0 {

@@ -1,5 +1,6 @@
-//! Conversation context — JSONL-backed message history, reused across turns.
-//! Each line = one Message as JSON. Debug with `cat conversation.jsonl`.
+//! Conversation context — zstd-compressed JSONL-backed message history.
+//! Each line = one Message as JSON, stored in `conversation.jsonl.zst`.
+//! Backward-compatible: reads plain `.jsonl` if `.zst` doesn't exist.
 use crate::types::{Message, MessageContent, Role, ToolCall, ToolResult};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -370,10 +371,13 @@ impl Conversation {
 
     fn flush(&self) {
         if let Some(ref path) = self.jsonl_path {
-            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+            let zst_path = zst_path(path);
+            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&zst_path) {
                 if let Some(last) = self.messages.last() {
                     if let Ok(json) = serde_json::to_string(last) {
-                        let _ = writeln!(f, "{json}");
+                        let line = format!("{json}\n");
+                        let compressed = zstd::encode_all(line.as_bytes(), 3).unwrap_or_default();
+                        let _ = f.write_all(&compressed);
                     }
                 }
             }
@@ -382,16 +386,24 @@ impl Conversation {
 
     fn rewrite_jsonl(&self) {
         if let Some(ref path) = self.jsonl_path {
-            if let Ok(mut f) = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(path)
-            {
-                for msg in &self.messages {
-                    if let Ok(json) = serde_json::to_string(msg) {
-                        let _ = writeln!(f, "{json}");
-                    }
+            let zst_path = zst_path(path);
+            // Build the full JSONL content in memory.
+            let mut buf = Vec::new();
+            for msg in &self.messages {
+                if let Ok(json) = serde_json::to_string(msg) {
+                    buf.extend_from_slice(json.as_bytes());
+                    buf.push(b'\n');
+                }
+            }
+            // Compress and write in one shot.
+            if let Ok(compressed) = zstd::encode_all(buf.as_slice(), 3) {
+                if let Ok(mut f) = OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&zst_path)
+                {
+                    let _ = f.write_all(&compressed);
                 }
             }
         }
@@ -419,6 +431,15 @@ impl Conversation {
 
     #[allow(dead_code)]
     fn load_jsonl(path: &PathBuf) -> Option<Vec<Message>> {
+        let zst_path = zst_path(path);
+        // Try zstd-compressed first, then fall back to plain JSONL.
+        if let Some(msgs) = Self::load_zst(&zst_path) {
+            return Some(msgs);
+        }
+        Self::load_plain(path)
+    }
+
+    fn load_plain(path: &Path) -> Option<Vec<Message>> {
         let file = File::open(path).ok()?;
         let reader = BufReader::new(file);
         let mut msgs = Vec::new();
@@ -433,6 +454,30 @@ impl Conversation {
             Some(msgs)
         }
     }
+
+    fn load_zst(path: &Path) -> Option<Vec<Message>> {
+        let compressed = std::fs::read(path).ok()?;
+        let decompressed = zstd::decode_all(compressed.as_slice()).ok()?;
+        let text = String::from_utf8(decompressed).ok()?;
+        let mut msgs = Vec::new();
+        for line in text.lines() {
+            if let Ok(msg) = serde_json::from_str::<Message>(line) {
+                msgs.push(msg);
+            }
+        }
+        if msgs.is_empty() {
+            None
+        } else {
+            Some(msgs)
+        }
+    }
+}
+
+/// Derive `.jsonl.zst` path from a `.jsonl` path.
+fn zst_path(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".zst");
+    PathBuf::from(s)
 }
 
 // ── Tests ──

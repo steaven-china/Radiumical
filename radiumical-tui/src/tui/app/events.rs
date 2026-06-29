@@ -59,7 +59,7 @@ pub(crate) fn box_args_line(args: &str, width: usize) -> String {
     };
     let text = format!("{visible}{dots}");
     let pad = inner.saturating_sub(text.chars().count() + 2);
-    format!("  │  {text}{}│", " ".repeat(pad))
+    format!("  │  {text}{}", " ".repeat(pad))
 }
 
 pub(crate) fn box_result_line(line: &str, width: usize) -> String {
@@ -69,7 +69,7 @@ pub(crate) fn box_result_line(line: &str, width: usize) -> String {
         .take(inner.saturating_sub(1))
         .collect::<String>();
     let pad = inner.saturating_sub(visible.chars().count() + 1);
-    format!("  │ {visible}{}│", " ".repeat(pad))
+    format!("  │ {visible}{}", " ".repeat(pad))
 }
 
 pub(crate) fn box_bottom(width: usize) -> String {
@@ -261,6 +261,22 @@ impl App {
                 }
                 self.available_models = models.clone();
                 self.provider_picker.set_models(models);
+            }
+            UiEvent::Toast {
+                message,
+                level,
+                duration_secs,
+            } => {
+                let lvl = match level.as_str() {
+                    "error" => crate::board::ToastLevel::Error,
+                    "warn" => crate::board::ToastLevel::Warn,
+                    _ => crate::board::ToastLevel::Info,
+                };
+                self.toasts.push(crate::board::Toast::new(
+                    message,
+                    lvl,
+                    std::time::Duration::from_secs(duration_secs),
+                ));
             }
         }
     }

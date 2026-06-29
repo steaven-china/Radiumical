@@ -7,6 +7,7 @@
 use crate::agent::Agent;
 use crate::conversation::Conversation;
 use crate::hooks::crlf::CRLFNormalizer;
+use crate::orchestrator::Orchestrator;
 use crate::plugins::source::{RegexLinter, SourcePluginRegistry};
 use crate::provider::Provider;
 use crate::session::{items_to_messages, SessionItem};
@@ -17,7 +18,7 @@ use crate::types::{
 };
 use crate::{orchestrator};
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Hook that can inspect or transform tool results before they are sent back
@@ -108,7 +109,7 @@ impl Harness {
     /// was needed).
     pub async fn compress_context(
         &mut self,
-        ui_tx: &mpsc::Sender<UiEvent>,
+        ui_tx: &tokio::sync::mpsc::UnboundedSender<UiEvent>,
     ) -> usize {
         const KEEP_RECENT: usize = 6;
 
@@ -227,8 +228,9 @@ impl Harness {
         task: String,
         workspace: PathBuf,
         agent: &Agent,
+        extra_tools: &[Box<dyn Tool>],
         _hb_cancel: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        ui_tx: mpsc::Sender<UiEvent>,
+        ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
         mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let llm_timeout = Duration::from_secs(self.config.llm_timeout_secs);
@@ -257,8 +259,14 @@ impl Harness {
         }
 
         let tool_defs = agent.filter_tools(&self.tool_defs);
+        // Merge extra tools (e.g. MCP).
+        let mut all_tool_defs = tool_defs.clone();
+        // Merge extra tools (e.g. MCP).
+        let extra_defs: Vec<ToolDefinition> = extra_tools.iter().map(|t| t.definition()).collect();
+        all_tool_defs.extend(extra_defs);
+
         let allowed_names: std::collections::HashSet<String> = if agent.allowed_tools.is_empty() {
-            self.tool_defs.iter().map(|d| d.function.name.clone()).collect()
+            all_tool_defs.iter().map(|d| d.function.name.clone()).collect()
         } else {
             agent.allowed_tools.iter().cloned().collect()
         };
@@ -297,7 +305,7 @@ impl Harness {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             let provider = Arc::clone(&self.provider);
             let msgs = messages.clone();
-            let defs = tool_defs.clone();
+            let defs = all_tool_defs.clone();
 
             let chat_handle = tokio::spawn(async move { provider.chat(&msgs, &defs, tx).await });
 
@@ -404,7 +412,10 @@ impl Harness {
                     let tool = self
                         .tools
                         .iter()
-                        .find(|t| t.definition().function.name == tc.function.name);
+                        .find(|t| t.definition().function.name == tc.function.name)
+                        .or_else(|| {
+                            extra_tools.iter().find(|t| t.definition().function.name == tc.function.name)
+                        });
 
                     match tool {
                         Some(tool) => {
@@ -464,6 +475,31 @@ impl Harness {
             self.conversation
                 .push_assistant(&full_text, None, Some(&full_reasoning));
             messages.push(assistant_msg(&full_text, None, &full_reasoning));
+
+            // ── 4. Session-level orchestration: auto-continue if plan has ready tasks ──
+            let orch = Orchestrator::new(Some(&workspace.to_string_lossy()));
+            let ready = orch.get_ready_tasks();
+            if !ready.is_empty() {
+                let next = ready[0];
+                let next_id = next.id;
+                let next_title = next.title.clone();
+                let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+                    "\n\n▶ Auto-continuing plan: #{} {}\n\n",
+                    next_id, next_title
+                )));
+                // Inject the next task as a new user message
+                let prompt = format!(
+                    "Continue the plan. Execute task #{}: {}",
+                    next_id, next_title
+                );
+                self.conversation.push_user(&prompt);
+                messages.push(user_msg(&prompt));
+                // Mark the task as active
+                let mut orch_mut = Orchestrator::new(Some(&workspace.to_string_lossy()));
+                let _ = orch_mut.start(next_id);
+                continue;
+            }
+
             return Ok(());
         }
 

@@ -12,7 +12,7 @@ use crate::provider::Provider;
 use crate::session::SessionItem;
 use crate::types::{AgentMode, SessionConfig, UiEvent};
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 pub struct PipelineRunner {
     harness: Harness,
@@ -45,13 +45,14 @@ impl PipelineRunner {
         &mut self,
         task: String,
         workspace: PathBuf,
+        extra_tools: &[Box<dyn crate::tools::Tool>],
         _hb_cancel: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        ui_tx: mpsc::Sender<UiEvent>,
+        ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let agent = Agent::default_coder();
         self.harness
-            .run(task, workspace, &agent, _hb_cancel, ui_tx, cancel_rx)
+            .run(task, workspace, &agent, extra_tools, _hb_cancel, ui_tx, cancel_rx)
             .await
     }
 }

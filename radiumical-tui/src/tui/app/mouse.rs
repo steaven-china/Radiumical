@@ -21,12 +21,18 @@ impl App {
         }
         match kind {
             MouseEventKind::ScrollDown => {
-                if !self.scroll_hovered_tool_result(1) {
+                // Try scrolling inside tool result first.
+                // Use hovered_block if available, otherwise compute from mouse position.
+                let bi = self.hovered_block
+                    .or_else(|| self.block_at_row(row, output_top, output_h));
+                if !self.scroll_tool_result(bi, 1) {
                     self.scroll_up(1.0);
                 }
             }
             MouseEventKind::ScrollUp => {
-                if !self.scroll_hovered_tool_result(-1) {
+                let bi = self.hovered_block
+                    .or_else(|| self.block_at_row(row, output_top, output_h));
+                if !self.scroll_tool_result(bi, -1) {
                     self.scroll_down(1.0);
                 }
             }
@@ -105,7 +111,7 @@ impl App {
         let progress = (rel / sb_h).clamp(0.0, 1.0);
         let max_scroll = (total - vis) as f32;
         self.scroll = (progress * max_scroll).round();
-        self.stick_to_bottom = self.scroll >= max_scroll;
+        self.stick_to_bottom = self.scroll >= max_scroll - 0.5;
     }
 
     fn block_at_row(&self, screen_row: u16, output_top: u16, output_h: u16) -> Option<usize> {
@@ -114,7 +120,7 @@ impl App {
         }
         let blocks = &self.blocks;
         let vis = self.output_vis;
-        let total: usize = blocks.iter().map(|b| b.height).sum();
+        let total = self.rendered_total;
         let start = self.scroll_start(total, vis);
         let rel = (screen_row - output_top) as usize + start;
         let mut off = 0usize;
@@ -128,9 +134,9 @@ impl App {
         None
     }
 
-    fn scroll_hovered_tool_result(&mut self, delta: i64) -> bool {
+    fn scroll_tool_result(&mut self, bi: Option<usize>, delta: i64) -> bool {
         const MAX_RESULT_VIS: usize = 10;
-        let bi = match self.hovered_block {
+        let bi = match bi {
             Some(bi) => bi,
             None => return false,
         };

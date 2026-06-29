@@ -22,6 +22,9 @@ arboard = { workspace = true }
 toml = { workspace = true }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
+compact_str = { version = "0.8", features = ["serde"] }
+lz4_flex = "0.11"
+zstd = "0.13"
 
 [lib]
 name = "radiumical_core"
