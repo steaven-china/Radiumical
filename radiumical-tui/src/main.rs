@@ -214,14 +214,16 @@ async fn main() -> Result<()> {
 
     // ── MCP servers ──
     let mcp_config = radiumical_core::mcp::load_config();
-    let mut mcp_clients: Vec<Arc<radiumical_core::mcp::McpClient>> = Vec::new();
+    let mcp_timeout = std::time::Duration::from_secs(config.tool_timeout_secs);
+    // (client, cached_tools) — tools discovered at startup, reused per task.
+    let mut mcp_clients: Vec<(Arc<radiumical_core::mcp::McpClient>, Vec<radiumical_core::mcp::McpToolInfo>)> = Vec::new();
     for (name, server_cfg) in &mcp_config.servers {
-        match radiumical_core::mcp::McpClient::spawn(name, server_cfg) {
+        match radiumical_core::mcp::McpClient::spawn(name, server_cfg, mcp_timeout).await {
             Ok(client) => {
-                match client.list_tools() {
+                match client.list_tools().await {
                     Ok(tools) => {
                         eprintln!("MCP '{name}': {} tools loaded", tools.len());
-                        mcp_clients.push(Arc::new(client));
+                        mcp_clients.push((Arc::new(client), tools));
                     }
                     Err(e) => {
                         eprintln!("MCP '{name}': tools/list failed: {e}");
@@ -300,14 +302,13 @@ async fn main() -> Result<()> {
                                 let ui_tx = ui_tx.clone();
                                 let cancel_rx = cancel_rx.clone();
                                 let workspace = workspace.clone();
-                                // Build MCP tool adapters.
+                                // Build MCP tool adapters from cached tool info.
                                 let mcp_tools: Vec<Box<dyn radiumical_core::tools::Tool>> = mcp_clients
                                     .iter()
-                                    .flat_map(|client| {
-                                        let tools = client.list_tools().unwrap_or_default();
-                                        tools.into_iter().map(move |info| {
+                                    .flat_map(|(client, tools)| {
+                                        tools.iter().map(move |info| {
                                             Box::new(radiumical_core::tools::McpToolAdapter {
-                                                info,
+                                                info: info.clone(),
                                                 client: Arc::clone(client),
                                             }) as Box<dyn radiumical_core::tools::Tool>
                                         })

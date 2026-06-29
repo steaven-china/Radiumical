@@ -1,5 +1,3 @@
-//! MCP tool wrapper — adapts remote MCP server tools to the native `Tool` trait.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,7 +7,6 @@ use crate::mcp::{McpClient, McpToolInfo};
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use crate::tools::Tool;
 
-/// Wraps a remote MCP tool as a native tool.
 pub struct McpToolAdapter {
     pub info: McpToolInfo,
     pub client: Arc<McpClient>,
@@ -39,7 +36,7 @@ impl Tool for McpToolAdapter {
                 };
             }
         };
-        match self.client.call_tool(&self.info.name, args) {
+        match self.client.call_tool(&self.info.name, args).await {
             Ok(content) => ToolResult {
                 tool_call_id: String::new(),
                 content,

@@ -1,6 +1,7 @@
-//! MCP (Model Context Protocol) client — minimal stdio JSON-RPC.
+//! MCP (Model Context Protocol) client — async stdio JSON-RPC.
 //!
-//! Spawns MCP servers, discovers tools, wraps them as native `Tool` impls.
+//! Spawns MCP servers via tokio async child process, discovers tools,
+//! wraps them as native `Tool` impls with timeout support.
 //!
 //! Config: `~/.radi/mcp.json`
 //! ```json
@@ -17,11 +18,12 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Mutex;
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
 
 // ── Config ──
 
@@ -79,38 +81,49 @@ pub struct McpToolInfo {
 
 // ── Client ──
 
+type ChildStdin = tokio::process::ChildStdin;
+type ChildStdout = BufReader<tokio::process::ChildStdout>;
+
 pub struct McpClient {
-    #[allow(dead_code)]
     name: String,
     child: Child,
-    stdin: Mutex<std::process::ChildStdin>,
-    stdout: Mutex<BufReader<std::process::ChildStdout>>,
+    stdin: Mutex<ChildStdin>,
+    stdout: Mutex<ChildStdout>,
     next_id: AtomicI64,
+    timeout: Duration,
 }
 
 impl McpClient {
-    pub fn spawn(name: &str, config: &McpServerConfig) -> Result<Self> {
+    /// Spawn an MCP server process and perform the handshake.
+    pub async fn spawn(name: &str, config: &McpServerConfig, timeout: Duration) -> Result<Self> {
         let mut cmd = Command::new(&config.command);
         cmd.args(&config.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
         for (k, v) in &config.env {
             cmd.env(k, v);
         }
         let mut child = cmd.spawn().with_context(|| {
-            format!("spawn MCP server '{}' ({} {})", name, config.command, config.args.join(" "))
+            format!(
+                "spawn MCP server '{}' ({} {})",
+                name,
+                config.command,
+                config.args.join(" ")
+            )
         })?;
         let stdin = child.stdin.take().context("MCP stdin pipe")?;
         let stdout = child.stdout.take().context("MCP stdout pipe")?;
+
         let mut client = Self {
             name: name.to_string(),
             child,
             stdin: Mutex::new(stdin),
             stdout: Mutex::new(BufReader::new(stdout)),
             next_id: AtomicI64::new(1),
+            timeout,
         };
-        client.handshake()?;
+        client.handshake().await?;
         Ok(client)
     }
 
@@ -118,27 +131,44 @@ impl McpClient {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Send a JSON-RPC request and read the response (blocking).
-    fn call(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    /// Send a JSON-RPC request and read the response with timeout.
+    async fn call(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
         let id = self.next_id();
-        let req = Request { jsonrpc: "2.0", id, method, params };
+        let req = Request {
+            jsonrpc: "2.0",
+            id,
+            method,
+            params,
+        };
         let json = serde_json::to_string(&req)?;
 
         // Write request
         {
-            let mut stdin = self.stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock: {e}"))?;
-            writeln!(stdin, "{json}")?;
-            stdin.flush()?;
+            let mut stdin = self.stdin.lock().await;
+            stdin.write_all(json.as_bytes()).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await?;
         }
 
-        // Read response (skip non-JSON lines like log output)
+        // Read response with timeout (skip non-JSON lines)
         let mut line = String::new();
         loop {
             line.clear();
-            let mut stdout = self.stdout.lock().map_err(|e| anyhow::anyhow!("stdout lock: {e}"))?;
-            if stdout.read_line(&mut line)? == 0 {
+            let n = {
+                let mut stdout = self.stdout.lock().await;
+                match tokio::time::timeout(self.timeout, stdout.read_line(&mut line)).await {
+                    Ok(result) => result?,
+                    Err(_) => anyhow::bail!(
+                        "MCP server '{}' timed out after {:.1}s",
+                        self.name,
+                        self.timeout.as_secs_f64()
+                    ),
+                }
+            };
+            if n == 0 {
                 anyhow::bail!("MCP server '{}' exited unexpectedly", self.name);
             }
+
             let trimmed = line.trim();
             if trimmed.is_empty() || !trimmed.starts_with('{') {
                 continue;
@@ -146,41 +176,57 @@ impl McpClient {
             let resp: Response = serde_json::from_str(trimmed)
                 .with_context(|| format!("parse MCP response: {trimmed}"))?;
             if let Some(err) = resp.error {
-                anyhow::bail!("MPC error {}: {}", err.code, err.message);
+                anyhow::bail!("MCP error {}: {}", err.code, err.message);
             }
             return Ok(resp.result.unwrap_or(serde_json::Value::Null));
         }
     }
 
-    fn handshake(&mut self) -> Result<()> {
-        self.call("initialize", Some(serde_json::json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": { "name": "radiumical", "version": "0.1.0" }
-        })))?;
-        // Send initialized notification (no response expected, but some servers want it)
+    async fn handshake(&mut self) -> Result<()> {
+        self.call(
+            "initialize",
+            Some(serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": { "name": "radiumical", "version": "0.1.0" }
+            })),
+        )
+        .await?;
+        // Send initialized notification (no response expected)
         let note = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "notifications/initialized"
         });
         let json = serde_json::to_string(&note)?;
-        let mut stdin = self.stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock: {e}"))?;
-        writeln!(stdin, "{json}")?;
-        stdin.flush()?;
+        let mut stdin = self.stdin.lock().await;
+        stdin.write_all(json.as_bytes()).await?;
+        stdin.write_all(b"\n").await?;
+        stdin.flush().await?;
         Ok(())
     }
 
-    pub fn list_tools(&self) -> Result<Vec<McpToolInfo>> {
-        let result = self.call("tools/list", None)?;
+    pub async fn list_tools(&self) -> Result<Vec<McpToolInfo>> {
+        let result = self.call("tools/list", None).await?;
         let tools_raw = result.get("tools").and_then(|v| v.as_array());
         let Some(arr) = tools_raw else {
             return Ok(Vec::new());
         };
         let mut tools = Vec::new();
         for v in arr {
-            let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-            let description = v.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
-            let input_schema = v.get("inputSchema").cloned().unwrap_or(serde_json::json!({}));
+            let name = v
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let description = v
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string();
+            let input_schema = v
+                .get("inputSchema")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
             tools.push(McpToolInfo {
                 name,
                 description,
@@ -191,11 +237,16 @@ impl McpClient {
         Ok(tools)
     }
 
-    pub fn call_tool(&self, name: &str, arguments: serde_json::Value) -> Result<String> {
-        let result = self.call("tools/call", Some(serde_json::json!({
-            "name": name,
-            "arguments": arguments
-        })))?;
+    pub async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> Result<String> {
+        let result = self
+            .call(
+                "tools/call",
+                Some(serde_json::json!({
+                    "name": name,
+                    "arguments": arguments
+                })),
+            )
+            .await?;
         // MCP tool result: { content: [{ type: "text", text: "..." }] }
         if let Some(content) = result.get("content").and_then(|c| c.as_array()) {
             let texts: Vec<&str> = content
@@ -208,15 +259,14 @@ impl McpClient {
         }
     }
 
-    pub fn is_alive(&mut self) -> bool {
+    pub async fn is_alive(&mut self) -> bool {
         self.child.try_wait().ok().flatten().is_none()
     }
 }
 
 impl Drop for McpClient {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = self.child.start_kill();
     }
 }
 
