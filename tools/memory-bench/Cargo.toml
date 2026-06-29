@@ -1,0 +1,9 @@
+[package]
+name = "memory-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+radiumical-core = { path = "../../radiumical-core" }
+serde_json = "1"
+zstd = "0.13"
