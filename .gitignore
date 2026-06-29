@@ -1,3 +1,4 @@
 /target
 conversation.jsonl
 node_modules/
+.rad*

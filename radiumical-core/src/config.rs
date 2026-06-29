@@ -1,5 +1,5 @@
-//! Config persistence — reads/writes config.toml.
-use anyhow::Result;
+//! Config persistence — reads/writes ~/.radi/config.toml.
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -18,8 +18,14 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn dir() -> PathBuf {
+        dirs::home_dir()
+            .map(|h| h.join(".radi"))
+            .unwrap_or_else(|| PathBuf::from(".radi"))
+    }
+
     pub fn path() -> PathBuf {
-        PathBuf::from("config.toml")
+        Self::dir().join("config.toml")
     }
 
     pub fn load() -> Result<Self> {
@@ -42,15 +48,17 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
+        let dir = Self::dir();
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("create config dir {}", dir.display()))?;
+        let path = Self::path();
         let data = toml::to_string_pretty(self)?;
-        fs::write(Self::path(), data)?;
+        fs::write(&path, data)?;
         Ok(())
     }
 
     /// Apply config over CLI args (CLI takes priority)
-    #[allow(dead_code)]
     pub fn apply(&self, model: &mut String, _provider: &mut String) {
         if let Some(ref m) = self.model {
             *model = m.clone();
