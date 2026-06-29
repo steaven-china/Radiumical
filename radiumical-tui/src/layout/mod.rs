@@ -174,15 +174,15 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         }
 
         // Tool call box
-        if trimmed.starts_with('┌') && trimmed.contains('─') {
+        if trimmed.contains('┌') && trimmed.contains('─') {
             let start = i;
             let raw_first = &output[start];
-            // Strip invisible id marker if present.
-            let display_first = if let Some(pos) = raw_first.find('\x02') {
-                &raw_first[pos + 1..]
-            } else {
-                raw_first
-            };
+            // Strip invisible id marker if present at the end.
+            let display_first = raw_first
+                .split('\x02')
+                .next()
+                .unwrap_or(raw_first)
+                .trim();
             let name = display_first
                 .trim_start_matches('┌')
                 .trim_start_matches('─')

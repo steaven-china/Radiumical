@@ -179,10 +179,10 @@ impl App {
 }
 
 pub fn tool_call_key(block: &crate::layout::Block) -> String {
-    // Use the unique ID embedded in the first source line header.
+    // Use the unique ID embedded after the box top line's trailing \x02.
     if let Some(first) = block.source_lines.first() {
-        if let Some(id_end) = first.find('\x02') {
-            return first[..id_end].to_string();
+        if let Some(id) = first.split('\x02').nth(1) {
+            return id.to_string();
         }
     }
     // Fallback for legacy/tool-less blocks.
