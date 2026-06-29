@@ -322,8 +322,13 @@ fn box_bottom(width: usize) -> String {
 }
 
 fn box_content_line(content: &str, width: usize, right: char) -> String {
-    let pad = width.saturating_sub(content.width() + 5);
-    format!("  │ {content}{pad}{right}", pad = " ".repeat(pad))
+    let content_w = width.saturating_sub(5).max(1);
+    let visible = crate::layout::text::wrap_text_to_width(content, content_w)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    let pad = content_w.saturating_sub(visible.width());
+    format!("  │ {visible}{pad}{right}", pad = " ".repeat(pad))
 }
 
 fn render_tool_result_lines(

@@ -1,7 +1,35 @@
+/// Strip ANSI escape sequences (including cursor movement and erase) from a
+/// string, returning plain text. Used for tool results where control sequences
+/// would otherwise leave stray characters on screen.
+pub fn strip_ansi_escapes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip ESC [ ... letter or ESC ] ... BEL or ESC ( letter etc.
+            if chars.next_if_eq(&'[').is_some() {
+                while let Some(&next) = chars.peek() {
+                    chars.next();
+                    if next.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                // Skip the next char as part of a non-CSI escape.
+                chars.next();
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// Wrap tool result lines to the available content width and return the total
 /// number of visual lines (used both for block height and rendering).
 pub fn wrapped_tool_result_lines(result: &str, content_width: usize) -> Vec<String> {
-    result
+    let cleaned = strip_ansi_escapes(result);
+    cleaned
         .lines()
         .filter(|l| !l.trim().is_empty())
         .flat_map(|l| crate::layout::text::wrap_text_to_width(l, content_width.max(1)))
