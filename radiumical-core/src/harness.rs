@@ -231,7 +231,8 @@ impl Harness {
                             content: err,
                             is_error: true,
                         };
-                        self.conversation.push_tool_result(tc, &tr);
+                            self.conversation
+                                .push_tool_result(tc, &tr, Some(&workspace));
                         messages.push(tool_result_msg(tc, tr));
                         continue;
                     }
@@ -268,7 +269,8 @@ impl Harness {
                             let _ = ui_tx.send(UiEvent::ToolResult {
                                 content: final_result.content.trim_end().to_string(),
                             });
-                            self.conversation.push_tool_result(tc, &final_result);
+                            self.conversation
+                                .push_tool_result(tc, &final_result, Some(&workspace));
                             messages.push(tool_result_msg(tc, final_result));
                         }
                         None => {
@@ -285,7 +287,8 @@ impl Harness {
                                 content: err,
                                 is_error: true,
                             };
-                            self.conversation.push_tool_result(tc, &tr);
+                            self.conversation
+                                .push_tool_result(tc, &tr, Some(&workspace));
                             messages.push(tool_result_msg(tc, tr));
                         }
                     }

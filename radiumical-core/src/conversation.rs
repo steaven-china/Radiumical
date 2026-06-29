@@ -1,15 +1,19 @@
 //! Conversation context — JSONL-backed message history, reused across turns.
 //! Each line = one Message as JSON. Debug with `cat conversation.jsonl`.
 use crate::types::{Message, MessageContent, Role, ToolCall, ToolResult};
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// Manages the full conversation history with JSONL persistence.
 pub struct Conversation {
     messages: Vec<Message>,
     system_prompt: String,
     jsonl_path: Option<PathBuf>,
+    /// Files the model has already read, mapped to the mtime when last seen.
+    seen_files: HashMap<String, u64>,
 }
 
 impl Conversation {
@@ -18,7 +22,46 @@ impl Conversation {
             messages: Vec::new(),
             system_prompt,
             jsonl_path: _jsonl_path,
+            seen_files: HashMap::new(),
         }
+    }
+
+    /// Record that the model has read `path` (workspace-relative) at the
+    /// file's current modification time.
+    pub fn mark_file_seen(&mut self, workspace: &Path, path: &str) {
+        let full = workspace.join(path);
+        if let Ok(meta) = std::fs::metadata(&full) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(elapsed) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+                    self.seen_files.insert(path.to_string(), elapsed.as_secs());
+                    return;
+                }
+            }
+        }
+        // If we can't read metadata, still track it with 0 so we can detect
+        // future changes.
+        self.seen_files.insert(path.to_string(), 0);
+    }
+
+    /// Return workspace-relative paths of seen files that have been modified
+    /// since the model last looked at them.
+    fn changed_seen_files(&self,
+        workspace: &Path,
+    ) -> Vec<String> {
+        let mut changed = Vec::new();
+        for (path, seen_mtime) in &self.seen_files {
+            let full = workspace.join(path);
+            let current = std::fs::metadata(&full)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(*seen_mtime);
+            if current > *seen_mtime {
+                changed.push(path.clone());
+            }
+        }
+        changed
     }
 
     // ── Mutation ──
@@ -67,13 +110,36 @@ impl Conversation {
     /// to prevent bloating the conversation file and wasting LLM context.
     const MAX_TOOL_RESULT_CHARS: usize = 8000;
 
-    pub fn push_tool_result(&mut self, call: &ToolCall, result: &ToolResult) {
+    pub fn push_tool_result(
+        &mut self,
+        call: &ToolCall,
+        result: &ToolResult,
+        workspace: Option<&Path>,
+    ) {
         let call_id = if call.id.is_empty() {
             format!("call_{}", call.function.name)
         } else {
             call.id.clone()
         };
         let content = Self::truncate_tool_content(&result.content, Self::MAX_TOOL_RESULT_CHARS);
+
+        // Track files the model has read so we can later warn about external
+        // modifications.
+        if let Some(ws) = workspace {
+            if matches!(
+                call.function.name.as_str(),
+                "read_file" | "edit_file" | "write_file"
+            ) {
+                if let Ok(args) = serde_json::from_str::<serde_json::Value>(
+                    &call.function.arguments
+                ) {
+                    if let Some(path) = args["path"].as_str() {
+                        self.mark_file_seen(ws, path);
+                    }
+                }
+            }
+        }
+
         self.push(Message {
             role: Role::Tool,
             content: MessageContent::Text(content),
@@ -110,6 +176,26 @@ impl Conversation {
                 ctx.push(Message {
                     role: Role::System,
                     content: MessageContent::Text(outline_text),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: None,
+                });
+            }
+
+            // Notify the model about files it has already read that changed
+            // underneath it.
+            let changed = self.changed_seen_files(ws);
+            if !changed.is_empty() {
+                let notice = format!(
+                    "## Changed files since you last read them\n\n\
+                    The following files you have already looked at were modified externally \
+                    or by your own edits. Re-read them if you need up-to-date contents:\n\n{}\n",
+                    changed.iter().map(|p| format!("- {p}")).collect::<Vec<_>>().join("\n")
+                );
+                ctx.push(Message {
+                    role: Role::System,
+                    content: MessageContent::Text(notice),
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
@@ -413,6 +499,7 @@ mod tests {
                 content: "file contents here".into(),
                 is_error: false,
             },
+            None,
         );
 
         let ctx = conv.build_context("Next task", None);

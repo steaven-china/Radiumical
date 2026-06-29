@@ -256,7 +256,7 @@ fn parse_rust(text: &str) -> Vec<OutlineItem> {
 
         // pub / fn / struct / enum / trait / type / const / static
         let trimmed = line.trim_start();
-        let (visibility, rest) = if trimmed.starts_with("pub ") {
+        let (_visibility, rest) = if trimmed.starts_with("pub ") {
             ("pub", trimmed[4..].trim_start())
         } else {
             ("", trimmed)
@@ -369,7 +369,7 @@ fn parse_go(text: &str) -> Vec<OutlineItem> {
     for raw in text.lines() {
         let line = strip_line_comment(raw, "//");
         let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("func ") {
+        if let Some(_rest) = trimmed.strip_prefix("func ") {
             let sig = extract_signature(&line);
             let name = sig
                 .split('(')
