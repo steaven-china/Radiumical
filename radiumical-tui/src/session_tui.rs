@@ -153,6 +153,7 @@ impl SessionTui {
         self.focus = SessionFocus::DescEdit;
     }
 
+    #[allow(dead_code)]
     pub fn start_delete(&mut self) {
         if !self.sessions.is_empty() {
             self.focus = SessionFocus::ConfirmDelete;
@@ -370,8 +371,7 @@ impl SessionTui {
         );
     }
 
-    fn render_action_lines(&self,
-    ) -> Vec<Line> {
+    fn render_action_lines(&self) -> Vec<Line<'_>> {
         let mut lines = Vec::new();
         lines.push(Line::from(Span::styled(
             "Actions",

@@ -558,6 +558,7 @@ impl ConfirmBoard {
         }
     }
 
+    #[allow(dead_code)]
     pub fn toggle(&mut self) {
         self.yes_selected = !self.yes_selected;
     }
