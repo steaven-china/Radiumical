@@ -6,6 +6,7 @@ pub mod conversation;
 pub mod harness;
 pub mod highlight;
 pub mod hooks;
+pub mod llm_cache;
 pub mod lsp;
 pub mod memory;
 pub mod orchestrator;

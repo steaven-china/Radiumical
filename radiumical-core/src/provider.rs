@@ -74,6 +74,18 @@ pub trait Provider: Send + Sync {
 
     /// Update the reasoning/thinking effort for providers that support it.
     fn set_reasoning_effort(&self, _effort: Option<String>) {}
+
+    /// Clone this provider into a boxed trait object.
+    fn clone_box(&self) -> Box<dyn Provider>;
+}
+
+// Helper macro to implement clone_box for concrete providers.
+macro_rules! clone_box_impl {
+    ($ty:ty) => {
+        fn clone_box(&self) -> Box<dyn Provider> {
+            Box::new(Clone::clone(self))
+        }
+    };
 }
 
 // ── OpenAI-compatible provider (works with OpenAI, DeepSeek, Ollama) ──
@@ -109,8 +121,24 @@ impl OpenAICompatibleProvider {
     }
 }
 
+impl Clone for OpenAICompatibleProvider {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            api_base: self.api_base.clone(),
+            api_key: self.api_key.clone(),
+            model: self.model.clone(),
+            reasoning_effort: std::sync::Mutex::new(
+                self.reasoning_effort.lock().unwrap().clone()
+            ),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl Provider for OpenAICompatibleProvider {
+    clone_box_impl!(OpenAICompatibleProvider);
+
     async fn chat(
         &self,
         messages: &[Message],
@@ -276,7 +304,7 @@ impl Provider for OpenAICompatibleProvider {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ToolCallAccumulator {
     id: Option<String>,
     call_type: Option<String>,
@@ -291,12 +319,15 @@ use std::sync::Arc;
 use crate::types::ProviderKind;
 
 /// Stub provider that returns a clear error for unsupported providers.
+#[derive(Clone)]
 struct UnsupportedProvider {
     name: String,
 }
 
 #[async_trait::async_trait]
 impl Provider for UnsupportedProvider {
+    clone_box_impl!(UnsupportedProvider);
+
     async fn chat(
         &self,
         _messages: &[Message],
@@ -319,12 +350,13 @@ pub fn create_provider(
     model: &str,
 ) -> Arc<dyn Provider> {
     let base = api_base.unwrap_or_else(|| kind.default_base());
-    match kind {
+    let inner: Arc<dyn Provider> = match kind {
         ProviderKind::OpenAI | ProviderKind::Ollama => {
             Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
         }
         ProviderKind::Anthropic => Arc::new(UnsupportedProvider {
             name: "anthropic".into(),
         }),
-    }
+    };
+    crate::llm_cache::wrap(model.into(), inner)
 }
