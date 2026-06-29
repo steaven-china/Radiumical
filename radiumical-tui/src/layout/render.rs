@@ -271,7 +271,11 @@ impl Block {
                     ])];
                 }
                 let mut spans = vec![Span::raw(leading)];
-                spans.extend(_markdown.render_inline_cached(s));
+                if let Some(sample) = crate::markdown::maybe_color_sample(s) {
+                    spans.push(sample);
+                } else {
+                    spans.extend(_markdown.render_inline_cached(s));
+                }
                 if spans.len() <= 1 {
                     vec![Line::from("")]
                 } else {
