@@ -321,17 +321,14 @@ fn box_bottom(width: usize) -> String {
     format!("  └{}┘", "─".repeat(fill))
 }
 
-fn box_content_line(content: &str, width: usize, right: Option<char>) -> String {
+fn box_content_line(content: &str, width: usize) -> String {
     let content_w = width.saturating_sub(5).max(1);
     let visible = crate::layout::text::wrap_text_to_width(content, content_w)
         .into_iter()
         .next()
         .unwrap_or_default();
     let pad = content_w.saturating_sub(visible.width());
-    match right {
-        Some(c) => format!("  │ {visible}{}{c}", " ".repeat(pad)),
-        None => format!("  │ {visible}{}", " ".repeat(pad)),
-    }
+    format!("  │ {visible}{}", " ".repeat(pad))
 }
 
 fn render_tool_result_lines(
@@ -342,39 +339,14 @@ fn render_tool_result_lines(
     const MAX_RESULT_VIS: usize = 10;
     let content_w = width.saturating_sub(5).max(1);
     let wrapped = wrapped_tool_result_lines(result, content_w);
-    let has_overflow = wrapped.len() > MAX_RESULT_VIS;
     let max_scroll = wrapped.len().saturating_sub(MAX_RESULT_VIS);
     let scroll = result_scroll.min(max_scroll);
     let visible = &wrapped[scroll..(scroll + MAX_RESULT_VIS).min(wrapped.len())];
 
     let st = Style::default().fg(BORDER);
-
-    let sb_h = visible.len();
-    let sb_thumb_h = ((MAX_RESULT_VIS as f32 / wrapped.len().max(MAX_RESULT_VIS) as f32).min(1.0)
-        * sb_h as f32)
-        .max(1.0) as usize;
-    let sb_thumb_y = if max_scroll == 0 {
-        0
-    } else {
-        ((scroll * (sb_h.saturating_sub(sb_thumb_h))) / max_scroll)
-            .min(sb_h.saturating_sub(sb_thumb_h))
-    };
-
     visible
         .iter()
-        .enumerate()
-        .map(|(i, line)| {
-            let right = if has_overflow {
-                if i >= sb_thumb_y && i < sb_thumb_y + sb_thumb_h {
-                    Some('█')
-                } else {
-                    Some('│')
-                }
-            } else {
-                None
-            };
-            Line::from(Span::styled(box_content_line(line, width, right), st))
-        })
+        .map(|line| Line::from(Span::styled(box_content_line(line, width), st)))
         .collect()
 }
 
@@ -454,19 +426,13 @@ mod tests {
     use crate::markdown::MarkdownRenderer;
 
     #[test]
-    fn test_box_content_line_no_right_border_when_none() {
-        let line = box_content_line("hello", 30, None);
+    fn test_box_content_line_no_right_border() {
+        let line = box_content_line("hello", 30);
         assert!(
             !line.ends_with('│'),
-            "non-overflowing content should not have right border: {line:?}"
+            "content line should not have right border: {line:?}"
         );
         assert!(line.starts_with("  │ "));
-    }
-
-    #[test]
-    fn test_box_content_line_right_border_when_some() {
-        let line = box_content_line("hello", 30, Some('│'));
-        assert!(line.ends_with('│'), "overflowing content should have right border: {line:?}");
     }
 
     #[test]
