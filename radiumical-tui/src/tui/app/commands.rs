@@ -245,7 +245,8 @@ impl App {
                         self.session_tui.desc_buffer = first.description.clone();
                     }
                 }
-                self.panels.open(crate::panel::PanelId::SessionList);
+                // ↓ This is a new one but just on testing! 
+                // self.panels.open(crate::panel::PanelId::SessionList);
                 self.input.clear();
                 self.cursor = 0;
                 self.hints.clear();
@@ -437,6 +438,91 @@ impl App {
                 self.perf_visible = !self.perf_visible;
                 self.output.push("> /perf".into());
                 self.output.push(radiumical_core::perf::report());
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            _ if task.starts_with("/env") => {
+                let rest = task[4..].trim();
+                let mut parts = rest.splitn(2, ' ');
+                let sub = parts.next().unwrap_or("");
+                match sub {
+                    "list" | "" => {
+                        let keys = radiumical_core::secure_env::list_keys();
+                        if keys.is_empty() {
+                            self.output
+                                .push("  No stored keys. Use /env set KEY=VALUE".into());
+                        } else {
+                            self.output.push("  Stored keys:".into());
+                            for k in &keys {
+                                self.output.push(format!("    {k} = ***"));
+                            }
+                        }
+                    }
+                    "set" => {
+                        if let Some(kv) = parts.next() {
+                            if let Some((k, v)) = kv.split_once('=') {
+                                match radiumical_core::secure_env::set(k.trim(), v.trim()) {
+                                    Ok(()) => {
+                                        self.output
+                                            .push(format!("  Set: {}", k.trim()));
+                                        // Inject into process env immediately
+                                        std::env::set_var(k.trim(), v.trim());
+                                    }
+                                    Err(e) => self.output.push(format!("  Error: {e}")),
+                                }
+                            } else {
+                                self.output.push("  Usage: /env set KEY=VALUE".into());
+                            }
+                        } else {
+                            self.output.push("  Usage: /env set KEY=VALUE".into());
+                        }
+                    }
+                    "rm" | "del" | "remove" => {
+                        if let Some(key) = parts.next() {
+                            match radiumical_core::secure_env::remove(key.trim()) {
+                                Ok(()) => self.output.push(format!("  Removed: {}", key.trim())),
+                                Err(e) => self.output.push(format!("  Error: {e}")),
+                            }
+                        } else {
+                            self.output.push("  Usage: /env rm KEY".into());
+                        }
+                    }
+                    "copy" | "import" => {
+                        let env_keys = [
+                            "OPENAI_API_KEY",
+                            "ANTHROPIC_API_KEY",
+                            "GOOGLE_API_KEY",
+                            "DEEPSEEK_API_KEY",
+                            "MISTRAL_API_KEY",
+                            "GROQ_API_KEY",
+                            "COHERE_API_KEY",
+                            "TOGETHER_API_KEY",
+                            "OPENROUTER_API_KEY",
+                            "FIREWORKS_API_KEY",
+                            "DEEPINFRA_API_KEY",
+                            "CEREBRAS_API_KEY",
+                            "SAMBANOVA_API_KEY",
+                        ];
+                        let mut copied = 0;
+                        for key in &env_keys {
+                            if let Ok(val) = std::env::var(key) {
+                                if !val.is_empty() {
+                                    let _ = radiumical_core::secure_env::set(key, &val);
+                                    copied += 1;
+                                }
+                            }
+                        }
+                        self.output
+                            .push(format!("  Copied {copied} key(s) from environment to secure store"));
+                    }
+                    _ => {
+                        self.output
+                            .push("  /env [list] | set KEY=VALUE | rm KEY | copy".into());
+                    }
+                }
                 self.output.push(String::new());
                 self.input.clear();
                 self.cursor = 0;

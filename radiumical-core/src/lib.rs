@@ -19,6 +19,7 @@ pub mod providers;
 pub mod session;
 pub mod skill;
 pub mod mcp;
+pub mod secure_env;
 pub mod subagent;
 pub mod systools;
 pub mod tools;

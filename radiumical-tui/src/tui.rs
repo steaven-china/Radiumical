@@ -31,6 +31,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/subagents", "Sub-agent status panel"),
     ("/mcp", "MCP server status panel"),
     ("/cod on/off", "Chain of Draft experimental"),
+    ("/env", "Manage API keys (secure)"),
     ("/debug <t>", "Debug info"),
     ("/end", "Jump to bottom"),
     ("/clear", "Clear screen"),

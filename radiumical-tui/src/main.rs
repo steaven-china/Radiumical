@@ -90,6 +90,13 @@ async fn main() -> Result<()> {
     radiumical_core::agent_pool::ensure_defaults();
     radiumical_core::skill::ensure_defaults();
 
+    // Load secure env (device-bound API keys) and inject into process env.
+    for (k, v) in radiumical_core::secure_env::load_env() {
+        if std::env::var(&k).is_err() {
+            std::env::set_var(&k, &v);
+        }
+    }
+
     let provider_kind = match cli.provider.to_lowercase().as_str() {
         "openai" => ProviderKind::OpenAI,
         "deepseek" => ProviderKind::OpenAI,
