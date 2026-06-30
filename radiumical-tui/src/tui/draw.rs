@@ -69,14 +69,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             crate::panel::PanelId::Settings => {
                 app.settings_board.render_at(f, slot.rect);
             }
-            crate::panel::PanelId::Help => {
-                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
-                let lines = draw_help_overlay_lines();
-                f.render_widget(
-                    Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
-                    inner,
-                );
-            }
             crate::panel::PanelId::SubAgents => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
                 crate::panels::subagents::render(f, slot);
@@ -118,11 +110,39 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
     }
 
+    // ── Help overlay (bottom-right, not tiled) ──
+    if app.show_help_overlay {
+        let help_w = 40u16.min(chunks[0].width.saturating_sub(2));
+        let help_h = 20u16.min(chunks[0].height.saturating_sub(2));
+        let help_r = Rect {
+            x: chunks[0].x + chunks[0].width.saturating_sub(help_w + 1),
+            y: chunks[0].y + chunks[0].height.saturating_sub(help_h + 1),
+            width: help_w,
+            height: help_h,
+        };
+        let help_lines = draw_help_overlay_lines();
+        let help_slot = crate::panel::PanelSlot {
+            id: crate::panel::PanelId::Help,
+            rect: help_r,
+        };
+        crate::panel::PanelManager::render_panel_frame(f, &help_slot, " Help ", Color::DarkGray, Color::Rgb(20, 20, 25));
+        let inner = Rect {
+            x: help_r.x + 1,
+            y: help_r.y + 1,
+            width: help_r.width.saturating_sub(2),
+            height: help_r.height.saturating_sub(2),
+        };
+        f.render_widget(
+            Paragraph::new(Text::from(help_lines)).wrap(ratatui::widgets::Wrap { trim: false }),
+            inner,
+        );
+    }
+
     // ── Modal overlays (always on top of everything) ──
     if app.session_tui.visible {
         app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
     }
-    app.choice_panel.render(f, chunks[0]);
+    app.choice_panel.render(f, area);
 
     // Bottom: input, hints, status
     let bottom = Layout::default()
@@ -181,7 +201,6 @@ fn sync_panels(app: &mut App) {
         (PanelId::Dashboard, app.dashboard.visible),
         (PanelId::ProviderPicker, app.show_model_picker),
         (PanelId::Settings, app.settings_visible),
-        (PanelId::Help, app.welcome && app.show_help_overlay),
         (PanelId::Confirm, app.confirm.visible),
         (PanelId::Perf, app.perf_visible),
         (PanelId::Outline, app.outline_visible),

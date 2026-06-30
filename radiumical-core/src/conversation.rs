@@ -129,17 +129,8 @@ impl Conversation {
             }
         }
 
-        // Tool call (assistant message)
-        self.push(Message {
-            role: Role::Assistant,
-            content: MessageContent::Text(String::new()),
-            tool_calls: Some(vec![call.clone()]),
-            tool_call_id: None,
-            name: None,
-            reasoning_content: None,
-        });
-
-        // Tool result
+        // Tool result only — the assistant message with tool_calls is pushed
+        // by the caller (harness) before calling this method.
         let content = if extra.is_empty() {
             result.content.clone()
         } else {
@@ -166,6 +157,15 @@ impl Conversation {
         self.messages = messages;
         self.drain_pending(); // discard any queued writes
         self.full_rewrite();
+    }
+
+    /// Sanitize messages in-place: remove orphaned tool_calls (assistant
+    /// messages with tool_calls but no matching tool result) and orphan tool
+    /// results (tool messages with no matching call). Must be called before
+    /// sending to providers that strictly enforce tool_calls → tool_results
+    /// pairing (e.g. DeepSeek).
+    pub fn sanitize(&mut self) {
+        crate::types::sanitize_tool_messages(&mut self.messages);
     }
 
     /// Read-only access to messages.
@@ -577,9 +577,12 @@ mod tests {
         let mut conv = Conversation::new("sys".to_string(), None);
         let call = make_tool_call("1", "read_file", "{}");
         let result = make_tool_result("1", "file content");
+        // Simulate harness flow: push assistant first, then tool result
+        conv.push_assistant("", Some(vec![call.clone()]), None);
         conv.push_tool_result(&call, &result, None);
         assert_eq!(conv.messages().len(), 2); // assistant with tool_calls + tool result
         assert!(conv.messages()[0].tool_calls.is_some());
+        assert_eq!(conv.messages()[0].role, Role::Assistant);
         assert_eq!(conv.messages()[1].role, Role::Tool);
     }
 

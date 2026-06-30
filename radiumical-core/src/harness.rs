@@ -309,6 +309,11 @@ impl Harness {
             agent.allowed_tools.iter().cloned().collect()
         };
 
+        // Sanitize conversation history before first use.
+        // Removes orphaned tool_calls that have no matching tool result,
+        // which causes DeepSeek (and similar providers) to return 400.
+        self.conversation.sanitize();
+
         for iteration in 0..self.config.max_iterations {
             // ── 0. Context compression ──
             if iteration > 0 {
@@ -376,11 +381,7 @@ impl Harness {
             }
 
             // ── 1. LLM call ──
-            // Sanitize messages: remove orphaned tool_calls that have no result.
-            // DeepSeek (and some other providers) return 400 if tool_calls are
-            // not followed by corresponding tool result messages.
-            let mut msgs = messages.clone();
-            crate::types::sanitize_tool_messages(&mut msgs);
+            let msgs = messages.clone();
             let (tx, mut rx) = tokio::sync::mpsc::channel(256);
             let provider = Arc::clone(&self.provider);
             let defs = all_tool_defs.clone();

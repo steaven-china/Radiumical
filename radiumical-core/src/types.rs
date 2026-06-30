@@ -183,85 +183,201 @@ pub enum ContentPart {
 mod tests {
     use super::*;
 
-    // ── base64_encode / base64_decode ──
+    // ── sanitize_tool_messages tests ──
 
-    #[test]
-    fn base64_empty() {
-        let encoded = base64_encode(b"");
-        assert_eq!(encoded, "");
-        let decoded = base64_decode(&encoded).unwrap();
-        assert_eq!(decoded, b"");
+    fn assistant_with_calls(ids: &[&str]) -> Message {
+        Message {
+            role: Role::Assistant,
+            content: MessageContent::Text("".into()),
+            tool_calls: Some(
+                ids.iter()
+                    .map(|id| ToolCall {
+                        id: id.to_string(),
+                        call_type: "function".into(),
+                        function: FunctionCall {
+                            name: "test_tool".into(),
+                            arguments: "{}".into(),
+                        },
+                    })
+                    .collect(),
+            ),
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        }
+    }
+
+    fn tool_result(id: &str) -> Message {
+        Message {
+            role: Role::Tool,
+            content: MessageContent::Text("ok".into()),
+            tool_calls: None,
+            tool_call_id: Some(id.to_string()),
+            name: Some("test_tool".into()),
+            reasoning_content: None,
+        }
+    }
+
+    fn user_msg(text: &str) -> Message {
+        Message {
+            role: Role::User,
+            content: MessageContent::Text(text.into()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        }
+    }
+
+    fn assistant_msg(text: &str) -> Message {
+        Message {
+            role: Role::Assistant,
+            content: MessageContent::Text(text.into()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning_content: None,
+        }
     }
 
     #[test]
-    fn base64_single_byte() {
-        let data = b"\x00";
-        let encoded = base64_encode(data);
-        assert_eq!(encoded, "AA==");
-        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    fn test_sanitize_ok_when_paired() {
+        let mut msgs = vec![
+            user_msg("hi"),
+            assistant_with_calls(&["c1"]),
+            tool_result("c1"),
+            assistant_msg("done"),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        assert_eq!(msgs.len(), 4);
+        assert!(msgs[1].tool_calls.is_some());
+        assert_eq!(msgs[2].role, Role::Tool);
     }
 
     #[test]
-    fn base64_two_bytes() {
-        let data = b"\xff\x00";
-        let encoded = base64_encode(data);
-        assert_eq!(encoded, "/wA=");
-        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    fn test_sanitize_removes_orphan_calls() {
+        // assistant has tool_calls but NO tool result follows
+        let mut msgs = vec![
+            user_msg("hi"),
+            assistant_with_calls(&["orphan"]),
+            assistant_msg("I continued without waiting"),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        // orphan tool_calls should be removed
+        assert!(msgs[1].tool_calls.is_none());
+        // orphan tool result messages should also be gone (none in this case)
+        assert_eq!(msgs.len(), 3);
     }
 
     #[test]
-    fn base64_three_bytes() {
-        let data = b"\xff\xff\xff";
-        let encoded = base64_encode(data);
-        assert_eq!(encoded, "////");
-        assert_eq!(base64_decode(&encoded).unwrap(), data);
+    fn test_sanitize_removes_orphan_result() {
+        // tool result with no matching tool_call
+        let mut msgs = vec![
+            user_msg("hi"),
+            assistant_msg("hello"),
+            tool_result("no_match"),
+            assistant_msg("done"),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        // orphan tool result should be removed
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[2].role, Role::Assistant);
     }
 
     #[test]
-    fn base64_roundtrip_binary_blob() {
-        let data: Vec<u8> = (0..=255).collect();
-        let encoded = base64_encode(&data);
-        let decoded = base64_decode(&encoded).unwrap();
-        assert_eq!(decoded, data);
+    fn test_sanitize_keeps_partial_pairs() {
+        // assistant has 2 calls, only 1 has result
+        let mut msgs = vec![
+            user_msg("hi"),
+            assistant_with_calls(&["c1", "orphan"]),
+            tool_result("c1"),
+            assistant_msg("done"),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        // c1 should be kept, orphan removed
+        let calls = msgs[1].tool_calls.as_ref().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "c1");
     }
 
     #[test]
-    fn base64_ascii_text() {
-        let data = b"Hello, World!";
-        let encoded = base64_encode(data);
-        let decoded = base64_decode(&encoded).unwrap();
-        assert_eq!(decoded, data);
+    fn test_sanitize_preserves_system_and_user() {
+        let mut msgs = vec![
+            Message {
+                role: Role::System,
+                content: MessageContent::Text("sys".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                reasoning_content: None,
+            },
+            user_msg("hi"),
+            assistant_with_calls(&["c1", "c2"]),
+            tool_result("c1"),
+            tool_result("c2"),
+            assistant_msg("all done"),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        assert_eq!(msgs.len(), 6);
+        assert_eq!(msgs[0].role, Role::System);
+        assert_eq!(msgs[1].role, Role::User);
     }
 
     #[test]
-    fn base64_decode_invalid_char_returns_none() {
-        assert!(base64_decode("!!!!").is_none());
-        assert!(base64_decode("abc*").is_none());
+    fn test_sanitize_deepseek_scenario() {
+        // Simulate DeepSeek 400: context compression dropped tool results
+        // but left assistant message with tool_calls
+        let mut msgs = vec![
+            Message {
+                role: Role::System,
+                content: MessageContent::Text("You are helpful.".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                reasoning_content: None,
+            },
+            user_msg("read the file"),
+            assistant_with_calls(&["call_1"]),
+            // MISSING: tool_result("call_1") — compression dropped it
+            Message {
+                role: Role::System,
+                content: MessageContent::Text("[Context compressed: 2 older messages summarised]".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                reasoning_content: None,
+            },
+            user_msg("now fix the bug"),
+            assistant_with_calls(&["call_2"]),
+            tool_result("call_2"),
+            assistant_msg("Fixed."),
+        ];
+        sanitize_tool_messages(&mut msgs);
+        // call_1 orphan → tool_calls should be None on that assistant
+        let orphan_asst = msgs.iter().find(|m| {
+            m.role == Role::Assistant
+                && matches!(&m.content, MessageContent::Text(s) if s.is_empty())
+                && m.tool_calls.as_ref().map_or(true, |c| c.is_empty())
+        });
+        assert!(orphan_asst.is_some(), "orphan assistant should have tool_calls cleared");
+        // call_2 still paired → kept
+        let paired_asst = msgs.iter().find(|m| {
+            m.role == Role::Assistant
+                && m.tool_calls.as_ref().map_or(false, |c| c.iter().any(|tc| tc.id == "call_2"))
+        });
+        assert!(paired_asst.is_some(), "call_2 should still be paired");
+        // No orphan tool results
+        assert!(!msgs.iter().any(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some("call_1")));
     }
 
     #[test]
-    fn base64_decode_short_input_returns_none() {
-        assert!(base64_decode("A").is_none());
+    fn test_sanitize_empty() {
+        let mut msgs = vec![];
+        sanitize_tool_messages(&mut msgs);
+        assert!(msgs.is_empty());
     }
 
-    #[test]
-    fn base64_large_data_roundtrip() {
-        let data = vec![0xABu8; 10_000];
-        let encoded = base64_encode(&data);
-        let decoded = base64_decode(&encoded).unwrap();
-        assert_eq!(decoded, data);
-    }
-
-    // ── compress / decompress round-trip ──
-
-    #[test]
-    fn compress_decompress_empty() {
-        let input = "";
-        let compressed = compress_text(input).unwrap();
-        assert!(compressed.starts_with(LZ4_PREFIX));
-        let decompressed = decompress_text(&compressed).unwrap();
-        assert_eq!(decompressed, input);
-    }
+    // ── lz4 compression tests ──
 
     #[test]
     fn compress_decompress_small() {

@@ -129,7 +129,7 @@ impl Tool for ChoiceTool {
                 id: id.clone(),
                 mode: "input".into(),
                 options: vec![options_str.into()],
-            });
+            }).await;
             return match rx.await {
                 Ok(value) => ToolResult {
                     tool_call_id: String::new(),
@@ -170,7 +170,7 @@ impl Tool for ChoiceTool {
             id: id.clone(),
             mode: mode.into(),
             options: opts.clone(),
-        });
+        }).await;
 
         match rx.await {
             Ok(value) => {
