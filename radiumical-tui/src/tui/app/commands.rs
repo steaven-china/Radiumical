@@ -640,6 +640,49 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
+            _ if task.starts_with("/mcp ") => {
+                let rest = task[5..].trim();
+                if rest == "toggle" {
+                    self.output.push("  Usage: /mcp toggle <name>".into());
+                } else if rest.starts_with("toggle ") {
+                    let name = rest[7..].trim().to_string();
+                    if let Some(server) = self.mcp_servers.iter_mut().find(|s| s.name == name) {
+                        server.enabled = !server.enabled;
+                        let enabled = server.enabled;
+                        let _ = self.cmd_tx.blocking_send(
+                            BackendCmd::ToggleMcpServer { name: name.clone() },
+                        );
+                        self.toasts.push(crate::board::Toast::new(
+                            format!(
+                                "MCP '{}' {}",
+                                name,
+                                if enabled { "enabled" } else { "disabled" }
+                            ),
+                            crate::board::ToastLevel::Info,
+                            std::time::Duration::from_secs(3),
+                        ));
+                        self.output.push(format!(
+                            "> /mcp toggle {}",
+                            name
+                        ));
+                        self.output.push(format!(
+                            "  MCP '{}' {}",
+                            name,
+                            if enabled { "enabled" } else { "disabled" }
+                        ));
+                    } else {
+                        self.output.push(format!("  MCP server not found: {name}"));
+                    }
+                } else {
+                    self.output
+                        .push("  /mcp — toggle panel | /mcp toggle <name>".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
             "/debug linevis" => {
                 self.output.push("> /debug linevis".into());
                 self.output.push(format!(
@@ -849,6 +892,7 @@ impl App {
         self.cursor = 0;
         self.hints.clear();
         self.history_idx = None;
+        self.history_filter_prefix = None;
         self.welcome = false;
         self.show_help_overlay = false;
         if !task.is_empty() {

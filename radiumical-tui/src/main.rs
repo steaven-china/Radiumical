@@ -226,8 +226,8 @@ async fn main() -> Result<()> {
     // ── MCP servers ──
     let mcp_config = radiumical_core::mcp::load_config();
     let mcp_timeout = std::time::Duration::from_secs(config.tool_timeout_secs);
-    // (client, cached_tools) — tools discovered at startup, reused per task.
-    let mut mcp_clients: Vec<(Arc<radiumical_core::mcp::McpClient>, Vec<radiumical_core::mcp::McpToolInfo>)> = Vec::new();
+    // (client, cached_tools, enabled) — tools discovered at startup, reused per task.
+    let mut mcp_clients: Vec<(Arc<radiumical_core::mcp::McpClient>, Vec<radiumical_core::mcp::McpToolInfo>, bool)> = Vec::new();
     for (name, server_cfg) in &mcp_config.servers {
         match radiumical_core::mcp::McpClient::spawn(name, server_cfg, mcp_timeout).await {
             Ok(client) => {
@@ -235,7 +235,7 @@ async fn main() -> Result<()> {
                     Ok(tools) => {
                         eprintln!("MCP '{name}': {} tools loaded", tools.len());
                         let tool_count = tools.len();
-                        mcp_clients.push((Arc::new(client), tools));
+                        mcp_clients.push((Arc::new(client), tools, true));
                         let _ = ui_tx.send(UiEvent::McpStatus {
                             name: name.clone(),
                             alive: true,
@@ -325,10 +325,11 @@ async fn main() -> Result<()> {
                                 let ui_tx = ui_tx.clone();
                                 let cancel_rx = cancel_rx.clone();
                                 let workspace = workspace.clone();
-                                // Build MCP tool adapters from cached tool info.
+                                // Build MCP tool adapters from cached tool info (skip disabled).
                                 let mcp_tools: Vec<Box<dyn radiumical_core::tools::Tool>> = mcp_clients
                                     .iter()
-                                    .flat_map(|(client, tools)| {
+                                    .filter(|(_, _, enabled)| *enabled)
+                                    .flat_map(|(client, tools, _)| {
                                         tools.iter().map(move |info| {
                                             Box::new(radiumical_core::tools::McpToolAdapter {
                                                 info: info.clone(),
@@ -379,6 +380,14 @@ async fn main() -> Result<()> {
                     }
                     Some(BackendCmd::LoadSession(items)) => {
                         runner.lock().await.load_session_items(&items);
+                    }
+                    Some(BackendCmd::ToggleMcpServer { name }) => {
+                        for (_, tools, enabled) in &mut mcp_clients {
+                            if tools.iter().any(|t| t.server_name == name) {
+                                *enabled = !*enabled;
+                                break;
+                            }
+                        }
                     }
                     Some(BackendCmd::RefreshModels) => {
                         let ui_tx = ui_tx.clone();

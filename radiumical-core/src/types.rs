@@ -1017,6 +1017,8 @@ pub enum BackendCmd {
     ResetConversation,
     /// Load a saved session into the backend conversation.
     LoadSession(Vec<SessionItem>),
+    /// Toggle an MCP server on/off by name.
+    ToggleMcpServer { name: String },
 }
 
 // ═══ Slash hints ═══

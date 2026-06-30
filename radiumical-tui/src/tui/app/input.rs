@@ -32,6 +32,47 @@ impl App {
             }
             return;
         }
+        if self.mcp_panel_visible && !self.mcp_servers.is_empty() {
+            match (key.code, key.modifiers) {
+                (KeyCode::Up, _) => {
+                    self.mcp_panel_selected =
+                        self.mcp_panel_selected.saturating_sub(1);
+                    return;
+                }
+                (KeyCode::Down, _) => {
+                    if self.mcp_panel_selected + 1 < self.mcp_servers.len() {
+                        self.mcp_panel_selected += 1;
+                    }
+                    return;
+                }
+                (KeyCode::Enter, _) => {
+                    if let Some(server) = self.mcp_servers.get_mut(self.mcp_panel_selected) {
+                        server.enabled = !server.enabled;
+                        let name = server.name.clone();
+                        let enabled = server.enabled;
+                        let _ = self.cmd_tx.blocking_send(
+                            BackendCmd::ToggleMcpServer { name: name.clone() },
+                        );
+                        self.toasts.push(crate::board::Toast::new(
+                            format!(
+                                "MCP '{}' {}",
+                                name,
+                                if enabled { "enabled" } else { "disabled" }
+                            ),
+                            crate::board::ToastLevel::Info,
+                            std::time::Duration::from_secs(3),
+                        ));
+                    }
+                    return;
+                }
+                (KeyCode::Esc, _) => {
+                    self.mcp_panel_visible = false;
+                    self.panels.close(crate::panel::PanelId::Mcp);
+                    return;
+                }
+                _ => {}
+            }
+        }
         match (key.code, key.modifiers) {
             (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
                 self.show_full_reasoning = !self.show_full_reasoning;
@@ -72,16 +113,26 @@ impl App {
                     self.hint_selected = Some(self.hints.len() - 1);
                     self.sync_hint_page();
                 } else if !self.history.is_empty() {
+                    let prefix = if self.input.is_empty() {
+                        String::new()
+                    } else if self.history_idx.is_none() {
+                        self.history_filter_prefix = Some(self.input.clone());
+                        self.input.clone()
+                    } else {
+                        self.history_filter_prefix.clone().unwrap_or_default()
+                    };
                     if self.history_idx.is_none() {
                         self.history_draft = self.input.clone();
                     }
-                    let i = self
+                    let from = self
                         .history_idx
                         .map_or(self.history.len() - 1, |i| i.saturating_sub(1));
-                    self.history_idx = Some(i);
-                    self.input = self.history[i].clone();
-                    self.cursor = self.input.len();
-                    self.hints.clear();
+                    if let Some(i) = self.find_prev_history_match(&prefix, from) {
+                        self.history_idx = Some(i);
+                        self.input = self.history[i].clone();
+                        self.cursor = self.input.len();
+                        self.hints.clear();
+                    }
                 }
             }
             (KeyCode::Down, _) => {
@@ -101,13 +152,21 @@ impl App {
                 } else if self.input.starts_with('/') && !self.hints.is_empty() {
                     self.hint_selected = Some(0);
                 } else if let Some(i) = self.history_idx {
-                    let next = i + 1;
-                    if next >= self.history.len() {
+                    let prefix = self.history_filter_prefix.clone().unwrap_or_default();
+                    let next_start = i + 1;
+                    if next_start < self.history.len() {
+                        if let Some(j) = self.find_next_history_match(&prefix, next_start) {
+                            self.input = self.history[j].clone();
+                            self.history_idx = Some(j);
+                        } else {
+                            self.input = self.history_draft.clone();
+                            self.history_idx = None;
+                            self.history_filter_prefix = None;
+                        }
+                    } else {
                         self.input = self.history_draft.clone();
                         self.history_idx = None;
-                    } else {
-                        self.input = self.history[next].clone();
-                        self.history_idx = Some(next);
+                        self.history_filter_prefix = None;
                     }
                     self.cursor = self.input.len();
                     self.hints.clear();
@@ -115,6 +174,7 @@ impl App {
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => {
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 self.input.insert(self.cursor, '\n');
                 self.cursor += 1;
                 self.update_hints();
@@ -167,6 +227,7 @@ impl App {
             }
             (KeyCode::Char(ch), mods) => {
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 if mods.contains(KeyModifiers::CONTROL) {
                     match ch {
                         'w' if self.cursor > 0 => {
@@ -196,6 +257,7 @@ impl App {
             }
             (KeyCode::Backspace, _) if self.cursor > 0 => {
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 let prev = self.prev_char_boundary(self.cursor);
                 self.input.drain(prev..self.cursor);
                 self.cursor = prev;
@@ -203,6 +265,7 @@ impl App {
             }
             (KeyCode::Delete, _) if self.cursor < self.input.len() => {
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 let next = self.next_char_boundary(self.cursor);
                 self.input.drain(self.cursor..next);
                 self.update_hints();
@@ -232,10 +295,12 @@ impl App {
                     return;
                 }
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 self.cursor = self.next_char_boundary(self.cursor);
             }
             (KeyCode::Home, _) => {
                 self.history_idx = None;
+                self.history_filter_prefix = None;
                 self.cursor = 0;
             }
             (KeyCode::End, _) => {
@@ -244,6 +309,7 @@ impl App {
                     self.scroll = 0.0;
                 } else {
                     self.history_idx = None;
+                    self.history_filter_prefix = None;
                     self.cursor = self.input.len();
                 }
             }
@@ -406,6 +472,38 @@ impl App {
         if let Some(sel) = self.hint_selected {
             self.hint_page = sel / 8;
         }
+    }
+
+    pub(crate) fn find_prev_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
+        if prefix.is_empty() {
+            return if from < self.history.len() {
+                Some(from)
+            } else {
+                None
+            };
+        }
+        for i in (0..=from).rev() {
+            if self.history[i].starts_with(prefix) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn find_next_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
+        if prefix.is_empty() {
+            return if from < self.history.len() {
+                Some(from)
+            } else {
+                None
+            };
+        }
+        for i in from..self.history.len() {
+            if self.history[i].starts_with(prefix) {
+                return Some(i);
+            }
+        }
+        None
     }
 
     pub(crate) fn handle_settings_key(&mut self, key: crossterm::event::KeyEvent) {

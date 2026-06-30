@@ -279,10 +279,24 @@ impl App {
                 ));
             }
             UiEvent::McpStatus {
-                name: _,
-                alive: _,
-                tool_count: _,
-            } => {}
+                name,
+                alive,
+                tool_count,
+            } => {
+                if let Some(s) = self.mcp_servers.iter_mut().find(|s| s.name == name) {
+                    s.alive = alive;
+                    s.tool_count = tool_count;
+                } else {
+                    self.mcp_servers.push(
+                        crate::panels::mcp_status::McpServerStatus {
+                            name,
+                            alive,
+                            tool_count,
+                            enabled: true,
+                        },
+                    );
+                }
+            }
             UiEvent::PlanUpdated { title, tasks } => {
                 self.plan_title = title;
                 self.plan_tasks = tasks

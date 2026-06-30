@@ -75,7 +75,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             }
             crate::panel::PanelId::Mcp => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
-                crate::panels::mcp_status::render(f, slot, &app.mcp_servers);
+                crate::panels::mcp_status::render(f, slot, &app.mcp_servers, app.mcp_panel_selected);
             }
             crate::panel::PanelId::Outline => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
@@ -529,7 +529,18 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
 
     let style = Style::default().fg(Color::Rgb(130, 130, 130));
     let dim_style = Style::default().fg(Color::Rgb(100, 100, 110));
-    let left = if app.thinking {
+    let filter_style = Style::default().fg(Color::Rgb(180, 180, 100));
+    let left = if let Some(ref prefix) = app.history_filter_prefix {
+        let display = if prefix.len() > 20 {
+            format!("{}...", &prefix[..20])
+        } else {
+            prefix.clone()
+        };
+        Line::from(Span::styled(
+            format!(" [↑ history: {display}]"),
+            filter_style,
+        ))
+    } else if app.thinking {
         let bar = PULSE[app.thinking_frame % PULSE.len()];
         Line::from(vec![
             Span::styled(

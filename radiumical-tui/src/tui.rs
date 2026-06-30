@@ -29,7 +29,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/lint", "Run diagnostics/lint"),
     ("/memory", "Memory management panel"),
     ("/subagents", "Sub-agent status panel"),
-    ("/mcp", "MCP server status panel"),
+    ("/mcp", "MCP server panel / toggle"),
     ("/cod on/off", "Chain of Draft experimental"),
     ("/env", "Manage API keys (secure)"),
     ("/debug <t>", "Debug info"),
