@@ -10,6 +10,11 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        // Choice panel: intercept ALL keys when visible.
+        if self.choice_panel.visible {
+            self.handle_choice_panel_key(key);
+            return;
+        }
         if self.provider_picker.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {}
@@ -50,10 +55,6 @@ impl App {
                 }
             }
             (KeyCode::Up, _) => {
-                if self.choice_panel.visible {
-                    self.choice_panel.select_prev();
-                    return;
-                }
                 if self.session_tui.visible {
                     self.session_tui.select_prev();
                     return;
@@ -84,10 +85,6 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
-                if self.choice_panel.visible {
-                    self.choice_panel.select_next();
-                    return;
-                }
                 if self.session_tui.visible {
                     self.session_tui.select_next();
                     return;
@@ -125,15 +122,6 @@ impl App {
             (KeyCode::Enter, _) => {
                 if self.session_tui.visible {
                     self.handle_session_tui_enter();
-                    return;
-                }
-                if self.choice_panel.visible {
-                    let response = self.choice_panel.get_response();
-                    let id = self.choice_panel.id.clone();
-                    self.choice_panel.close();
-                    let _ = self
-                        .cmd_tx
-                        .blocking_send(crate::tui::BackendCmd::ChoiceResponse { id, value: response });
                     return;
                 }
                 if self.input.trim() == "//" {
@@ -178,18 +166,6 @@ impl App {
                 self.handle_command(&task);
             }
             (KeyCode::Char(ch), mods) => {
-                if self.session_tui.visible {
-                    match self.session_tui.focus {
-                        crate::session_tui::SessionFocus::NameEdit => {
-                            self.session_tui.name_buffer.push(ch);
-                        }
-                        crate::session_tui::SessionFocus::DescEdit => {
-                            self.session_tui.desc_buffer.push(ch);
-                        }
-                        _ => {}
-                    }
-                    return;
-                }
                 self.history_idx = None;
                 if mods.contains(KeyModifiers::CONTROL) {
                     match ch {
@@ -219,20 +195,6 @@ impl App {
                 self.update_hints();
             }
             (KeyCode::Backspace, _) if self.cursor > 0 => {
-                if self.choice_panel.visible {
-                    if self.choice_panel.input_cursor > 0 {
-                        let prev = self
-                            .choice_panel
-                            .input_buffer
-                            .char_indices()
-                            .nth(self.choice_panel.input_cursor - 1)
-                            .map(|(i, c)| i + c.len_utf8())
-                            .unwrap_or(0);
-                        self.choice_panel.input_buffer.drain(prev..);
-                        self.choice_panel.input_cursor = prev;
-                    }
-                    return;
-                }
                 self.history_idx = None;
                 let prev = self.prev_char_boundary(self.cursor);
                 self.input.drain(prev..self.cursor);
@@ -332,10 +294,6 @@ impl App {
                 }
             }
             (KeyCode::Esc, _) => {
-                if self.choice_panel.visible {
-                    self.choice_panel.close();
-                    return;
-                }
                 if self.session_tui.visible {
                     self.session_tui.close();
                     return;
@@ -652,6 +610,56 @@ impl App {
                 self.session_tui.name_buffer = meta.name.clone();
                 self.session_tui.desc_buffer = meta.description.clone();
             }
+        }
+    }
+
+    /// Handle all keyboard input when the choice panel is visible.
+    fn handle_choice_panel_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crate::choice_panel::ChoiceMode;
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Up => self.choice_panel.select_prev(),
+            KeyCode::Down => self.choice_panel.select_next(),
+            KeyCode::Esc => self.choice_panel.close(),
+            KeyCode::Char(' ') if self.choice_panel.mode == ChoiceMode::Multi => {
+                self.choice_panel.toggle_current();
+            }
+            KeyCode::Enter => {
+                let response = self.choice_panel.get_response();
+                let id = self.choice_panel.id.clone();
+                self.choice_panel.close();
+                let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::ChoiceResponse {
+                    id,
+                    value: response,
+                });
+            }
+            KeyCode::Char(ch) => match self.choice_panel.mode {
+                ChoiceMode::Input => {
+                    self.choice_panel.input_buffer.push(ch);
+                    self.choice_panel.input_cursor = self.choice_panel.input_buffer.len();
+                }
+                _ if ch.is_ascii_digit() => {
+                    let n = ch.to_digit(10).unwrap() as usize;
+                    if n >= 1 && n <= self.choice_panel.options.len() {
+                        self.choice_panel.selected = n - 1;
+                    }
+                }
+                _ => {}
+            },
+            KeyCode::Backspace if self.choice_panel.mode == ChoiceMode::Input => {
+                if self.choice_panel.input_cursor > 0 {
+                    let prev = self
+                        .choice_panel
+                        .input_buffer
+                        .char_indices()
+                        .nth(self.choice_panel.input_cursor - 1)
+                        .map(|(i, c)| i + c.len_utf8())
+                        .unwrap_or(0);
+                    self.choice_panel.input_buffer.drain(prev..);
+                    self.choice_panel.input_cursor = prev;
+                }
+            }
+            _ => {}
         }
     }
 }
