@@ -252,7 +252,7 @@ fn hash_name(name: &str) -> String {
 }
 
 /// Derive a short, stable hash from a workspace path for directory naming.
-fn workspace_hash(workspace: &str) -> String {
+pub fn workspace_hash(workspace: &str) -> String {
     let canonical = std::fs::canonicalize(workspace)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| workspace.to_string());

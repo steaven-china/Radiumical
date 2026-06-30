@@ -90,13 +90,13 @@ impl Tool for MemoryTool {
             tool_type: "function".into(),
             function: FunctionDef {
                 name: "memory".into(),
-                description: "Manage persistent memory across sessions. Actions: 'add <core|mino|short> <content>', 'list [tier]'. Core memory is always in context, mino is recent, short is session summaries.".into(),
-                parameters: serde_json::json!({"type":"object","properties":{"action":{"type":"string","description":"'add core <text>', 'add mino <text>', 'add short <text>', 'list', 'list core', 'list mino', 'list short'"}},"required":["action"]}),
+                description: "Manage persistent memory across sessions. Actions: 'add <core|mino|short> <content> [--tag t1 --tag t2]', 'list [tier]', 'delete <tier> <index>', 'clear <tier>', 'search <query>'. Core memory is always in context, mino is recent, short is session summaries.".into(),
+                parameters: serde_json::json!({"type":"object","properties":{"action":{"type":"string","description":"'add core <text> [--tag t1]', 'add mino <text>', 'add short <text>', 'list', 'list core', 'delete core 0', 'clear short', 'search <query>'"}},"required":["action"]}),
             },
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -108,11 +108,10 @@ impl Tool for MemoryTool {
             }
         };
         let action = args["action"].as_str().unwrap_or("");
+        let mut mem = crate::memory::Memory::for_workspace(&workspace.to_string_lossy());
 
         if let Some(rest) = action.strip_prefix("add ") {
-            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-            let tier = parts.first().copied().unwrap_or("short");
-            let content = parts.get(1).copied().unwrap_or("");
+            let (content, tags) = parse_add_args(rest);
             if content.is_empty() {
                 return ToolResult {
                     tool_call_id: String::new(),
@@ -120,10 +119,9 @@ impl Tool for MemoryTool {
                     is_error: true,
                 };
             }
-            match crate::memory::Memory::load().and_then(|mut m| {
-                m.add(tier, content)?;
-                m.save()
-            }) {
+            let tier = rest.splitn(2, ' ').next().unwrap_or("short");
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            match mem.add(tier, content, &tag_refs) {
                 Ok(()) => ToolResult {
                     tool_call_id: String::new(),
                     content: format!("[{tier}] Remembered."),
@@ -136,7 +134,6 @@ impl Tool for MemoryTool {
                 },
             }
         } else if action == "list" || action.starts_with("list ") {
-            let mem = crate::memory::Memory::load().unwrap_or_default();
             let tier = action.strip_prefix("list ").unwrap_or("all");
             let mut out = String::from("Memory:\n");
             let mut show = |label: &str, entries: &[crate::memory::MemoryEntry]| {
@@ -144,8 +141,13 @@ impl Tool for MemoryTool {
                     return;
                 }
                 out.push_str(&format!("  [{label}]\n"));
-                for e in entries.iter().rev().take(10) {
-                    out.push_str(&format!("    - {}\n", e.content));
+                for (i, e) in entries.iter().enumerate() {
+                    let tags = if e.tags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", e.tags.join(", "))
+                    };
+                    out.push_str(&format!("    {i}: {}{}\n", e.content, tags));
                 }
             };
             match tier {
@@ -160,7 +162,7 @@ impl Tool for MemoryTool {
                 _ => {
                     return ToolResult {
                         tool_call_id: String::new(),
-                        content: format!("Unknown tier: {tier}"),
+                        content: format!("Unknown tier: {tier}. Use core/mino/short."),
                         is_error: true,
                     }
                 }
@@ -170,16 +172,91 @@ impl Tool for MemoryTool {
                 content: out,
                 is_error: false,
             }
+        } else if let Some(rest) = action.strip_prefix("delete ") {
+            let mut parts = rest.splitn(2, ' ');
+            let tier = parts.next().unwrap_or("");
+            let index: usize = match parts.next().and_then(|s| s.parse().ok()) {
+                Some(i) => i,
+                None => {
+                    return ToolResult {
+                        tool_call_id: String::new(),
+                        content: "Usage: delete <tier> <index>".into(),
+                        is_error: true,
+                    }
+                }
+            };
+            match mem.delete(tier, index) {
+                Ok(()) => ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("[{tier}] Deleted entry {index}."),
+                    is_error: false,
+                },
+                Err(e) => ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Error: {e}"),
+                    is_error: true,
+                },
+            }
+        } else if let Some(rest) = action.strip_prefix("clear ") {
+            let tier = rest.trim();
+            match mem.clear(tier) {
+                Ok(()) => ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("[{tier}] Cleared."),
+                    is_error: false,
+                },
+                Err(e) => ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Error: {e}"),
+                    is_error: true,
+                },
+            }
+        } else if let Some(query) = action.strip_prefix("search ") {
+            let results = mem.search(query);
+            if results.is_empty() {
+                ToolResult {
+                    tool_call_id: String::new(),
+                    content: "No matches found.".into(),
+                    is_error: false,
+                }
+            } else {
+                let mut out = format!("Search results for '{}':\n", query);
+                for (tier, entry) in &results {
+                    let tags = if entry.tags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", entry.tags.join(", "))
+                    };
+                    out.push_str(&format!("  [{}] {}{}\n", tier, entry.content, tags));
+                }
+                ToolResult {
+                    tool_call_id: String::new(),
+                    content: out,
+                    is_error: false,
+                }
+            }
         } else {
             ToolResult {
                 tool_call_id: String::new(),
                 content: format!(
-                    "Unknown action: {action}. Use 'add <tier> <content>' or 'list [tier]'."
+                    "Unknown action: {action}. Use 'add <tier> <content> [--tag t1]', 'list [tier]', 'delete <tier> <index>', 'clear <tier>', 'search <query>'."
                 ),
                 is_error: true,
             }
         }
     }
+}
+
+fn parse_add_args<'a>(rest: &'a str) -> (&'a str, Vec<String>) {
+    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+    if parts.len() < 2 {
+        return ("", Vec::new());
+    }
+    let after_tier = parts[1];
+    let segments: Vec<&str> = after_tier.split(" --tag ").collect();
+    let content = segments[0];
+    let tags: Vec<String> = segments[1..].iter().map(|s| s.to_string()).collect();
+    (content, tags)
 }
 
 #[async_trait::async_trait]

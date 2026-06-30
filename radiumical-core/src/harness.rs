@@ -7,6 +7,7 @@
 use crate::agent::Agent;
 use crate::conversation::Conversation;
 use crate::hooks::crlf::CRLFNormalizer;
+use crate::memory::Memory;
 use crate::orchestrator::Orchestrator;
 use crate::plugins::source::{RegexLinter, SourcePluginRegistry};
 use crate::provider::Provider;
@@ -245,6 +246,7 @@ impl Harness {
         }
 
         // If the agent has its own system prompt, prepend it.
+        let mut insert_idx = 0;
         if !agent.system_prompt.is_empty()
             && agent.system_prompt != self.config.system_prompt
         {
@@ -253,6 +255,39 @@ impl Harness {
                 Message {
                     role: Role::System,
                     content: MessageContent::Text(agent.system_prompt.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: None,
+                },
+            );
+            insert_idx = 1;
+        }
+
+        // Inject memory context as system messages.
+        let memory = Memory::for_workspace(&workspace.to_string_lossy());
+        let core_ctx = memory.core_context();
+        if !core_ctx.is_empty() {
+            messages.insert(
+                insert_idx,
+                Message {
+                    role: Role::System,
+                    content: MessageContent::Text(core_ctx),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    reasoning_content: None,
+                },
+            );
+            insert_idx += 1;
+        }
+        let mem_ctx = memory.context();
+        if !mem_ctx.is_empty() {
+            messages.insert(
+                insert_idx,
+                Message {
+                    role: Role::System,
+                    content: MessageContent::Text(mem_ctx),
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
@@ -294,6 +329,42 @@ impl Harness {
                             Message {
                                 role: Role::System,
                                 content: MessageContent::Text(agent.system_prompt.clone()),
+                                tool_calls: None,
+                                tool_call_id: None,
+                                name: None,
+                                reasoning_content: None,
+                            },
+                        );
+                    }
+                    let mut rebuild_idx = if !agent.system_prompt.is_empty()
+                        && agent.system_prompt != self.config.system_prompt
+                    {
+                        1
+                    } else {
+                        0
+                    };
+                    let rebuild_core = memory.core_context();
+                    if !rebuild_core.is_empty() {
+                        messages.insert(
+                            rebuild_idx,
+                            Message {
+                                role: Role::System,
+                                content: MessageContent::Text(rebuild_core),
+                                tool_calls: None,
+                                tool_call_id: None,
+                                name: None,
+                                reasoning_content: None,
+                            },
+                        );
+                        rebuild_idx += 1;
+                    }
+                    let rebuild_ctx = memory.context();
+                    if !rebuild_ctx.is_empty() {
+                        messages.insert(
+                            rebuild_idx,
+                            Message {
+                                role: Role::System,
+                                content: MessageContent::Text(rebuild_ctx),
                                 tool_calls: None,
                                 tool_call_id: None,
                                 name: None,
@@ -501,6 +572,55 @@ impl Harness {
                 let mut orch_mut = Orchestrator::new(Some(&workspace.to_string_lossy()));
                 let _ = orch_mut.start(next_id);
                 continue;
+            }
+
+            // ── 5. Auto-generate session title on first turn ──
+            if iteration == 0 {
+                let provider = Arc::clone(&self.provider);
+                let first_user = task.clone();
+                let first_reply: String = full_text.chars().take(200).collect();
+                let title_tx = ui_tx.clone();
+                tokio::spawn(async move {
+                    let prompt_msgs = vec![
+                        Message {
+                            role: Role::System,
+                            content: MessageContent::Text(
+                                "Generate a short session title (3-8 words) for this conversation. \
+                                 Output ONLY the title, no quotes, no punctuation at the end."
+                                    .into(),
+                            ),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            name: None,
+                            reasoning_content: None,
+                        },
+                        Message {
+                            role: Role::User,
+                            content: MessageContent::Text(format!(
+                                "User: {first_user}\nAssistant: {first_reply}"
+                            )),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            name: None,
+                            reasoning_content: None,
+                        },
+                    ];
+                    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+                    if provider.chat(&prompt_msgs, &[], tx).await.is_ok() {
+                        let mut title = String::new();
+                        while let Some(ev) = rx.recv().await {
+                            match ev {
+                                ProviderEvent::Text(t) => title.push_str(&t),
+                                ProviderEvent::Done => break,
+                                _ => {}
+                            }
+                        }
+                        let title = title.trim().to_string();
+                        if !title.is_empty() && title.len() < 80 {
+                            let _ = title_tx.send(UiEvent::TitleGenerated(title)).await;
+                        }
+                    }
+                });
             }
 
             return Ok(());
