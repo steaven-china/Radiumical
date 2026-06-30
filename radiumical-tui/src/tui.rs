@@ -90,7 +90,7 @@ use self::app::App;
 
 pub fn run(
     cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-    ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
+    mut ui_rx: tokio::sync::mpsc::Receiver<UiEvent>,
     config: SessionConfig,
     workspace: String,
 ) -> anyhow::Result<()> {

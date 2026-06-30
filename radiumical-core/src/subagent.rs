@@ -64,7 +64,7 @@ pub async fn spawn(
     config: SessionConfig,
     provider: Arc<dyn Provider>,
 ) {
-    let (ui_tx, _ui_rx) = tokio::sync::mpsc::unbounded_channel::<crate::types::UiEvent>();
+    let (ui_tx, _ui_rx) = tokio::sync::mpsc::channel::<crate::types::UiEvent>(256);
     let agent_config = build_agent_config(&config, agent_name.as_deref());
     let mut runner = PipelineRunner::new(agent_config, provider);
     let workspace = std::env::current_dir().unwrap_or_default();

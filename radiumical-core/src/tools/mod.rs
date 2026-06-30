@@ -34,12 +34,12 @@ pub use task::{GoalTool, OrchestrateTool, TodoList};
 /// Context passed to tools that need to interact with the UI or access
 /// harness-level services such as source-code plugins.
 pub struct ToolContext {
-    pub ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
+    pub ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
     pub source_plugins: Option<Arc<SourcePluginRegistry>>,
 }
 
 impl ToolContext {
-    pub fn new(ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>) -> Self {
+    pub fn new(ui_tx: tokio::sync::mpsc::Sender<UiEvent>) -> Self {
         Self {
             ui_tx,
             source_plugins: None,
@@ -49,7 +49,7 @@ impl ToolContext {
 
 impl Default for ToolContext {
     fn default() -> Self {
-        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = tokio::sync::mpsc::channel(256);
         Self {
             ui_tx: tx,
             source_plugins: None,

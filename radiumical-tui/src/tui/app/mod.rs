@@ -1,7 +1,7 @@
 use crate::tui::{BackendCmd, UiEvent, LOGO};
 use radiumical_core::types::{AgentMode, SessionConfig};
 use ratatui::text::Line;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
 pub mod commands;
@@ -32,7 +32,7 @@ pub struct App {
     pub model: String,
     pub provider_name: String,
     pub cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-    pub ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
+    pub ui_rx: tokio::sync::mpsc::Receiver<UiEvent>,
     pub session_items: Vec<radiumical_core::session::SessionItem>,
     pub session_pool: radiumical_core::session::SessionPool,
     pub pending_choice: Option<(String, String, Vec<String>)>,
@@ -59,6 +59,7 @@ pub struct App {
     pub skill_registry: radiumical_core::skill::SkillRegistry,
     pub blocks: Vec<crate::layout::Block>,
     pub render_cache: HashMap<u64, Vec<Line<'static>>>,
+    pub render_cache_order: VecDeque<u64>,
     pub markdown: crate::markdown::MarkdownRenderer,
     pub perf_visible: bool,
     pub output_vis: usize,
@@ -80,7 +81,7 @@ pub struct App {
 impl App {
     pub fn new(
         cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
-        ui_rx: tokio::sync::mpsc::UnboundedReceiver<UiEvent>,
+        ui_rx: tokio::sync::mpsc::Receiver<UiEvent>,
         config: &SessionConfig,
         workspace: &str,
     ) -> Self {
@@ -160,6 +161,7 @@ impl App {
             skill_registry: radiumical_core::skill::SkillRegistry::new(),
             blocks: Vec::new(),
             render_cache: HashMap::new(),
+            render_cache_order: VecDeque::new(),
             markdown: crate::markdown::MarkdownRenderer::new(),
             perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),

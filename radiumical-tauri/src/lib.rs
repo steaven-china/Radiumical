@@ -19,7 +19,7 @@ async fn run_task(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
-    let (ui_tx, mut ui_rx) = tokio::sync::mpsc::unbounded_channel::<radiumical_core::types::UiEvent>();
+    let (ui_tx, mut ui_rx) = tokio::sync::mpsc::channel::<radiumical_core::types::UiEvent>(256);
     let (_, cancel_rx) = tokio::sync::watch::channel(false);
 
     // Spawn pipeline in background, emit events to frontend

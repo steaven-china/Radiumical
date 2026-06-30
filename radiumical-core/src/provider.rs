@@ -69,7 +69,7 @@ pub trait Provider: Send + Sync {
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
-        tx: mpsc::UnboundedSender<ProviderEvent>,
+        tx: mpsc::Sender<ProviderEvent>,
     ) -> Result<()>;
 
     /// Update the reasoning/thinking effort for providers that support it.
@@ -143,7 +143,7 @@ impl Provider for OpenAICompatibleProvider {
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
-        tx: mpsc::UnboundedSender<ProviderEvent>,
+        tx: mpsc::Sender<ProviderEvent>,
     ) -> Result<()> {
         let url = format!("{}/chat/completions", self.api_base);
 
@@ -213,9 +213,9 @@ impl Provider for OpenAICompatibleProvider {
                                 },
                             })
                             .collect();
-                        let _ = tx.send(ProviderEvent::ToolCalls(tool_calls));
+                        let _ = tx.send(ProviderEvent::ToolCalls(tool_calls)).await;
                     }
-                    let _ = tx.send(ProviderEvent::Done);
+                    let _ = tx.send(ProviderEvent::Done).await;
                     return Ok(());
                 }
 
@@ -244,8 +244,8 @@ impl Provider for OpenAICompatibleProvider {
                                 })
                                 .collect();
 
-                            let _ = tx.send(ProviderEvent::ToolCalls(tool_calls));
-                            let _ = tx.send(ProviderEvent::Done);
+                            let _ = tx.send(ProviderEvent::ToolCalls(tool_calls)).await;
+                            let _ = tx.send(ProviderEvent::Done).await;
                             return Ok(());
                         }
                     }
@@ -255,13 +255,13 @@ impl Provider for OpenAICompatibleProvider {
                         if let Some(rc) = delta.reasoning_content {
                             if !rc.is_empty() {
                                 reasoning_buf.push_str(&rc);
-                                let _ = tx.send(ProviderEvent::Reasoning(rc));
+                                let _ = tx.send(ProviderEvent::Reasoning(rc)).await;
                             }
                         }
                         // Text content
                         if let Some(content) = delta.content {
                             if !content.is_empty() {
-                                let _ = tx.send(ProviderEvent::Text(content));
+                                let _ = tx.send(ProviderEvent::Text(content)).await;
                             }
                         }
 
@@ -295,7 +295,7 @@ impl Provider for OpenAICompatibleProvider {
         }
 
         // If we got here, stream ended without explicit [DONE] or tool_calls finish
-        let _ = tx.send(ProviderEvent::Done);
+        let _ = tx.send(ProviderEvent::Done).await;
         Ok(())
     }
 
@@ -332,14 +332,12 @@ impl Provider for UnsupportedProvider {
         &self,
         _messages: &[Message],
         _tools: &[ToolDefinition],
-        tx: mpsc::UnboundedSender<ProviderEvent>,
+        _tx: mpsc::Sender<ProviderEvent>,
     ) -> Result<()> {
-        let _ = tx.send(ProviderEvent::Error(format!(
-            "Provider '{}' is not yet supported. Use openai, deepseek, or ollama.",
+        anyhow::bail!(
+            "Provider '{}' is not supported in this build. Set a different provider with -p.",
             self.name
-        )));
-        let _ = tx.send(ProviderEvent::Done);
-        Ok(())
+        )
     }
 }
 

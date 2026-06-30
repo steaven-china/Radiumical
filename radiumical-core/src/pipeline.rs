@@ -46,8 +46,8 @@ impl PipelineRunner {
         task: String,
         workspace: PathBuf,
         extra_tools: &[Box<dyn crate::tools::Tool>],
-        _hb_cancel: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
+        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let agent = Agent::default_coder();

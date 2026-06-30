@@ -9,7 +9,7 @@ use crate::types::{ProviderEvent, ToolDefinition};
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 
 const MAX_CACHE_ENTRIES: usize = 128;
 
@@ -136,11 +136,11 @@ impl Provider for CachedProvider {
         &self,
         messages: &[crate::types::Message],
         tools: &[ToolDefinition],
-        tx: UnboundedSender<ProviderEvent>,
+        tx: Sender<ProviderEvent>,
     ) -> anyhow::Result<()> {
         if let Some(events) = self.cache.get(&self.model, messages, tools, None) {
             for event in events {
-                if tx.send(event).is_err() {
+                if tx.send(event).await.is_err() {
                     break;
                 }
             }
@@ -148,7 +148,7 @@ impl Provider for CachedProvider {
         }
 
         // Capture events by intercepting the sender.
-        let (capture_tx, mut capture_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (capture_tx, mut capture_rx) = tokio::sync::mpsc::channel(256);
         let model = self.model.clone();
         let cache = Arc::clone(&self.cache);
         let inner = Arc::clone(&self.inner);
@@ -162,7 +162,7 @@ impl Provider for CachedProvider {
         let mut captured = Vec::new();
         while let Some(event) = capture_rx.recv().await {
             captured.push(event.clone());
-            if tx.send(event).is_err() {
+            if tx.send(event).await.is_err() {
                 break;
             }
         }
@@ -408,11 +408,11 @@ mod tests {
             &self,
             _messages: &[Message],
             _tools: &[ToolDefinition],
-            tx: mpsc::UnboundedSender<ProviderEvent>,
+            tx: mpsc::Sender<ProviderEvent>,
         ) -> anyhow::Result<()> {
             *self.call_count.lock().unwrap() += 1;
             for event in &self.events {
-                if tx.send(event.clone()).is_err() {
+                if tx.send(event.clone()).await.is_err() {
                     break;
                 }
             }
@@ -439,7 +439,7 @@ mod tests {
         let msgs = [make_message("hello")];
         let tools = [];
 
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(256);
         provider.chat(&msgs, &tools, tx).await.unwrap();
         let mut events = vec![];
         while let Some(e) = rx.recv().await {
@@ -450,7 +450,7 @@ mod tests {
         assert!(matches!(&events[0], ProviderEvent::Text(t) if t == "cached"));
         assert!(matches!(&events[1], ProviderEvent::Done));
 
-        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::channel(256);
         provider.chat(&msgs, &tools, tx2).await.unwrap();
         let mut events2 = vec![];
         while let Some(e) = rx2.recv().await {
@@ -472,7 +472,7 @@ mod tests {
 
         let msgs = [make_message("hello")];
         let tools = [];
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(256);
         provider.chat(&msgs, &tools, tx).await.unwrap();
         let mut events = vec![];
         while let Some(e) = rx.recv().await {
@@ -495,12 +495,12 @@ mod tests {
         let msgs_b = [make_message("b")];
         let tools = [];
 
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(256);
         provider.chat(&msgs_a, &tools, tx).await.unwrap();
         while let Some(_) = rx.recv().await {}
         assert_eq!(*mock.call_count.lock().unwrap(), 1);
 
-        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::channel(256);
         provider.chat(&msgs_b, &tools, tx2).await.unwrap();
         while let Some(_) = rx2.recv().await {}
         assert_eq!(*mock.call_count.lock().unwrap(), 2);

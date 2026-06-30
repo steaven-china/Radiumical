@@ -109,7 +109,7 @@ impl Harness {
     /// was needed).
     pub async fn compress_context(
         &mut self,
-        ui_tx: &tokio::sync::mpsc::UnboundedSender<UiEvent>,
+        ui_tx: &tokio::sync::mpsc::Sender<UiEvent>,
     ) -> usize {
         const KEEP_RECENT: usize = 6;
 
@@ -155,7 +155,7 @@ impl Harness {
 
         let _ = ui_tx.send(UiEvent::LlmChunk(
             "\n[Compressing context…]\n".into(),
-        ));
+        )).await;
 
         // Build summarisation prompt.
         let compress_messages = vec![
@@ -187,7 +187,7 @@ impl Harness {
         ];
 
         // Call LLM for summarisation (no tools, simple chat).
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(256);
         let provider = Arc::clone(&self.provider);
         let handle =
             tokio::spawn(async move { provider.chat(&compress_messages, &[], tx).await });
@@ -217,7 +217,7 @@ impl Harness {
 
         let _ = ui_tx.send(UiEvent::LlmChunk(format!(
             "[Context compressed: {compressed_count} messages → summary]\n"
-        )));
+        ))).await;
 
         compressed_count
     }
@@ -229,10 +229,13 @@ impl Harness {
         workspace: PathBuf,
         agent: &Agent,
         extra_tools: &[Box<dyn Tool>],
-        _hb_cancel: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        ui_tx: tokio::sync::mpsc::UnboundedSender<UiEvent>,
+        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
+        // Spawn background flush task for conversation persistence.
+        let _flush_handle = self.conversation.spawn_flush_task();
+
         let llm_timeout = Duration::from_secs(self.config.llm_timeout_secs);
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
 
@@ -302,7 +305,7 @@ impl Harness {
             }
 
             // ── 1. LLM call ──
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let (tx, mut rx) = tokio::sync::mpsc::channel(256);
             let provider = Arc::clone(&self.provider);
             let msgs = messages.clone();
             let defs = all_tool_defs.clone();
@@ -330,11 +333,11 @@ impl Harness {
 
                 match event {
                     Some(ProviderEvent::Text(chunk)) => {
-                        let _ = ui_tx.send(UiEvent::LlmChunk(chunk.clone()));
+                        let _ = ui_tx.send(UiEvent::LlmChunk(chunk.clone())).await;
                         full_text.push_str(&chunk);
                     }
                     Some(ProviderEvent::Reasoning(rc)) => {
-                        let _ = ui_tx.send(UiEvent::LlmReasoning(rc.clone()));
+                        let _ = ui_tx.send(UiEvent::LlmReasoning(rc.clone())).await;
                         full_reasoning.push_str(&rc);
                     }
                     Some(ProviderEvent::ToolCalls(calls)) => {
@@ -342,14 +345,14 @@ impl Harness {
                     }
                     Some(ProviderEvent::Done) => break,
                     Some(ProviderEvent::Error(e)) => {
-                        let _ = ui_tx.send(UiEvent::Error(e));
+                        let _ = ui_tx.send(UiEvent::Error(e)).await;
                         break;
                     }
                     None => break,
                 }
             }
 
-            let _ = ui_tx.send(UiEvent::LlmDone);
+            let _ = ui_tx.send(UiEvent::LlmDone).await;
 
             if timed_out {
                 chat_handle.abort();
@@ -358,7 +361,7 @@ impl Harness {
                     self.config.llm_timeout_secs,
                     iteration + 1
                 );
-                let _ = ui_tx.send(UiEvent::Error(explain.clone()));
+                let _ = ui_tx.send(UiEvent::Error(explain.clone())).await;
                 messages.push(user_msg(&explain));
                 continue;
             }
@@ -366,7 +369,7 @@ impl Harness {
             match chat_handle.await {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
-                    let _ = ui_tx.send(UiEvent::Error(e.to_string()));
+                    let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
                     return Err(e);
                 }
                 Err(join_err) => {
@@ -374,7 +377,7 @@ impl Harness {
                         continue;
                     }
                     let msg = format!("Provider panicked: {join_err}");
-                    let _ = ui_tx.send(UiEvent::Error(msg.clone()));
+                    let _ = ui_tx.send(UiEvent::Error(msg.clone())).await;
                     return Err(anyhow::anyhow!("{msg}"));
                 }
             }
@@ -397,7 +400,7 @@ impl Harness {
                     // Filter by agent tool allowlist + mode allowlist.
                     if !allowed_names.contains(&tc.function.name) {
                         let err = format!("Tool '{}' is not allowed for this agent/mode", tc.function.name);
-                        let _ = ui_tx.send(UiEvent::Error(err.clone()));
+                        let _ = ui_tx.send(UiEvent::Error(err.clone())).await;
                         let tr = ToolResult {
                             tool_call_id: tc.id.clone(),
                             content: err,
@@ -424,7 +427,7 @@ impl Harness {
                                 index: i,
                                 total,
                                 args: tc.function.arguments.clone(),
-                            });
+                            }).await;
                             let ws = workspace.clone();
                             let args = tc.function.arguments.clone();
                             let ctx = ToolContext {
@@ -440,10 +443,10 @@ impl Harness {
                                 final_result = hook.after(tc, final_result, &workspace);
                             }
 
-                            let _ = ui_tx.send(UiEvent::ToolDone);
+                            let _ = ui_tx.send(UiEvent::ToolDone).await;
                             let _ = ui_tx.send(UiEvent::ToolResult {
                                 content: final_result.content.trim_end().to_string(),
-                            });
+                            }).await;
                             self.conversation
                                 .push_tool_result(tc, &final_result, Some(&workspace));
                             messages.push(tool_result_msg(tc, final_result));
@@ -454,9 +457,9 @@ impl Harness {
                                 index: i,
                                 total,
                                 args: String::new(),
-                            });
+                            }).await;
                             let err = format!("Unknown tool: {}", tc.function.name);
-                            let _ = ui_tx.send(UiEvent::Error(err.clone()));
+                            let _ = ui_tx.send(UiEvent::Error(err.clone())).await;
                             let tr = ToolResult {
                                 tool_call_id: tc.id.clone(),
                                 content: err,
@@ -486,7 +489,7 @@ impl Harness {
                 let _ = ui_tx.send(UiEvent::LlmChunk(format!(
                     "\n\n▶ Auto-continuing plan: #{} {}\n\n",
                     next_id, next_title
-                )));
+                ))).await;
                 // Inject the next task as a new user message
                 let prompt = format!(
                     "Continue the plan. Execute task #{}: {}",
@@ -507,7 +510,7 @@ impl Harness {
             "⚠️  Reached max iterations ({}) without completing.",
             self.config.max_iterations
         );
-        let _ = ui_tx.send(UiEvent::Error(msg));
+        let _ = ui_tx.send(UiEvent::Error(msg)).await;
         Ok(())
     }
 }

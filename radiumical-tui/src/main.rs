@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
     radiumical_core::subagent::set_defaults(config.clone(), Arc::clone(&provider));
 
     // ── Channels for frontend ↔ backend communication ──
-    let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<UiEvent>();
+    let (ui_tx, ui_rx) = tokio::sync::mpsc::channel::<UiEvent>(256);
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<BackendCmd>(8);
 
     // ── Non-interactive mode (--task) ──
@@ -279,7 +279,7 @@ async fn main() -> Result<()> {
                                 let heartbeat_interval = config.heartbeat_interval_secs;
                                 let hb_cancel = if heartbeat_interval > 0 {
                                     let (hb_tx, mut hb_rx) =
-                                        tokio::sync::mpsc::unbounded_channel();
+                                        tokio::sync::mpsc::channel(1);
                                     let ui_tx_hb = ui_tx.clone();
                                     tokio::spawn(async move {
                                         let mut interval = tokio::time::interval(
