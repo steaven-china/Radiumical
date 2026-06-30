@@ -46,7 +46,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             _ => Color::Rgb(20, 20, 25),
         };
 
-        let inner = Rect {
+        let _inner = Rect {
             x: slot.rect.x + 1,
             y: slot.rect.y + 1,
             width: slot.rect.width.saturating_sub(2),

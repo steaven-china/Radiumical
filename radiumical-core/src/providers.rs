@@ -285,17 +285,17 @@ pub async fn discover_models_for_config(config: &crate::types::SessionConfig) ->
     .await
 }
 
-/// Fetch the provider registry from the remote URL or local cache.
+/// Fetch the provider registry from the remote URL, local cache, or embedded fallback.
 pub async fn fetch_provider_sources() -> Vec<ProviderSource> {
     let cache_dir = dirs::cache_dir().unwrap_or_else(|| {
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
     });
     match ProviderRegistry::new(cache_dir) {
         Ok(registry) => match registry.fetch_or_cache(DEFAULT_REGISTRY_URL).await {
-            Ok(sources) => sources,
-            Err(_) => Vec::new(),
+            Ok(sources) if !sources.is_empty() => sources,
+            _ => registry.embedded_fallback(),
         },
-        Err(_) => Vec::new(),
+        Err(_) => parse_jsonl(EMBEDDED_PROVIDERS).unwrap_or_default(),
     }
 }
 
