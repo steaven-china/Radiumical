@@ -5,6 +5,48 @@ use crate::tools::{crlf_to_lf, lf_to_crlf, Tool};
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use similar::{ChangeTag, TextDiff};
 
+const DIFF_MARKER: &str = "\x04diff:";
+
+fn format_diff_marker(old: &str, new: &str) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    let mut out = format!("{DIFF_MARKER}\n");
+    let mut skipped = 0usize;
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            ChangeTag::Delete | ChangeTag::Insert => {
+                if skipped > 0 {
+                    if skipped > 8 {
+                        out.push_str(&format!("  ... ({skipped} lines unchanged)\n"));
+                    } else {
+                        for _ in 0..skipped.min(2) {
+                            out.push_str("  ...\n");
+                        }
+                    }
+                }
+                skipped = 0;
+                let line = change.value().trim_end();
+                if change.tag() == ChangeTag::Delete {
+                    out.push_str(&format!("\x1b[31m- {line}\x1b[0m\n"));
+                } else {
+                    out.push_str(&format!("\x1b[32m+ {line}\x1b[0m\n"));
+                }
+            }
+            ChangeTag::Equal => {
+                skipped += 1;
+            }
+        }
+    }
+    if out.len() > 3000 {
+        let mut end = 3000.min(out.len());
+        while end > 0 && !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        out.push_str("\n... (truncated)");
+    }
+    out
+}
+
 pub struct ReadFile;
 pub struct WriteFile;
 pub struct EditFile;
@@ -171,12 +213,22 @@ impl Tool for WriteFile {
             }
         }
 
+        // Read old content for diff before overwriting
+        let old_content = std::fs::read_to_string(&full_path).ok();
+
         match std::fs::write(&full_path, content) {
-            Ok(_) => ToolResult {
-                tool_call_id: String::new(),
-                content: format!("Wrote {} bytes to {}", content.len(), path_str),
-                is_error: false,
-            },
+            Ok(_) => {
+                let diff_out = if let Some(ref old) = old_content {
+                    format_diff_marker(old, content)
+                } else {
+                    format_diff_marker("", content)
+                };
+                ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Wrote {} bytes to {}\n{}", content.len(), path_str, diff_out),
+                    is_error: false,
+                }
+            }
             Err(e) => ToolResult {
                 tool_call_id: String::new(),
                 content: format!("Failed to write {}: {e}", path_str),
@@ -266,6 +318,7 @@ impl Tool for EditFile {
             let lf_count = raw_lf.matches(&old_lf).count();
             if lf_count == 1 {
                 let new_content_lf = raw_lf.replacen(&old_lf, &new_lf, 1);
+                let diff_out = format_diff_marker(&raw_lf, &new_content_lf);
                 // Restore the original line ending style
                 let new_content = if is_crlf {
                     lf_to_crlf(&new_content_lf)
@@ -276,8 +329,8 @@ impl Tool for EditFile {
                 return ToolResult {
                     tool_call_id: String::new(),
                     content: format!(
-                        "Edited {} (auto-adjusted line endings). Replaced 1 occurrence.",
-                        path_str
+                        "OK — Edited {} (auto-adjusted line endings)\n{}",
+                        path_str, diff_out
                     ),
                     is_error: false,
                 };
@@ -306,50 +359,16 @@ impl Tool for EditFile {
         }
 
         let new_content = raw.replacen(&old_text, &new_text, 1);
-        let diff = TextDiff::from_lines(&raw, &new_content);
-        let mut diff_out = String::from("Changes:\n");
-        let mut skipped = 0usize;
-        for change in diff.iter_all_changes() {
-            let sign = match change.tag() {
-                ChangeTag::Delete => "- ",
-                ChangeTag::Insert => "+ ",
-                ChangeTag::Equal => {
-                    skipped += 1;
-                    continue;
-                }
-            };
-            // Show context gap after changes
-            if skipped > 0 {
-                if skipped > 8 {
-                    diff_out.push_str(&format!("  ... ({skipped} lines skipped)\n"));
-                } else {
-                    for _ in 0..skipped.min(2) {
-                        diff_out.push_str("  ...\n");
-                    }
-                }
-            }
-            skipped = 0;
-            diff_out.push_str(sign);
-            diff_out.push_str(change.value().trim_end());
-            diff_out.push('\n');
-        }
-        if diff_out.len() > 3000 {
-            // Truncate at char boundary to avoid panicking on multi-byte UTF-8
-            let mut end = 3000.min(diff_out.len());
-            while end > 0 && !diff_out.is_char_boundary(end) {
-                end -= 1;
-            }
-            diff_out.truncate(end);
-            diff_out.push_str("\n... (truncated)");
-        }
+        let diff_out = format_diff_marker(&raw, &new_content);
 
         match std::fs::write(&full_path, &new_content) {
             Ok(_) => ToolResult {
                 tool_call_id: String::new(),
                 content: format!(
-                    "{diff_out}\nOK — Edited {} ({})",
+                    "OK — Edited {} ({})\n{}",
                     path_str,
-                    if is_crlf { "CRLF" } else { "LF" }
+                    if is_crlf { "CRLF" } else { "LF" },
+                    diff_out
                 ),
                 is_error: false,
             },

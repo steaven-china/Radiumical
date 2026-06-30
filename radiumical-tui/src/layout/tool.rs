@@ -29,7 +29,13 @@ pub fn strip_ansi_escapes(text: &str) -> String {
 /// number of visual lines (used both for block height and rendering).
 pub fn wrapped_tool_result_lines(result: &str, content_width: usize) -> Vec<String> {
     let cleaned = strip_ansi_escapes(result);
-    cleaned
+    // Normalize diff marker so height calculation matches the renderer.
+    let normalized = if cleaned.contains('\x04') {
+        cleaned.replace("\x04diff:", "── Diff ──")
+    } else {
+        cleaned
+    };
+    normalized
         .lines()
         .filter(|l| !l.trim().is_empty())
         .flat_map(|l| crate::layout::text::wrap_text_to_width(l, content_width.max(1)))

@@ -6,12 +6,71 @@ use unicode_width::UnicodeWidthStr;
 
 use super::{
     text::strip_markdown, text::wrap_text_to_width, tool::format_tool_args,
-    tool::wrapped_tool_result_lines, Block, BlockKind,
+    tool::strip_ansi_escapes, tool::wrapped_tool_result_lines, Block, BlockKind,
 };
 use crate::markdown::MarkdownRenderer;
 
 const DIM: Color = Color::Rgb(100, 100, 110);
 const BORDER: Color = Color::Rgb(80, 80, 90);
+
+#[derive(Clone, Copy)]
+enum DiffLineType {
+    Added,
+    Removed,
+    Header,
+    Normal,
+}
+
+fn diff_line_color(t: DiffLineType) -> Color {
+    match t {
+        DiffLineType::Added => Color::Rgb(80, 200, 80),
+        DiffLineType::Removed => Color::Rgb(220, 80, 80),
+        DiffLineType::Header => Color::Rgb(80, 180, 220),
+        DiffLineType::Normal => BORDER,
+    }
+}
+
+fn classify_diff_line(line: &str) -> DiffLineType {
+    if line.starts_with('+') {
+        DiffLineType::Added
+    } else if line.starts_with('-') {
+        DiffLineType::Removed
+    } else {
+        DiffLineType::Normal
+    }
+}
+
+fn collect_diff_result_lines(result: &str, content_w: usize) -> Vec<(DiffLineType, String)> {
+    let mut lines = Vec::new();
+    let mut in_diff = false;
+
+    for raw_line in result.lines() {
+        if raw_line.contains('\x04') && raw_line.contains("diff:") {
+            lines.push((DiffLineType::Header, "── Diff ──".to_string()));
+            in_diff = true;
+            continue;
+        }
+
+        let clean = strip_ansi_escapes(raw_line);
+        let trimmed = clean.trim();
+
+        if in_diff {
+            if trimmed.is_empty() {
+                continue;
+            }
+            let line_type = classify_diff_line(&clean);
+            for w in wrap_text_to_width(&clean, content_w) {
+                lines.push((line_type, w));
+            }
+        } else {
+            for w in wrap_text_to_width(&clean, content_w) {
+                lines.push((DiffLineType::Normal, w));
+            }
+        }
+    }
+
+    lines
+}
 
 // ── Pass 2: render blocks ──
 
@@ -357,16 +416,24 @@ fn render_tool_result_lines(
 ) -> Vec<Line<'static>> {
     const MAX_RESULT_VIS: usize = 10;
     let content_w = width.saturating_sub(5).max(1);
-    let wrapped = wrapped_tool_result_lines(result, content_w);
-    let has_overflow = wrapped.len() > MAX_RESULT_VIS;
-    let max_scroll = wrapped.len().saturating_sub(MAX_RESULT_VIS);
-    let scroll = result_scroll.min(max_scroll);
-    let visible = &wrapped[scroll..(scroll + MAX_RESULT_VIS).min(wrapped.len())];
+    let is_diff = result.contains('\x04');
 
-    let st = Style::default().fg(BORDER);
+    let all_lines: Vec<(DiffLineType, String)> = if is_diff {
+        collect_diff_result_lines(result, content_w)
+    } else {
+        wrapped_tool_result_lines(result, content_w)
+            .into_iter()
+            .map(|l| (DiffLineType::Normal, l))
+            .collect()
+    };
+
+    let has_overflow = all_lines.len() > MAX_RESULT_VIS;
+    let max_scroll = all_lines.len().saturating_sub(MAX_RESULT_VIS);
+    let scroll = result_scroll.min(max_scroll);
+    let visible = &all_lines[scroll..(scroll + MAX_RESULT_VIS).min(all_lines.len())];
 
     let sb_h = visible.len();
-    let sb_thumb_h = ((MAX_RESULT_VIS as f32 / wrapped.len().max(MAX_RESULT_VIS) as f32).min(1.0)
+    let sb_thumb_h = ((MAX_RESULT_VIS as f32 / all_lines.len().max(MAX_RESULT_VIS) as f32).min(1.0)
         * sb_h as f32)
         .max(1.0) as usize;
     let sb_thumb_y = if max_scroll == 0 {
@@ -379,7 +446,7 @@ fn render_tool_result_lines(
     visible
         .iter()
         .enumerate()
-        .map(|(i, line)| {
+        .map(|(i, (line_type, line))| {
             let right = if has_overflow
                 && i >= sb_thumb_y
                 && i < sb_thumb_y + sb_thumb_h
@@ -388,7 +455,11 @@ fn render_tool_result_lines(
             } else {
                 None
             };
-            Line::from(Span::styled(box_content_line(line, width, right), st))
+            let color = diff_line_color(*line_type);
+            Line::from(Span::styled(
+                box_content_line(line, width, right),
+                Style::default().fg(color),
+            ))
         })
         .collect()
 }
