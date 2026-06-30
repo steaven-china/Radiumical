@@ -90,6 +90,10 @@ async fn run_task(
                         serde_json::json!({ "message": message, "level": level }),
                     );
                 }
+                radiumical_core::types::UiEvent::TitleGenerated(title) => {
+                    let _ = handle.emit("session-title", title);
+                }
+                _ => {}
             }
         }
     });

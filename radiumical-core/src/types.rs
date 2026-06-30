@@ -804,6 +804,27 @@ pub enum UiEvent {
         level: String,
         duration_secs: u64,
     },
+    TitleGenerated(String),
+    SubAgentDone {
+        id: String,
+        success: bool,
+    },
+    McpStatus {
+        name: String,
+        alive: bool,
+        tool_count: usize,
+    },
+    PlanUpdated {
+        title: String,
+        tasks: Vec<PlanTaskUpdate>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct PlanTaskUpdate {
+    pub id: u32,
+    pub title: String,
+    pub status: crate::orchestrator::TaskStatus,
 }
 
 #[derive(Debug, Clone)]

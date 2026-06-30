@@ -29,47 +29,101 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(output_h), Constraint::Length(bottom_h)])
         .split(area);
     draw_output(f, chunks[0], app, chunks[0].height as usize);
-    // Help overlay on welcome screen (bottom-right of output area)
-    if app.welcome && app.show_help_overlay && chunks[0].height > 12 {
-        let mut stack = crate::board::BoardStack::new();
-        let lines = draw_help_overlay_lines();
-        app.help_board
-            .render_stacked(f, chunks[0], Text::from(lines), &mut stack);
-    }
-    if app.dashboard.visible {
-        app.dashboard.render(f, chunks[0]);
-    }
-    if app.show_model_picker {
-        let mut stack = crate::board::BoardStack::new();
-        if app.welcome && app.show_help_overlay && chunks[0].height > 12 {
-            // Push help board first so provider picker stacks above it
-            let _ = stack.push(
-                crate::board::Corner::BottomRight,
-                app.help_board.w,
-                app.help_board.h,
-                chunks[0],
-            );
+
+    // ── Panel-driven floating overlays (no overlap) ──
+    // Sync panel state from legacy flags.
+    sync_panels(app);
+    let slots = app.panels.layout(chunks[0]);
+    for slot in &slots {
+        let title = slot.id.title();
+        let border = match slot.id {
+            crate::panel::PanelId::Confirm => Color::Yellow,
+            crate::panel::PanelId::Perf => Color::Rgb(100, 100, 110),
+            _ => Color::Cyan,
+        };
+        let bg = match slot.id {
+            crate::panel::PanelId::Perf => Color::Rgb(15, 15, 20),
+            _ => Color::Rgb(20, 20, 25),
+        };
+
+        let inner = Rect {
+            x: slot.rect.x + 1,
+            y: slot.rect.y + 1,
+            width: slot.rect.width.saturating_sub(2),
+            height: slot.rect.height.saturating_sub(2),
+        };
+
+        match slot.id {
+            crate::panel::PanelId::Confirm => {
+                app.confirm.render_at(f, slot.rect);
+            }
+            crate::panel::PanelId::Perf => {
+                draw_perf_overlay_at(f, slot.rect);
+            }
+            crate::panel::PanelId::Dashboard => {
+                app.dashboard.render_at(f, slot.rect);
+            }
+            crate::panel::PanelId::ProviderPicker => {
+                app.provider_picker.render_at(f, slot.rect);
+            }
+            crate::panel::PanelId::Settings => {
+                app.settings_board.render_at(f, slot.rect);
+            }
+            crate::panel::PanelId::Help => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                let lines = draw_help_overlay_lines();
+                f.render_widget(
+                    Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
+                    inner,
+                );
+            }
+            crate::panel::PanelId::SubAgents => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                crate::panels::subagents::render(f, slot);
+            }
+            crate::panel::PanelId::Mcp => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                crate::panels::mcp_status::render(f, slot, &app.mcp_servers);
+            }
+            crate::panel::PanelId::Outline => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+            }
+            crate::panel::PanelId::Diagnostics => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+            }
+            crate::panel::PanelId::Memory => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+            }
+            crate::panel::PanelId::Plan => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                crate::panels::plan::render_plan_panel(
+                    f,
+                    slot,
+                    &app.plan_title,
+                    &app.plan_tasks,
+                );
+            }
+            crate::panel::PanelId::Agents => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                crate::panels::agents::render_agents_panel(
+                    f,
+                    slot,
+                    &app.agents_list,
+                    &app.agent_role,
+                );
+            }
+            _ => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+            }
         }
-        if app.dashboard.visible {
-            // Push dashboard area so provider picker stacks above it
-            let dw = (chunks[0].width as f32 * 0.65) as u16;
-            let dh = (chunks[0].height as f32 * 0.65) as u16;
-            let dx = (chunks[0].width - dw) / 2;
-            let dy = (chunks[0].height - dh) / 2;
-            let _ = stack.push(
-                crate::board::Corner::TopLeft,
-                dw,
-                dh,
-                Rect {
-                    x: chunks[0].x + dx,
-                    y: chunks[0].y + dy,
-                    width: dw,
-                    height: dh,
-                },
-            );
-        }
-        app.provider_picker.render_stacked(f, chunks[0], &mut stack);
     }
+
+    // ── Modal overlays (always on top of everything) ──
+    if app.session_tui.visible {
+        app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
+    }
+
+    // Bottom: input, hints, status
     let bottom = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
@@ -81,8 +135,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         )
         .split(chunks[1]);
     draw_input(f, bottom[0], app);
-    // Render toasts at top-center (stacked vertically)
-    let mut toast_y = 0u16;
+
+    // Toasts at top-center, offset below any top-occupied panels
+    let top_offset = app.panels.top_occupied_bottom(chunks[0]).saturating_sub(chunks[0].y);
+    let mut toast_y = top_offset;
     for toast in &app.toasts {
         if !toast.is_expired() {
             let w = (toast.message.len() as u16 + 4).min(area.width - 4);
@@ -107,32 +163,41 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
     }
     app.toasts.retain(|t| !t.is_expired());
-    // Progress bar at top-right
-    app.progress.render(f, area);
-    // Perf overlay at top-right
-    if app.perf_visible {
-        draw_perf_overlay(f, area, app);
-    }
-    // Session list popup
-    if app.session_list_visible {
-        app.session_list.render(f, chunks[0]);
-    }
-    // Session manager overlay
-    if app.session_tui.visible {
-        app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
-    }
 
-    // Render confirm dialog
-    app.confirm.render(f, area);
-    // Settings panel
-    if app.settings_visible {
-        app.settings_board.render(f, area);
-    }
+    app.progress.render(f, area);
+
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
         let selected = app.hint_selected == Some(hint_page_start + i);
         draw_hint_row(f, bottom[1 + i], n, d, selected);
     }
     draw_status(f, bottom[bottom.len() - 1], app);
+}
+
+/// Sync PanelManager from legacy boolean flags.
+fn sync_panels(app: &mut App) {
+    use crate::panel::PanelId;
+    let flags = [
+        (PanelId::Dashboard, app.dashboard.visible),
+        (PanelId::ProviderPicker, app.show_model_picker),
+        (PanelId::Settings, app.settings_visible),
+        (PanelId::Help, app.welcome && app.show_help_overlay),
+        (PanelId::Confirm, app.confirm.visible),
+        (PanelId::Perf, app.perf_visible),
+        (PanelId::Outline, app.outline_visible),
+        (PanelId::Diagnostics, app.diagnostics_visible),
+        (PanelId::Memory, app.memory_visible),
+        (PanelId::SubAgents, app.subagents_panel_visible),
+        (PanelId::Mcp, app.mcp_panel_visible),
+        (PanelId::Plan, app.plan_visible),
+        (PanelId::Agents, app.agents_panel_visible),
+    ];
+    for (id, visible) in flags {
+        if visible && !app.panels.is_open(id) {
+            app.panels.open(id);
+        } else if !visible && app.panels.is_open(id) {
+            app.panels.close(id);
+        }
+    }
 }
 
 fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
@@ -186,12 +251,12 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
                     expanded: want,
                     result_scroll: scroll,
                 };
-                // collapsed: top+args+bottom = 3
-                // expanded with result: 3 + separator(1) + visible(N) = 4 + N
+                // collapsed: top+args+bottom+hint = 4
+                // expanded with result: top+args+sep(N)+bottom+hint = 5 + N
                 block.height = if want && visible_count > 0 {
-                    4 + visible_count
+                    5 + visible_count
                 } else {
-                    3
+                    4
                 };
             }
         }
@@ -381,15 +446,8 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     );
 }
 
-fn draw_perf_overlay(f: &mut Frame, area: Rect, _app: &App) {
+fn draw_perf_overlay_at(f: &mut Frame, r: Rect) {
     let report = radiumical_core::perf::report();
-    let w = (report.len() + 4).min(area.width as usize - 4) as u16;
-    let r = Rect {
-        x: area.x + area.width - w - 2,
-        y: area.y + 1,
-        width: w,
-        height: 1,
-    };
     f.render_widget(
         Paragraph::new(report).style(
             Style::default()
@@ -450,11 +508,47 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
     use unicode_width::UnicodeWidthStr;
 
     let style = Style::default().fg(Color::Rgb(130, 130, 130));
+    let dim_style = Style::default().fg(Color::Rgb(100, 100, 110));
     let left = if app.thinking {
         let bar = PULSE[app.thinking_frame % PULSE.len()];
-        format!(" {} thinking {}s", bar, app.thinking_elapsed)
+        Line::from(vec![
+            Span::styled(
+                format!(" {} thinking {}s", bar, app.thinking_elapsed),
+                style,
+            ),
+            Span::styled(" (Esc to cancel)", dim_style),
+        ])
+    } else if let Some(ref title) = app.session_title {
+        let mode = match app.mode {
+            AgentMode::Auto => "Auto",
+            AgentMode::Plan => "Plan",
+            AgentMode::Exec => "Exec",
+        };
+        let right_text = format!("{} | {}", app.model, mode);
+        let right_len = right_text.width() + 2;
+        let right_w = right_len.min(area.width.saturating_sub(8) as usize).max(8) as u16;
+        let avail = area.width.saturating_sub(right_w).saturating_sub(2) as usize;
+        let title_w = title.width();
+        let display = if title_w > avail {
+            let target = avail.saturating_sub(1);
+            let mut truncated = String::new();
+            let mut w = 0;
+            for ch in title.chars() {
+                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                if w + cw > target {
+                    break;
+                }
+                truncated.push(ch);
+                w += cw;
+            }
+            truncated.push('\u{2026}');
+            truncated
+        } else {
+            title.clone()
+        };
+        Line::from(Span::styled(format!(" {display}"), style))
     } else {
-        "Ready".into()
+        Line::from(Span::styled("Ready", style))
     };
     let mode = match app.mode {
         AgentMode::Auto => "Auto",
@@ -470,7 +564,7 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Min(8), Constraint::Length(right_w)])
         .split(area);
 
-    f.render_widget(Paragraph::new(left).style(style), chunks[0]);
+    f.render_widget(Paragraph::new(left), chunks[0]);
     f.render_widget(
         Paragraph::new(right_text)
             .style(style)

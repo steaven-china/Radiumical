@@ -216,7 +216,7 @@ impl App {
                 }
             }
             UiEvent::Error(e) => {
-                self.output.push(format!("  {e}"));
+                self.output.push(format!("\x03  \u{2717} Error: {e}"));
                 self.thinking = false;
                 self.session_items.push(SessionItem::Raw { lines: vec![e] });
             }
@@ -262,6 +262,9 @@ impl App {
                 self.available_models = models.clone();
                 self.provider_picker.set_models(models);
             }
+            UiEvent::TitleGenerated(title) => {
+                self.session_title = Some(title);
+            }
             UiEvent::Toast {
                 message,
                 level,
@@ -277,6 +280,40 @@ impl App {
                     lvl,
                     std::time::Duration::from_secs(duration_secs),
                 ));
+            }
+            UiEvent::SubAgentDone { id, success } => {
+                let (msg, lvl) = if success {
+                    (
+                        format!("Sub-agent '{id}' completed"),
+                        crate::board::ToastLevel::Info,
+                    )
+                } else {
+                    (
+                        format!("Sub-agent '{id}' failed"),
+                        crate::board::ToastLevel::Error,
+                    )
+                };
+                self.toasts.push(crate::board::Toast::new(
+                    msg,
+                    lvl,
+                    std::time::Duration::from_secs(5),
+                ));
+            }
+            UiEvent::McpStatus {
+                name: _,
+                alive: _,
+                tool_count: _,
+            } => {}
+            UiEvent::PlanUpdated { title, tasks } => {
+                self.plan_title = title;
+                self.plan_tasks = tasks
+                    .into_iter()
+                    .map(|t| crate::panels::plan::PlanTask {
+                        id: t.id,
+                        title: t.title,
+                        status: t.status,
+                    })
+                    .collect();
             }
         }
     }

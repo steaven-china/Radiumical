@@ -45,6 +45,7 @@ impl App {
                 self.session_items.clear();
                 self.render_cache.clear();
                 self.render_cache_order.clear();
+                self.session_title = None;
                 self.markdown = crate::markdown::MarkdownRenderer::new();
                 self.full_reasoning.clear();
                 self.show_full_reasoning = false;
@@ -101,9 +102,13 @@ impl App {
             "/settings" | "/config" => {
                 if !self.settings_board.visible {
                     self.settings_board.visible = true;
+                    self.settings_visible = true;
+                    self.panels.open(crate::panel::PanelId::Settings);
                 } else {
                     self.commit_settings();
                     self.settings_board.visible = false;
+                    self.settings_visible = false;
+                    self.panels.close(crate::panel::PanelId::Settings);
                 }
                 self.input.clear();
                 self.cursor = 0;
@@ -117,6 +122,91 @@ impl App {
                     .cmd_tx
                     .blocking_send(BackendCmd::SetMode(radiumical_core::types::AgentMode::Plan));
                 self.output.push("  Plan mode".into());
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/plan vis" => {
+                self.plan_visible = !self.plan_visible;
+                if self.plan_visible {
+                    self.panels.open(crate::panel::PanelId::Plan);
+                    self.output.push("> /plan vis".into());
+                    self.output.push("  Plan panel opened".into());
+                } else {
+                    self.panels.close(crate::panel::PanelId::Plan);
+                    self.output.push("> /plan vis".into());
+                    self.output.push("  Plan panel closed".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/plan show" => {
+                self.output.push("> /plan show".into());
+                if self.plan_tasks.is_empty() {
+                    self.output.push("  No plan active.".into());
+                } else {
+                    self.output.push(format!("# {}", self.plan_title));
+                    let total = self.plan_tasks.len();
+                    let done = self.plan_tasks.iter().filter(|t| t.status == radiumical_core::orchestrator::TaskStatus::Done).count();
+                    self.output.push(format!("  progress: {}/{} done", done, total));
+                    self.output.push(String::new());
+                    for task in &self.plan_tasks {
+                        let icon = task.status.icon();
+                        self.output.push(format!("  {} #{} {}", icon, task.id, task.title));
+                    }
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/agents" => {
+                self.agents_panel_visible = !self.agents_panel_visible;
+                if self.agents_panel_visible {
+                    self.agents_list = radiumical_core::agent_pool::load_agents();
+                    self.panels.open(crate::panel::PanelId::Agents);
+                    self.output.push("> /agents".into());
+                    self.output.push("  Agent roles panel opened".into());
+                } else {
+                    self.panels.close(crate::panel::PanelId::Agents);
+                    self.output.push("> /agents".into());
+                    self.output.push("  Agent roles panel closed".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            _ if task.starts_with("/agents ") => {
+                let name = task[8..].trim();
+                match radiumical_core::agent_pool::get_agent(name) {
+                    Some(agent) => {
+                        self.agent_role = agent.name.clone();
+                        let agent_mode = agent.mode.to_agent_mode();
+                        self.mode = agent_mode.clone();
+                        let _ = self.cmd_tx.blocking_send(BackendCmd::SetMode(agent_mode));
+                        self.toasts.push(crate::board::Toast::new(
+                            format!("Switched to: {}", agent.name),
+                            crate::board::ToastLevel::Info,
+                            std::time::Duration::from_secs(3),
+                        ));
+                        self.output.push(format!("> /agents {}", name));
+                        self.output.push(format!("  Role: {} ({})", agent.name, agent.description));
+                    }
+                    None => {
+                        self.output.push(format!("  Agent not found: {name}"));
+                        let available = radiumical_core::agent_pool::load_agents();
+                        let names: Vec<&str> = available.iter().map(|a| a.name.as_str()).collect();
+                        self.output.push(format!("  Available: {}", names.join(", ")));
+                    }
+                }
                 self.output.push(String::new());
                 self.input.clear();
                 self.cursor = 0;
@@ -150,12 +240,12 @@ impl App {
             _ if task == "/sessions" || task == "/session tui" => {
                 if let Ok(sessions) = self.session_pool.list() {
                     self.session_tui.open(sessions, None, None);
-                    // Pre-fill with the most recent session name if available.
                     if let Some(first) = self.session_tui.sessions.first() {
                         self.session_tui.name_buffer = first.name.clone();
                         self.session_tui.desc_buffer = first.description.clone();
                     }
                 }
+                self.panels.open(crate::panel::PanelId::SessionList);
                 self.input.clear();
                 self.cursor = 0;
                 self.hints.clear();
@@ -353,6 +443,117 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
+            "/outline" | "/lint" | "/diagnostics" => {
+                self.output.push("  Command not yet implemented.".into());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                self.output.push(String::new());
+                return;
+            }
+            _ if task == "/memory" => {
+                self.output.push("> /memory".into());
+                let mem = &self.memory;
+                let mut show = |label: &str, entries: &[radiumical_core::memory::MemoryEntry]| {
+                    if entries.is_empty() {
+                        return;
+                    }
+                    self.output.push(format!("  [{label}]"));
+                    for (i, e) in entries.iter().enumerate() {
+                        let tags = if e.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" [{}]", e.tags.join(", "))
+                        };
+                        self.output.push(format!("    {i}: {}{}", e.content, tags));
+                    }
+                };
+                show("core", &mem.core);
+                show("mino", &mem.mino);
+                show("short", &mem.short);
+                if mem.core.is_empty() && mem.mino.is_empty() && mem.short.is_empty() {
+                    self.output.push("  No memories stored.".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            _ if task.starts_with("/memory search ") => {
+                let query = task[15..].trim();
+                self.output.push(format!("> /memory search {query}"));
+                let results = self.memory.search(query);
+                if results.is_empty() {
+                    self.output.push("  No matches found.".into());
+                } else {
+                    for (tier, entry) in &results {
+                        let tags = if entry.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" [{}]", entry.tags.join(", "))
+                        };
+                        self.output
+                            .push(format!("  [{}] {}{}", tier, entry.content, tags));
+                    }
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            _ if task.starts_with("/memory clear ") => {
+                let tier = task[14..].trim();
+                self.output.push(format!("> /memory clear {tier}"));
+                match self.memory.clear(tier) {
+                    Ok(()) => self.output.push(format!("  [{tier}] Cleared.")),
+                    Err(e) => self.output.push(format!("  Error: {e}")),
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/subagents" => {
+                self.subagents_panel_visible = !self.subagents_panel_visible;
+                if self.subagents_panel_visible {
+                    self.panels.open(crate::panel::PanelId::SubAgents);
+                } else {
+                    self.panels.close(crate::panel::PanelId::SubAgents);
+                }
+                self.output.push("> /subagents".into());
+                if self.subagents_panel_visible {
+                    self.output.push("  Sub-agents panel opened".into());
+                } else {
+                    self.output.push("  Sub-agents panel closed".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/mcp" => {
+                self.mcp_panel_visible = !self.mcp_panel_visible;
+                if self.mcp_panel_visible {
+                    self.panels.open(crate::panel::PanelId::Mcp);
+                } else {
+                    self.panels.close(crate::panel::PanelId::Mcp);
+                }
+                self.output.push("> /mcp".into());
+                if self.mcp_panel_visible {
+                    self.output.push("  MCP servers panel opened".into());
+                } else {
+                    self.output.push("  MCP servers panel closed".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
             "/debug linevis" => {
                 self.output.push("> /debug linevis".into());
                 self.output.push(format!(
@@ -372,15 +573,29 @@ impl App {
                 let rest = task[10..].trim();
                 let parts: Vec<&str> = rest.splitn(2, ' ').collect();
                 let tier = parts.first().copied().unwrap_or("short");
-                let content = parts.get(1).copied().unwrap_or("");
-                match radiumical_core::memory::Memory::load().and_then(|mut m| {
-                    m.add(tier, content)?;
-                    m.save()
-                }) {
-                    Ok(()) => self
-                        .output
-                        .push(format!("  [{tier}] Remembered: {content}")),
-                    Err(e) => self.output.push(format!("  Memory error: {e}")),
+                let after_tier = parts.get(1).copied().unwrap_or("");
+                let segments: Vec<&str> = after_tier.split(" --tag ").collect();
+                let content = segments[0];
+                let tags: Vec<&str> = segments[1..].iter().map(|s| *s).collect();
+                if !matches!(tier, "core" | "mino" | "short") {
+                    self.output.push(format!(
+                        "  Invalid tier: '{tier}'. Use core, mino, or short."
+                    ));
+                } else if content.is_empty() {
+                    self.output.push("  Usage: /remember <tier> <content> [--tag t1]".into());
+                } else {
+                    match self.memory.add(tier, content, &tags) {
+                        Ok(()) => {
+                            let tag_str = if tags.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" [{}]", tags.join(", "))
+                            };
+                            self.output
+                                .push(format!("  [{tier}] Remembered: {content}{tag_str}"));
+                        }
+                        Err(e) => self.output.push(format!("  Memory error: {e}")),
+                    }
                 }
                 self.input.clear();
                 self.cursor = 0;
@@ -453,12 +668,22 @@ impl App {
             }
             "/provider" => {
                 self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
+                if self.show_model_picker {
+                    self.panels.open(crate::panel::PanelId::ProviderPicker);
+                } else {
+                    self.panels.close(crate::panel::PanelId::ProviderPicker);
+                }
                 self.input.clear();
                 self.cursor = 0;
                 return;
             }
             _ if task == "/models" => {
                 self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
+                if self.show_model_picker {
+                    self.panels.open(crate::panel::PanelId::ProviderPicker);
+                } else {
+                    self.panels.close(crate::panel::PanelId::ProviderPicker);
+                }
                 if self.show_model_picker && self.available_models.len() <= 1 {
                     let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
                     self.output.push("> /models".into());
