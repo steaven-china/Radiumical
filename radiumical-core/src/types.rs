@@ -633,6 +633,64 @@ pub struct ToolResult {
     pub is_error: bool,
 }
 
+/// Sanitize messages for providers that strictly require tool_calls → tool_results pairing.
+///
+/// DeepSeek (and some other providers) return HTTP 400 if an assistant message with
+/// `tool_calls` is not immediately followed by tool result messages for each call_id.
+/// This function fixes orphaned tool_calls by either:
+/// - Preserving correctly paired sequences
+/// - Removing tool_calls from assistant messages whose results are missing
+pub fn sanitize_tool_messages(messages: &mut Vec<Message>) {
+    // Collect all tool_call_ids that have corresponding tool results.
+    let result_ids: std::collections::HashSet<String> = messages
+        .iter()
+        .filter(|m| m.role == Role::Tool)
+        .filter_map(|m| m.tool_call_id.clone())
+        .collect();
+
+    for msg in messages.iter_mut() {
+        if msg.role == Role::Assistant {
+            if let Some(calls) = &msg.tool_calls {
+                // Check if ALL calls in this message have results.
+                let all_present = calls.iter().all(|c| result_ids.contains(&c.id));
+                if !all_present {
+                    // Remove orphaned tool_calls — keep only those with results.
+                    let kept: Vec<ToolCall> = calls
+                        .iter()
+                        .filter(|c| result_ids.contains(&c.id))
+                        .cloned()
+                        .collect();
+                    if kept.is_empty() {
+                        msg.tool_calls = None;
+                    } else {
+                        msg.tool_calls = Some(kept);
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove orphan tool result messages (no matching tool_call).
+    let call_ids: std::collections::HashSet<String> = messages
+        .iter()
+        .filter(|m| m.role == Role::Assistant)
+        .filter_map(|m| m.tool_calls.as_ref())
+        .flatten()
+        .map(|c| c.id.clone())
+        .collect();
+
+    messages.retain(|m| {
+        if m.role == Role::Tool {
+            m.tool_call_id
+                .as_ref()
+                .map(|id| call_ids.contains(id))
+                .unwrap_or(false)
+        } else {
+            true
+        }
+    });
+}
+
 // ── Provider response ──
 
 #[derive(Debug, Clone)]

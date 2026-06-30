@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DiagnosticItem {
     pub file: String,
@@ -12,6 +13,7 @@ pub struct DiagnosticItem {
     pub message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosticSeverity {
     Error,
@@ -19,6 +21,7 @@ pub enum DiagnosticSeverity {
     Info,
 }
 
+#[allow(dead_code)]
 pub fn parse_diagnostics(raw: &str) -> Vec<DiagnosticItem> {
     let mut items = Vec::new();
     for line in raw.lines() {
@@ -53,6 +56,7 @@ pub fn parse_diagnostics(raw: &str) -> Vec<DiagnosticItem> {
     items
 }
 
+#[allow(dead_code)]
 pub fn render_diagnostics_panel(
     f: &mut Frame,
     area: Rect,

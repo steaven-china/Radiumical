@@ -12,11 +12,13 @@ use radiumical_core::providers::ProviderSource;
 
 // ── Board stack: auto-positions boards so they don't overlap ──
 
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct BoardStack {
     boards: Vec<(Corner, u16, u16, u16)>, // (corner, x_offset, y_offset, height)
 }
 
+#[allow(dead_code)]
 impl BoardStack {
     pub fn new() -> Self {
         Self::default()
@@ -55,6 +57,7 @@ impl BoardStack {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Corner {
     TopLeft,
@@ -163,6 +166,7 @@ impl BoardState {
     }
 
     /// Render with auto-stacking (no overlap with other boards at same corner).
+    #[allow(dead_code)]
     pub fn render_stacked(&self, f: &mut Frame, area: Rect, content: Text, stack: &mut BoardStack) {
         if !self.visible {
             return;
@@ -254,6 +258,7 @@ impl Toast {
         std::time::Instant::now() > self.expires
     }
 
+    #[allow(dead_code)]
     pub fn render(&self, f: &mut Frame, area: Rect) {
         let color = match self.level {
             ToastLevel::Info => Color::Cyan,
@@ -277,6 +282,7 @@ impl Toast {
 
 // ── ListBoard: selectable item list ──
 
+#[allow(dead_code)]
 pub struct ListBoard {
     pub items: Vec<String>,
     pub selected: usize,
@@ -284,6 +290,7 @@ pub struct ListBoard {
     pub visible: bool,
 }
 
+#[allow(dead_code)]
 impl ListBoard {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
@@ -361,8 +368,11 @@ pub struct ProviderPicker {
     pub focus_providers: bool,
     pub title: String,
     pub visible: bool,
+    #[allow(dead_code)]
     pub w: u16,
+    #[allow(dead_code)]
     pub h: u16,
+    #[allow(dead_code)]
     pub corner: Corner,
 }
 
@@ -443,6 +453,7 @@ impl ProviderPicker {
         self.visible = false;
     }
 
+    #[allow(dead_code)]
     pub fn render_stacked(&self, f: &mut Frame, area: Rect, stack: &mut BoardStack) {
         if !self.visible {
             return;
@@ -623,10 +634,12 @@ impl ConfirmBoard {
         }
     }
 
+    #[allow(dead_code)]
     pub fn toggle(&mut self) {
         self.yes_selected = !self.yes_selected;
     }
 
+    #[allow(dead_code)]
     pub fn render(&self, f: &mut Frame, area: Rect) {
         if !self.visible {
             return;
@@ -740,6 +753,7 @@ impl Board {
     }
 
     /// Floating overlay at a corner.
+    #[allow(dead_code)]
     pub fn overlay(mut self, corner: Corner, w: u16, h: u16) -> Self {
         self.overlay = Some((corner, w, h));
         self

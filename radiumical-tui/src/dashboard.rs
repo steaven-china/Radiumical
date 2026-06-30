@@ -115,6 +115,7 @@ impl Dashboard {
         })
     }
 
+    #[allow(dead_code)]
     pub fn render(&self, f: &mut Frame, area: Rect) {
         if !self.visible {
             return;

@@ -176,11 +176,9 @@ impl SettingsBoard {
                 },
                 SettingItem {
                     label: "Max context tokens".into(),
-                    kind: SettingKind::Usize {
-                        value: max_context_tokens,
-                        min: 10000,
-                        max: 2000000,
-                        step: 10000,
+                    kind: SettingKind::String {
+                        value: max_context_tokens.to_string(),
+                        mask: false,
                     },
                 },
                 SettingItem {
@@ -256,8 +254,10 @@ impl SettingsBoard {
                     }
                 }
                 "Max context tokens" => {
-                    if let SettingKind::Usize { value, .. } = &item.kind {
-                        config.max_context_tokens = Some(*value);
+                    if let SettingKind::String { value, .. } = &item.kind {
+                        if let Ok(v) = value.parse::<usize>() {
+                            config.max_context_tokens = Some(v.max(10000));
+                        }
                     }
                 }
                 "Context compress ratio" => {
@@ -459,6 +459,7 @@ impl SettingsBoard {
         let _ = config.save();
     }
 
+    #[allow(dead_code)]
     pub fn render(&self, f: &mut Frame, area: Rect) {
         if !self.visible {
             return;
@@ -590,7 +591,7 @@ impl SettingsBoard {
             .border_type(BorderType::Rounded)
             .title(" Settings ")
             .border_style(Style::default().fg(Color::Rgb(100, 160, 220)));
-        let inner = r.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
+        let _inner = r.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
         let max_label = label_w as usize;
         let lines: Vec<Line> = self
             .items

@@ -376,9 +376,13 @@ impl Harness {
             }
 
             // ── 1. LLM call ──
+            // Sanitize messages: remove orphaned tool_calls that have no result.
+            // DeepSeek (and some other providers) return 400 if tool_calls are
+            // not followed by corresponding tool result messages.
+            let mut msgs = messages.clone();
+            crate::types::sanitize_tool_messages(&mut msgs);
             let (tx, mut rx) = tokio::sync::mpsc::channel(256);
             let provider = Arc::clone(&self.provider);
-            let msgs = messages.clone();
             let defs = all_tool_defs.clone();
 
             let chat_handle = tokio::spawn(async move { provider.chat(&msgs, &defs, tx).await });

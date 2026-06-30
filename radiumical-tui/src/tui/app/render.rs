@@ -29,6 +29,7 @@ impl App {
         self.output.push(String::new());
     }
 
+    #[allow(dead_code)]
     pub(crate) fn show_settings(&mut self) {
         self.output.push("".into());
         self.output

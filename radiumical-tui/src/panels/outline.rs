@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+#[allow(dead_code)]
 pub fn render_outline_panel(
     f: &mut Frame,
     area: Rect,

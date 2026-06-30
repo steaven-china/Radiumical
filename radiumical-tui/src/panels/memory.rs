@@ -4,12 +4,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct MemoryPanelState {
     pub tier_idx: usize,
     pub entry_idx: usize,
 }
 
+#[allow(dead_code)]
 impl MemoryPanelState {
     pub fn select_next(&mut self, memory: &radiumical_core::memory::Memory) {
         let tier_entries = self.current_tier_entries(memory);
@@ -55,6 +57,7 @@ impl MemoryPanelState {
     }
 }
 
+#[allow(dead_code)]
 pub fn render_memory_panel(
     f: &mut Frame,
     area: Rect,

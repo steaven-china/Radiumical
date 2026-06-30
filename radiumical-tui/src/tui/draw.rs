@@ -122,6 +122,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.session_tui.visible {
         app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
     }
+    app.choice_panel.render(f, chunks[0]);
 
     // Bottom: input, hints, status
     let bottom = Layout::default()
@@ -251,8 +252,8 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
                     expanded: want,
                     result_scroll: scroll,
                 };
-                // collapsed: top+args+bottom+hint = 4
-                // expanded with result: top+args+sep(N)+bottom+hint = 5 + N
+                // collapsed: top(1)+args(1)+bottom(1)+hint(1) = 4
+                // expanded:  top(1)+args(1)+sep(1)+results(N)+bottom(1)+hint(1) = 5 + N
                 block.height = if want && visible_count > 0 {
                     5 + visible_count
                 } else {

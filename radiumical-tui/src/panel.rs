@@ -157,6 +157,7 @@ impl PanelManager {
         self.positions.remove(&id);
     }
 
+    #[allow(dead_code)]
     pub fn close_all(&mut self) {
         self.open.clear();
         self.positions.clear();
@@ -167,14 +168,17 @@ impl PanelManager {
         self.open.contains(&id)
     }
 
+    #[allow(dead_code)]
     pub fn has_any(&self) -> bool {
         !self.open.is_empty()
     }
 
+    #[allow(dead_code)]
     pub fn count(&self) -> usize {
         self.open.len()
     }
 
+    #[allow(dead_code)]
     pub fn open_ids(&self) -> &[PanelId] {
         &self.open
     }
@@ -419,6 +423,7 @@ impl PanelManager {
     }
 
     /// Check if a click is on the close button of a specific panel.
+    #[allow(dead_code)]
     pub fn is_close_click(&self, mouse_x: u16, mouse_y: u16, slot: &PanelSlot) -> bool {
         let r = slot.rect;
         let btn_x = r.x + r.width.saturating_sub(4);
@@ -427,6 +432,7 @@ impl PanelManager {
     }
 
     /// Check if a click is on the title bar of a specific panel (for drag).
+    #[allow(dead_code)]
     pub fn is_title_bar_click(&self, mouse_x: u16, mouse_y: u16, slot: &PanelSlot) -> bool {
         let r = slot.rect;
         let btn_x = r.x + r.width.saturating_sub(4);

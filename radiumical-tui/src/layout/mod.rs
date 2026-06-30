@@ -211,7 +211,8 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                     result_scroll: 0,
                 },
                 source_lines: source,
-                height: 3,
+                // collapsed: top(1) + args(1) + bottom(1) + hint(1) = 4
+                height: 4,
             });
             continue;
         }

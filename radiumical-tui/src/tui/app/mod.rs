@@ -36,7 +36,7 @@ pub struct App {
     pub session_items: Vec<radiumical_core::session::SessionItem>,
     pub session_pool: radiumical_core::session::SessionPool,
     pub memory: radiumical_core::memory::Memory,
-    pub pending_choice: Option<(String, String, Vec<String>)>,
+    pub choice_panel: crate::choice_panel::ChoicePanel,
     pub should_quit: bool,
     pub history: Vec<String>,
     pub history_idx: Option<usize>,
@@ -81,12 +81,17 @@ pub struct App {
     pub mcp_panel_visible: bool,
     pub mcp_servers: Vec<crate::panels::mcp_status::McpServerStatus>,
     pub outline_visible: bool,
+    #[allow(dead_code)]
     pub outline_data: Option<String>,
+    #[allow(dead_code)]
     pub outline_scroll: usize,
     pub diagnostics_visible: bool,
+    #[allow(dead_code)]
     pub diagnostics: Vec<crate::panels::diagnostics::DiagnosticItem>,
+    #[allow(dead_code)]
     pub diagnostics_scroll: usize,
     pub memory_visible: bool,
+    #[allow(dead_code)]
     pub memory_panel_state: crate::panels::memory::MemoryPanelState,
     pub plan_visible: bool,
     pub plan_title: String,
@@ -220,7 +225,7 @@ impl App {
             session_items: Vec::new(),
             session_pool: radiumical_core::session::SessionPool::for_workspace(workspace),
             memory: radiumical_core::memory::Memory::for_workspace(workspace),
-            pending_choice: None,
+            choice_panel: crate::choice_panel::ChoicePanel::new(),
         }
     }
 

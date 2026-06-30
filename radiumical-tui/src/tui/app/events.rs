@@ -224,28 +224,7 @@ impl App {
                 self.thinking = false;
             }
             UiEvent::Choice { id, mode, options } => {
-                self.pending_choice = Some((id, mode.clone(), options.clone()));
-                self.output.push(String::new());
-                self.output.push(format!("  ◆ Choice ({mode})"));
-                if mode == "input" {
-                    if let Some(prompt) = options.first() {
-                        self.output.push(format!("  {prompt}"));
-                    }
-                    self.output
-                        .push("  Type your answer and press Enter".into());
-                } else {
-                    for (i, opt) in options.iter().enumerate() {
-                        self.output.push(format!("    {}. {opt}", i + 1));
-                    }
-                    let sep = if mode == "multi" {
-                        "comma-separated"
-                    } else {
-                        "a"
-                    };
-                    self.output.push(format!("  Enter {sep} number:"));
-                }
-                self.output.push(String::new());
-                self.stick_to_bottom = true;
+                self.choice_panel.open(id, &mode, options);
             }
             UiEvent::ProvidersLoaded(sources) => {
                 let first = sources.first().cloned();

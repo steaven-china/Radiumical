@@ -1,4 +1,5 @@
 mod board;
+mod choice_panel;
 mod dashboard;
 mod layout;
 mod markdown;

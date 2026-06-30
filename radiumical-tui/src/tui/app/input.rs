@@ -50,6 +50,10 @@ impl App {
                 }
             }
             (KeyCode::Up, _) => {
+                if self.choice_panel.visible {
+                    self.choice_panel.select_prev();
+                    return;
+                }
                 if self.session_tui.visible {
                     self.session_tui.select_prev();
                     return;
@@ -80,6 +84,10 @@ impl App {
                 }
             }
             (KeyCode::Down, _) => {
+                if self.choice_panel.visible {
+                    self.choice_panel.select_next();
+                    return;
+                }
                 if self.session_tui.visible {
                     self.session_tui.select_next();
                     return;
@@ -119,15 +127,13 @@ impl App {
                     self.handle_session_tui_enter();
                     return;
                 }
-                if let Some((id, _mode, _opts)) = self.pending_choice.take() {
-                    let value = self.input.trim().to_string();
+                if self.choice_panel.visible {
+                    let response = self.choice_panel.get_response();
+                    let id = self.choice_panel.id.clone();
+                    self.choice_panel.close();
                     let _ = self
                         .cmd_tx
-                        .blocking_send(crate::tui::BackendCmd::ChoiceResponse { id, value });
-                    self.input.clear();
-                    self.cursor = 0;
-                    self.hints.clear();
-                    self.stick_to_bottom = true;
+                        .blocking_send(crate::tui::BackendCmd::ChoiceResponse { id, value: response });
                     return;
                 }
                 if self.input.trim() == "//" {
@@ -213,6 +219,20 @@ impl App {
                 self.update_hints();
             }
             (KeyCode::Backspace, _) if self.cursor > 0 => {
+                if self.choice_panel.visible {
+                    if self.choice_panel.input_cursor > 0 {
+                        let prev = self
+                            .choice_panel
+                            .input_buffer
+                            .char_indices()
+                            .nth(self.choice_panel.input_cursor - 1)
+                            .map(|(i, c)| i + c.len_utf8())
+                            .unwrap_or(0);
+                        self.choice_panel.input_buffer.drain(prev..);
+                        self.choice_panel.input_cursor = prev;
+                    }
+                    return;
+                }
                 self.history_idx = None;
                 let prev = self.prev_char_boundary(self.cursor);
                 self.input.drain(prev..self.cursor);
@@ -312,6 +332,10 @@ impl App {
                 }
             }
             (KeyCode::Esc, _) => {
+                if self.choice_panel.visible {
+                    self.choice_panel.close();
+                    return;
+                }
                 if self.session_tui.visible {
                     self.session_tui.close();
                     return;
