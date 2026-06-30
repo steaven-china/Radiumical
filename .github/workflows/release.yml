@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
+      - 'pre-v[0-9]+.[0-9]+.[0-9]+*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -62,12 +63,13 @@ jobs:
         with:
           files: target/${{ matrix.target }}/release/${{ matrix.binary }}
           name: ${{ github.ref_name }}
+          prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
           body: |
-            Release ${{ github.ref_name }} of Radiumical.
+            ${{ startsWith(github.ref_name, 'pre-') && '⚠️ **Pre-release** — not production ready.' || format('Release {} of Radiumical.', github.ref_name) }}
 
             Binaries:
-            - Linux x64
-            - macOS x64
-            - Windows x64
+            - Linux x64 (`radiumical-linux-x64`)
+            - macOS x64 (`radiumical-macos-x64`)
+            - Windows x64 (`radiumical-windows-x64.exe`)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
