@@ -2,6 +2,8 @@ mod board;
 mod dashboard;
 mod layout;
 mod markdown;
+mod panel;
+mod panels;
 mod session_tui;
 mod settings;
 mod tui;
@@ -224,7 +226,13 @@ async fn main() -> Result<()> {
                 match client.list_tools().await {
                     Ok(tools) => {
                         eprintln!("MCP '{name}': {} tools loaded", tools.len());
+                        let tool_count = tools.len();
                         mcp_clients.push((Arc::new(client), tools));
+                        let _ = ui_tx.send(UiEvent::McpStatus {
+                            name: name.clone(),
+                            alive: true,
+                            tool_count,
+                        }).await;
                     }
                     Err(e) => {
                         eprintln!("MCP '{name}': tools/list failed: {e}");
@@ -233,6 +241,11 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("MCP '{name}': spawn failed: {e}");
+                let _ = ui_tx.send(UiEvent::McpStatus {
+                    name: name.clone(),
+                    alive: false,
+                    tool_count: 0,
+                }).await;
             }
         }
     }
@@ -263,6 +276,7 @@ async fn main() -> Result<()> {
                                     None,
                                     cfg,
                                     provider,
+                                    Some(ui_tx.clone()),
                                 )
                                 .await;
                                 let _ = ui_tx.send(UiEvent::LlmChunk(format!(
