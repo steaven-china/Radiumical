@@ -57,10 +57,15 @@ A lightweight, Rust-native agentic coding assistant for your terminal. 11 MB bin
 ## Installation
 
 ```bash
-git clone https://github.com/steaven-china/Radiumical.git
+git clone --recurse-submodules https://github.com/steaven-china/Radiumical.git
 cd Radiumical
 cargo build --release
 # binary: target/release/radiumical(.exe)
+```
+
+If you already cloned without `--recurse-submodules`:
+```bash
+git submodule update --init
 ```
 
 ## Quick Start
