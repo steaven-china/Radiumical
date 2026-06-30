@@ -82,6 +82,11 @@ impl SettingsBoard {
             .reasoning_effort
             .clone()
             .unwrap_or_else(|| "max".into());
+        let max_context_tokens = config.max_context_tokens.unwrap_or(128000);
+        let context_compress_ratio = config
+            .context_compress_ratio
+            .map(|v| format!("{v:.2}"))
+            .unwrap_or_else(|| "0.75".into());
         let mode_str = match mode {
             radiumical_core::types::AgentMode::Auto => "auto",
             radiumical_core::types::AgentMode::Plan => "plan",
@@ -169,6 +174,22 @@ impl SettingsBoard {
                         mask: false,
                     },
                 },
+                SettingItem {
+                    label: "Max context tokens".into(),
+                    kind: SettingKind::Usize {
+                        value: max_context_tokens,
+                        min: 10000,
+                        max: 2000000,
+                        step: 10000,
+                    },
+                },
+                SettingItem {
+                    label: "Context compress ratio".into(),
+                    kind: SettingKind::String {
+                        value: context_compress_ratio,
+                        mask: false,
+                    },
+                },
             ],
         }
     }
@@ -232,6 +253,18 @@ impl SettingsBoard {
                 "Reasoning effort" => {
                     if let SettingKind::String { value, .. } = &item.kind {
                         config.reasoning_effort = Some(value.clone());
+                    }
+                }
+                "Max context tokens" => {
+                    if let SettingKind::Usize { value, .. } = &item.kind {
+                        config.max_context_tokens = Some(*value);
+                    }
+                }
+                "Context compress ratio" => {
+                    if let SettingKind::String { value, .. } = &item.kind {
+                        if let Ok(v) = value.parse::<f64>() {
+                            config.context_compress_ratio = Some(v.clamp(0.5, 0.95));
+                        }
                     }
                 }
                 _ => {}
@@ -536,5 +569,67 @@ impl SettingsBoard {
                 .alignment(Alignment::Left),
             r,
         );
+    }
+
+    /// Render at a specific rect (from PanelManager layout).
+    pub fn render_at(&self, f: &mut Frame, r: Rect) {
+        use ratatui::widgets::Clear;
+        if !self.visible {
+            return;
+        }
+        f.render_widget(Clear, r);
+        let label_w = self
+            .items
+            .iter()
+            .map(|i| i.label.chars().count())
+            .max()
+            .unwrap_or(12) as u16;
+        let max_value = (r.width.saturating_sub(label_w + 8) as u16).max(10) as usize;
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Settings ")
+            .border_style(Style::default().fg(Color::Rgb(100, 160, 220)));
+        let inner = r.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
+        let max_label = label_w as usize;
+        let lines: Vec<Line> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let selected = i == self.selected;
+                let mut spans = Vec::new();
+                let marker = if selected { "> " } else { "  " };
+                spans.push(Span::styled(marker, Style::default().fg(Color::Rgb(100, 160, 220))));
+                let label_style = if selected {
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Rgb(180, 180, 190))
+                };
+                spans.push(Span::styled(format!("{:<width$}", item.label, width = max_label), label_style));
+                spans.push(Span::raw("  "));
+                let is_editing = self.editing == Some(i);
+                let value = if is_editing { self.edit_buffer.clone() } else { item.display_value() };
+                let truncated = if value.chars().count() > max_value {
+                    value.chars().take(max_value.saturating_sub(1)).collect::<String>() + "…"
+                } else {
+                    value
+                };
+                let value_style = if is_editing {
+                    Style::default().bg(Color::Rgb(40, 60, 80)).fg(Color::White)
+                } else if selected {
+                    Style::default().bg(Color::Rgb(45, 45, 55)).fg(Color::White)
+                } else {
+                    Style::default().fg(Color::Rgb(210, 210, 210))
+                };
+                spans.push(Span::styled(truncated, value_style));
+                Line::from(spans)
+            })
+            .collect();
+        let help = if self.is_editing() { "Enter: save  Esc: cancel" } else { "↑↓ ←→ Enter:edit Esc:close" };
+        let mut text = Text::from(lines);
+        text.lines.push(Line::from(""));
+        text.lines.push(Line::from(Span::styled(help, Style::default().fg(Color::Rgb(120, 120, 130)))));
+        f.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: false }), r);
     }
 }

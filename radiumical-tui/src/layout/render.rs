@@ -217,8 +217,13 @@ impl Block {
                     st,
                 )));
 
+                let hint_style = Style::default().fg(DIM);
                 if !*expanded || result_text.is_empty() {
                     lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
+                    lines.push(Line::from(Span::styled(
+                        "  [\u{25b8} click to expand]",
+                        hint_style,
+                    )));
                     return lines;
                 }
 
@@ -232,11 +237,22 @@ impl Block {
                     *result_scroll,
                 ));
                 lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
+                lines.push(Line::from(Span::styled(
+                    "  [\u{25be} click to collapse]",
+                    hint_style,
+                )));
                 lines
             }
 
             BlockKind::Text => {
                 let raw = &self.source_lines[0];
+                // Error styling: \x03 prefix
+                if let Some(err) = raw.strip_prefix('\x03') {
+                    return vec![Line::from(Span::styled(
+                        err.to_string(),
+                        Style::default().fg(Color::Red),
+                    ))];
+                }
                 let leading = raw
                     .chars()
                     .take_while(|c| c.is_whitespace())
@@ -403,49 +419,6 @@ fn border_line(left: &str, mid: &str, right: &str, fill: &str, cols: &[usize]) -
     Line::from(Span::styled(format!("  {s}"), Style::default().fg(BORDER)))
 }
 
-#[allow(dead_code)]
-fn data_line(cells: &[String], cols: &[usize]) -> Line<'static> {
-    let edge = Span::styled("│", Style::default().fg(BORDER));
-    let mut spans = vec![Span::raw("  "), edge.clone()];
-    for (i, cell) in cells.iter().enumerate() {
-        let w = cols.get(i).copied().unwrap_or(cell.len());
-        let cell_spans = crate::markdown::render_inline(cell);
-        spans.push(Span::raw(" "));
-        let mut remaining = w;
-        let mut truncated = false;
-        for cs in cell_spans {
-            let cw = cs.width();
-            if cw <= remaining {
-                spans.push(cs);
-                remaining -= cw;
-            } else {
-                // Truncate: take only what fits and append "…"
-                let text: String = cs
-                    .content
-                    .as_ref()
-                    .chars()
-                    .take(remaining.saturating_sub(1))
-                    .collect();
-                if !text.is_empty() {
-                    spans.push(Span::styled(text, cs.style));
-                }
-                spans.push(Span::raw("…"));
-                truncated = true;
-                break;
-            }
-        }
-        if !truncated && remaining > 0 {
-            spans.push(Span::raw(" ".repeat(remaining)));
-        }
-        spans.push(Span::raw(" "));
-        if i < cols.len() - 1 {
-            spans.push(edge.clone());
-        }
-    }
-    spans.push(edge);
-    Line::from(spans)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,7 +499,6 @@ mod tests {
                 result_scroll: 2,
             },
             source_lines: vec![],
-            width: 0,
             height: 10,
         };
 

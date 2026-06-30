@@ -160,7 +160,7 @@ impl SessionTui {
         }
     }
 
-    fn sync_name_desc_from_selection(&mut self) {
+    pub fn sync_name_desc_from_selection(&mut self) {
         let (name, desc) = if let Some(meta) = self.selected_session() {
             (meta.name.clone(), meta.description.clone())
         } else {

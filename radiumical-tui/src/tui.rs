@@ -25,6 +25,11 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/sessions", "Session manager TUI"),
     ("/skills", "List available skills"),
     ("/skill <n>", "Activate/deactivate skill"),
+    ("/outline", "Workspace outline panel"),
+    ("/lint", "Run diagnostics/lint"),
+    ("/memory", "Memory management panel"),
+    ("/subagents", "Sub-agent status panel"),
+    ("/mcp", "MCP server status panel"),
     ("/cod on/off", "Chain of Draft experimental"),
     ("/debug <t>", "Debug info"),
     ("/end", "Jump to bottom"),
@@ -40,7 +45,7 @@ pub fn matching_hints(prefix: &str) -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
-pub fn _complete_slash(prefix: &str) -> Option<String> {
+pub fn complete_slash(prefix: &str) -> Option<String> {
     let m: Vec<&str> = SLASH_COMMANDS
         .iter()
         .map(|(n, _)| *n)

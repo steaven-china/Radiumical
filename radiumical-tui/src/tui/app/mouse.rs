@@ -12,17 +12,26 @@ impl App {
         &mut self,
         kind: MouseEventKind,
         row: u16,
-        _col: u16,
+        col: u16,
         output_top: u16,
         output_h: u16,
     ) {
         if self.welcome {
             return;
         }
+
+        // Compute current panel slots for hit-testing.
+        let output_area = Rect {
+            x: 0,
+            y: output_top,
+            width: self.output_width as u16,
+            height: output_h,
+        };
+        let slots = self.panels.layout(output_area);
+
         match kind {
+            // ── Scroll ──
             MouseEventKind::ScrollDown => {
-                // Try scrolling inside tool result first.
-                // Use hovered_block if available, otherwise compute from mouse position.
                 let bi = self.hovered_block
                     .or_else(|| self.block_at_row(row, output_top, output_h));
                 if !self.scroll_tool_result(bi, 1) {
@@ -36,14 +45,39 @@ impl App {
                     self.scroll_down(1.0);
                 }
             }
+
+            // ── Mouse move (hover tracking) ──
             MouseEventKind::Moved => {
                 self.hovered_block = self.block_at_row(row, output_top, output_h);
             }
+
+            // ── Mouse down ──
             MouseEventKind::Down(btn) => {
                 if btn == MouseButton::Right {
                     return;
                 }
-                let on_scrollbar = _col >= self.output_width as u16;
+
+                // 1. Panel close button click
+                if let Some(panel_id) = self.panels.hit_close_button(col, row, &slots) {
+                    self.close_panel_by_id(panel_id);
+                    return;
+                }
+
+                // 2. Panel title bar drag start
+                if let Some(panel_id) = self.panels.hit_title_bar(col, row, &slots) {
+                    if let Some(slot) = slots.iter().find(|s| s.id == panel_id) {
+                        self.panels.drag_start(panel_id, col, row, slot);
+                    }
+                    return;
+                }
+
+                // 3. If dragging is active, ignore other clicks
+                if self.panels.is_dragging() {
+                    return;
+                }
+
+                // 4. Scrollbar click
+                let on_scrollbar = col >= self.output_width as u16;
                 let total = self.rendered_total;
                 let needs_scrollbar = total > self.output_vis;
                 if on_scrollbar
@@ -55,9 +89,11 @@ impl App {
                     self.set_scroll_from_thumb(row, output_top, output_h);
                     return;
                 }
+
+                // 5. Help board drag
                 if self.help_board.hit_border(
                     row,
-                    _col,
+                    col,
                     Rect {
                         x: 0,
                         y: output_top,
@@ -65,31 +101,76 @@ impl App {
                         height: output_h,
                     },
                 ) {
-                    self.help_board.start_drag(_col, row);
+                    self.help_board.start_drag(col, row);
                     return;
                 }
+
+                // 6. Tool call double-click
                 if let Some(bi) = self.block_at_row(row, output_top, output_h) {
                     let now = Instant::now();
                     let is_double = self.last_click.is_some_and(|(t, r, c)| {
                         t.elapsed() < Duration::from_millis(DOUBLE_CLICK_MS)
                             && (r == row || r.abs_diff(row) <= 1)
-                            && (c == _col || c.abs_diff(_col) <= 1)
+                            && (c == col || c.abs_diff(col) <= 1)
                     });
                     if is_double {
                         self.toggle_tool_call(bi);
                         self.last_click = None;
                     } else {
-                        self.last_click = Some((now, row, _col));
+                        self.last_click = Some((now, row, col));
                     }
                 } else {
-                    self.last_click = Some((Instant::now(), row, _col));
+                    self.last_click = Some((Instant::now(), row, col));
                 }
             }
-            MouseEventKind::Drag(_) if self.scrollbar_dragging => {
-                self.set_scroll_from_thumb(row, output_top, output_h);
+
+            // ── Drag ──
+            MouseEventKind::Drag(_) => {
+                // Panel drag takes priority
+                if self.panels.is_dragging() {
+                    self.panels.drag_move(col, row);
+                    return;
+                }
+                if self.scrollbar_dragging {
+                    self.set_scroll_from_thumb(row, output_top, output_h);
+                }
             }
+
+            // ── Mouse up ──
             MouseEventKind::Up(_) => {
+                if self.panels.is_dragging() {
+                    self.panels.drag_end();
+                }
                 self.scrollbar_dragging = false;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Close a panel by its PanelId, also resetting the associated legacy flag.
+    fn close_panel_by_id(&mut self, id: crate::panel::PanelId) {
+        use crate::panel::PanelId;
+        self.panels.close(id);
+        match id {
+            PanelId::Dashboard => self.dashboard.visible = false,
+            PanelId::ProviderPicker => {
+                self.show_model_picker = false;
+                self.provider_picker.close();
+            }
+            PanelId::Settings => {
+                self.settings_visible = false;
+                self.settings_board.visible = false;
+            }
+            PanelId::Help => self.show_help_overlay = false,
+            PanelId::Confirm => {
+                self.confirm.visible = false;
+            }
+            PanelId::Perf => {
+                self.perf_visible = false;
+            }
+            PanelId::SessionList => {
+                self.session_tui.close();
             }
             _ => {}
         }

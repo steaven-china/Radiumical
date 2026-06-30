@@ -210,4 +210,86 @@ impl Dashboard {
             );
         }
     }
+
+    /// Render at a specific rect (from PanelManager layout).
+    pub fn render_at(&self, f: &mut Frame, r: Rect) {
+        if !self.visible {
+            return;
+        }
+        use ratatui::widgets::Clear;
+        f.render_widget(Clear, r);
+        let outer = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Dashboard ")
+            .border_style(Style::default().fg(Color::Cyan));
+        f.render_widget(outer, r);
+        let inner = Rect {
+            x: r.x + 1,
+            y: r.y + 1,
+            width: r.width.saturating_sub(2),
+            height: r.height.saturating_sub(2),
+        };
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+            .split(inner);
+
+        let nav_lines: Vec<Line> = self
+            .sections
+            .iter()
+            .enumerate()
+            .map(|(i, (cat, _))| {
+                let selected = i == self.cat_idx && !self.in_items;
+                let prefix = if selected { "* " } else { "  " };
+                let style = if selected {
+                    Style::default()
+                        .bg(Color::Rgb(50, 50, 60))
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else if i == self.cat_idx && self.in_items {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::Rgb(160, 160, 170))
+                };
+                Line::from(Span::styled(format!("{prefix}{cat}"), style))
+            })
+            .collect();
+        let nav_block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::DarkGray));
+        f.render_widget(
+            Paragraph::new(Text::from(nav_lines)).block(nav_block),
+            chunks[0],
+        );
+
+        if let Some((cat_name, items)) = self.sections.get(self.cat_idx) {
+            let item_lines: Vec<Line> = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let selected = self.in_items && i == self.item_idx;
+                    let style = if selected {
+                        Style::default()
+                            .bg(Color::Rgb(60, 60, 70))
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Rgb(180, 180, 190))
+                    };
+                    Line::from(Span::styled(format!("  {}", item), style))
+                })
+                .collect();
+            let detail_block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .title(format!(" {cat_name} "))
+                .border_style(Style::default().fg(Color::Cyan));
+            f.render_widget(
+                Paragraph::new(Text::from(item_lines)).block(detail_block),
+                chunks[1],
+            );
+        }
+    }
 }

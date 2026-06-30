@@ -2,6 +2,7 @@ use crate::session_tui::SessionAction;
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 use crate::tui::matching_hints;
+use crate::tui::complete_slash;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
 impl App {
@@ -53,10 +54,6 @@ impl App {
                     self.session_tui.select_prev();
                     return;
                 }
-                if self.session_list_visible {
-                    self.session_list.select_prev();
-                    return;
-                }
                 if self.dashboard.visible {
                     self.dashboard.up();
                     return;
@@ -85,10 +82,6 @@ impl App {
             (KeyCode::Down, _) => {
                 if self.session_tui.visible {
                     self.session_tui.select_next();
-                    return;
-                }
-                if self.session_list_visible {
-                    self.session_list.select_next();
                     return;
                 }
                 if self.dashboard.visible {
@@ -124,37 +117,6 @@ impl App {
             (KeyCode::Enter, _) => {
                 if self.session_tui.visible {
                     self.handle_session_tui_enter();
-                    return;
-                }
-                if self.session_list_visible {
-                    if let Some(selected) = self.session_list.current() {
-                        let name = selected.split(" (").next().unwrap_or(selected);
-                        if let Ok(Some((meta, items))) = self.session_pool.load(name)
-                        {
-                            if !items.is_empty() {
-                                self.session_items = items;
-                                self.render_session_items_to_output();
-                                self.mode = meta.mode.into();
-                                self.model = meta.model.clone();
-                                self.provider_name = meta.provider.clone();
-                                self.thinking_effort = meta.thinking_effort.clone();
-                                let _ = self
-                                    .cmd_tx
-                                    .blocking_send(BackendCmd::SetMode(self.mode.clone()));
-                                let _ = self
-                                    .cmd_tx
-                                    .blocking_send(BackendCmd::SetModel(self.model.clone()));
-                                let _ = self.cmd_tx.blocking_send(
-                                    BackendCmd::SetThinkingEffort(self.thinking_effort.clone()),
-                                );
-                                let _ = self
-                                    .cmd_tx
-                                    .blocking_send(BackendCmd::LoadSession(self.session_items.clone()));
-                                self.welcome = false;
-                            }
-                        }
-                    }
-                    self.session_list_visible = false;
                     return;
                 }
                 if let Some((id, _mode, _opts)) = self.pending_choice.take() {
@@ -318,6 +280,14 @@ impl App {
                     }
                     return;
                 }
+                if self.input.starts_with('/') && self.hint_selected.is_none() {
+                    if let Some(completed) = complete_slash(&self.input) {
+                        self.input = completed;
+                        self.cursor = self.input.len();
+                        self.update_hints();
+                        return;
+                    }
+                }
                 if self.input.starts_with('/') && !self.hints.is_empty() {
                     self.hint_selected = Some(0);
                     self.sync_hint_page();
@@ -344,10 +314,6 @@ impl App {
             (KeyCode::Esc, _) => {
                 if self.session_tui.visible {
                     self.session_tui.close();
-                    return;
-                }
-                if self.session_list_visible {
-                    self.session_list_visible = false;
                     return;
                 }
                 if self.dashboard.visible {
@@ -508,7 +474,13 @@ impl App {
     ) {
         use crate::session_tui::{SessionAction, SessionFocus};
         match self.session_tui.focus {
-            SessionFocus::List | SessionFocus::Actions => {
+            SessionFocus::List => {
+                // Sync name from current list selection before executing action.
+                self.session_tui.sync_name_desc_from_selection();
+                let action = self.session_tui.selected_action();
+                self.dispatch_session_action(action);
+            }
+            SessionFocus::Actions => {
                 let action = self.session_tui.selected_action();
                 self.dispatch_session_action(action);
             }

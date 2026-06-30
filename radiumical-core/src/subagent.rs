@@ -57,12 +57,14 @@ fn build_agent_config(base: &SessionConfig, agent_name: Option<&str>) -> Session
 
 /// Spawn a sub-agent to handle a task asynchronously.
 /// If `agent_name` is provided, loads the role definition from ~/.radi/agents/.
+/// If `notify` is provided, sends `UiEvent::SubAgentDone` when the agent completes.
 pub async fn spawn(
     id: String,
     task: String,
     agent_name: Option<String>,
     config: SessionConfig,
     provider: Arc<dyn Provider>,
+    notify: Option<tokio::sync::mpsc::Sender<crate::types::UiEvent>>,
 ) {
     let (ui_tx, _ui_rx) = tokio::sync::mpsc::channel::<crate::types::UiEvent>(256);
     let agent_config = build_agent_config(&config, agent_name.as_deref());
@@ -87,16 +89,25 @@ pub async fn spawn(
         let result = runner
             .run(task.clone(), workspace, &[], None, ui_tx, cancel_rx)
             .await;
-        let mut reg = registry().lock().unwrap();
-        if let Some(entry) = reg.get_mut(&id) {
-            entry.done = true;
-            match result {
-                Ok(()) => entry.output = format!("Sub-agent '{id}' completed: {task}"),
-                Err(e) => {
-                    entry.error = Some(e.to_string());
-                    entry.output = format!("Sub-agent '{id}' failed: {}", e);
+        let success = result.is_ok();
+        {
+            let mut reg = registry().lock().unwrap();
+            if let Some(entry) = reg.get_mut(&id) {
+                entry.done = true;
+                match result {
+                    Ok(()) => entry.output = format!("Sub-agent '{id}' completed: {task}"),
+                    Err(e) => {
+                        entry.error = Some(e.to_string());
+                        entry.output = format!("Sub-agent '{id}' failed: {}", e);
+                    }
                 }
             }
+        }
+        if let Some(tx) = notify {
+            let _ = tx.send(crate::types::UiEvent::SubAgentDone {
+                id: id.clone(),
+                success,
+            }).await;
         }
         drop(cancel_tx);
     });
@@ -110,7 +121,7 @@ pub async fn spawn_with_defaults(
 ) -> Result<(), String> {
     let (config, provider) =
         get_defaults().ok_or("Sub-agent defaults not set. Run from main loop.")?;
-    spawn(id, task, agent_name, config, provider).await;
+    spawn(id, task, agent_name, config, provider, None).await;
     Ok(())
 }
 
@@ -135,6 +146,12 @@ pub fn list() -> String {
         out.push_str(&format!("  [{status}] {id} ({role}): {}\n", r.task));
     }
     out
+}
+
+/// List all sub-agents as structured data for panel rendering.
+pub fn list_all() -> Vec<SubAgentResult> {
+    let reg = registry().lock().unwrap();
+    reg.values().cloned().collect()
 }
 
 /// Get result of a specific sub-agent.

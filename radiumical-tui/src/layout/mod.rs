@@ -52,8 +52,6 @@ pub enum BlockKind {
 pub struct Block {
     pub kind: BlockKind,
     pub source_lines: Vec<String>,
-    #[allow(dead_code)]
-    pub width: usize,
     pub height: usize,
 }
 
@@ -80,11 +78,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                 i += 1;
             }
             let source = output[start..i].to_vec();
-            let w = source.iter().map(|s| s.chars().count()).max().unwrap_or(0);
             blocks.push(Block {
                 kind: BlockKind::Logo,
                 source_lines: source,
-                width: w,
                 height: i - start,
             });
             continue;
@@ -108,7 +104,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                 i += 1;
             }
             let source = output[start..i].to_vec();
-            let w = source.iter().map(|s| s.len()).max().unwrap_or(0);
             // Render guarantees at least 2 lines (label + footer). During streaming
             // the closing fence may be missing, so reserve space for it too.
             let height = if source.len() >= 2
@@ -122,7 +117,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             blocks.push(Block {
                 kind: BlockKind::CodeFence { lang },
                 source_lines: source,
-                width: w,
                 height,
             });
             continue;
@@ -138,11 +132,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             let (rows, widths, sep_idx) = measure_table(&source, area_width);
             let avail_width = (area_width as usize).saturating_sub(4).max(1);
             let adjusted_widths = text::fit_table_widths(&widths, avail_width);
-            let width = if widths.is_empty() {
-                0
-            } else {
-                widths.iter().sum::<usize>() + widths.len() * 3 + 1
-            };
             let sep_count = sep_idx.map(|_| 1).unwrap_or(0);
             let data_rows = rows.len() - sep_count;
             let mut extra_lines = 0usize;
@@ -167,7 +156,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                     sep_idx,
                 },
                 source_lines: source,
-                width,
                 height,
             });
             continue;
@@ -223,7 +211,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
                     result_scroll: 0,
                 },
                 source_lines: source,
-                width: 0,
                 height: 3,
             });
             continue;
@@ -240,7 +227,6 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             blocks.push(Block {
                 kind: BlockKind::Reasoning,
                 source_lines: vec![line.clone()],
-                width: line.len(),
                 height,
             });
             i += 1;
@@ -251,11 +237,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         if let Some(rest) = trimmed.strip_prefix('#') {
             let level = rest.chars().take_while(|c| *c == '#').count() + 1;
             if level <= 6 && rest.as_bytes().get(level - 1) == Some(&b' ') {
-                let w = rest[level..].chars().count();
                 blocks.push(Block {
                     kind: BlockKind::Heading { level },
                     source_lines: vec![line.clone()],
-                    width: w,
                     height: 1,
                 });
                 i += 1;
@@ -264,12 +248,10 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         }
 
         // Blockquote
-        if let Some(rest) = trimmed.strip_prefix("> ") {
-            let w = rest.chars().count() + 2;
+        if trimmed.starts_with("> ") {
             blocks.push(Block {
                 kind: BlockKind::Blockquote,
                 source_lines: vec![line.clone()],
-                width: w,
                 height: 1,
             });
             i += 1;
@@ -278,11 +260,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
 
         // Unordered list
         if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-            let w = trimmed[2..].chars().count() + 4;
             blocks.push(Block {
                 kind: BlockKind::ListItem,
                 source_lines: vec![line.clone()],
-                width: w,
                 height: 1,
             });
             i += 1;
@@ -294,11 +274,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             if rest.starts_with(". ") || rest.starts_with(") ") {
                 let num_end = trimmed.find(rest).unwrap_or(0);
                 let num = trimmed[..num_end].to_string();
-                let w = rest[2..].chars().count() + num.len() + 4;
                 blocks.push(Block {
                     kind: BlockKind::OrderedItem { num },
                     source_lines: vec![line.clone()],
-                    width: w,
                     height: 1,
                 });
                 i += 1;
@@ -307,11 +285,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         }
 
         // Regular text (including blank lines — must preserve spacing)
-        let w = if trimmed.is_empty() { 0 } else { trimmed.len() };
         blocks.push(Block {
             kind: BlockKind::Text,
             source_lines: vec![line.clone()],
-            width: w,
             height: 1,
         });
         i += 1;

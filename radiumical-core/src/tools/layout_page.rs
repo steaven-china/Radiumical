@@ -52,11 +52,6 @@ use std::fmt;
 
 // ── Width helper (ASCII-only, avoids crate dependency) ──
 
-#[allow(dead_code)]
-fn str_width(s: &str) -> usize {
-    s.chars().count()
-}
-
 fn char_width(ch: char) -> usize {
     // CJK and fullwidth chars count as 2, others as 1.
     let cp = ch as u32;
