@@ -680,4 +680,152 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, Role::User);
     }
+
+    #[test]
+    fn test_pool_save_load_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+        let items = vec![
+            SessionItem::User {
+                content: "hello".into(),
+            },
+            SessionItem::Assistant {
+                content: "world".into(),
+            },
+        ];
+        pool.save(
+            "my-session",
+            &items,
+            "gpt-4",
+            "openai",
+            SessionMode::Auto,
+            "medium",
+            Some("desc"),
+        )
+        .unwrap();
+
+        let (meta, loaded_items) = pool.load("my-session").unwrap().unwrap();
+        assert_eq!(meta.name, "my-session");
+        assert_eq!(meta.model, "gpt-4");
+        assert_eq!(meta.provider, "openai");
+        assert_eq!(meta.description, "desc");
+        assert_eq!(loaded_items.len(), 2);
+        assert!(matches!(&loaded_items[0], SessionItem::User { content } if content == "hello"));
+        assert!(matches!(&loaded_items[1], SessionItem::Assistant { content } if content == "world"));
+
+        let deleted = pool.delete("my-session").unwrap();
+        assert!(deleted);
+        assert!(pool.load("my-session").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_pool_list_sorted_by_updated() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+
+        let names_and_dates = [
+            ("alpha", "2025-01-01 10:00"),
+            ("beta", "2025-01-02 10:00"),
+            ("gamma", "2025-01-03 10:00"),
+        ];
+        for (name, date) in &names_and_dates {
+            let meta = SessionItem::Meta {
+                name: name.to_string(),
+                created: date.to_string(),
+                updated: date.to_string(),
+                model: "m".into(),
+                provider: "p".into(),
+                mode: SessionMode::Auto,
+                thinking_effort: "".into(),
+                description: "".into(),
+                message_count: 0,
+            };
+            let line = serde_json::to_string(&meta).unwrap();
+            let path = dir.path().join(format!("{}.jsonl", hash_name(name)));
+            fs::write(&path, line).unwrap();
+        }
+
+        let list = pool.list().unwrap();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].name, "gamma");
+        assert_eq!(list[1].name, "beta");
+        assert_eq!(list[2].name, "alpha");
+    }
+
+    #[test]
+    fn test_pool_for_workspace_different_paths() {
+        let pool_a = SessionPool::for_workspace("/tmp/ws-x");
+        let pool_b = SessionPool::for_workspace("/tmp/ws-y");
+        assert_ne!(pool_a.dir(), pool_b.dir());
+        assert!(pool_a.dir().to_string_lossy().contains("sessions"));
+        assert!(pool_b.dir().to_string_lossy().contains("sessions"));
+    }
+
+    #[test]
+    fn test_save_overwrites_same_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+
+        let items1 = vec![SessionItem::User {
+            content: "first".into(),
+        }];
+        pool.save("dup", &items1, "m", "p", SessionMode::Auto, "", None)
+            .unwrap();
+
+        let items2 = vec![
+            SessionItem::User {
+                content: "second".into(),
+            },
+            SessionItem::Assistant {
+                content: "reply".into(),
+            },
+        ];
+        pool.save("dup", &items2, "m", "p", SessionMode::Auto, "", None)
+            .unwrap();
+
+        let (_, loaded) = pool.load("dup").unwrap().unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert!(matches!(&loaded[0], SessionItem::User { content } if content == "second"));
+        assert!(matches!(&loaded[1], SessionItem::Assistant { content } if content == "reply"));
+    }
+
+    #[test]
+    fn test_load_nonexistent_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+        let result = pool.load("does-not-exist").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_delete_nonexistent_returns_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+        let result = pool.delete("does-not-exist").unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_message_count_excludes_meta() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = SessionPool::new(dir.path());
+        let items = vec![
+            SessionItem::User {
+                content: "q".into(),
+            },
+            SessionItem::Assistant {
+                content: "a".into(),
+            },
+            SessionItem::Tool {
+                id: "t1".into(),
+                name: "fn".into(),
+                args: "{}".into(),
+                result: Some("r".into()),
+            },
+        ];
+        pool.save("cnt", &items, "m", "p", SessionMode::Auto, "", None)
+            .unwrap();
+        let (meta, _) = pool.load("cnt").unwrap().unwrap();
+        assert_eq!(meta.message_count, 3);
+    }
 }

@@ -33,7 +33,7 @@ pub struct McpConfig {
     pub servers: HashMap<String, McpServerConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub command: String,
     #[serde(default)]
@@ -66,6 +66,7 @@ struct Response {
 #[derive(Deserialize, Debug)]
 struct RpcError {
     code: i64,
+    #[serde(alias = "msg")]
     message: String,
 }
 
@@ -325,5 +326,48 @@ mod tests {
         assert!(resp.error.is_none());
         let tools = resp.result.unwrap();
         assert_eq!(tools["tools"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_parse_config_with_env() {
+        let json = r#"{
+            "mcpServers": {
+                "db": {
+                    "command": "node",
+                    "args": ["server.js"],
+                    "env": { "DATABASE_URL": "postgres://localhost/test", "API_KEY": "secret123" }
+                }
+            }
+        }"#;
+        let cfg: McpConfig = serde_json::from_str(json).unwrap();
+        let server = &cfg.servers["db"];
+        assert_eq!(server.command, "node");
+        assert_eq!(server.env.len(), 2);
+        assert_eq!(server.env["DATABASE_URL"], "postgres://localhost/test");
+        assert_eq!(server.env["API_KEY"], "secret123");
+    }
+
+    #[test]
+    fn test_mcp_server_config_serde_roundtrip() {
+        let mut env = HashMap::new();
+        env.insert("FOO".to_string(), "bar".to_string());
+        let cfg = McpServerConfig {
+            command: "npx".to_string(),
+            args: vec!["-y".to_string(), "some-tool".to_string()],
+            env,
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let deserialized: McpServerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, deserialized);
+    }
+
+    #[test]
+    fn test_rpc_error_deserialize() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-1,"msg":"bad"}}"#;
+        let resp: Response = serde_json::from_str(json).unwrap();
+        assert!(resp.error.is_some());
+        let err = resp.error.unwrap();
+        assert_eq!(err.code, -1);
+        assert_eq!(err.message, "bad");
     }
 }

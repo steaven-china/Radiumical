@@ -538,6 +538,62 @@ mod tests {
         assert_eq!(deser.role, Role::User);
         assert!(matches!(deser.content, MessageContent::Parts(_)));
     }
+
+    #[test]
+    fn test_compress_decompress_empty() {
+        let input = "";
+        let compressed = compress_text(input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn test_compress_decompress_unicode() {
+        let input = "日本語テスト中文测试한국어테스트";
+        let compressed = compress_text(input).unwrap();
+        let decompressed = decompress_text(&compressed).unwrap();
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn test_base64_roundtrip_random() {
+        let data: Vec<u8> = (0..1000).map(|i| ((i * 7 + 13) ^ (i >> 3)) as u8).collect();
+        let encoded = base64_encode(&data);
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_message_content_from_text_small() {
+        let input = "short text";
+        let mc = MessageContent::from_text(input.to_string());
+        assert!(!mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn test_message_content_from_text_large() {
+        let input = "x".repeat(COMPRESS_THRESHOLD + 100);
+        let mc = MessageContent::from_text(input.clone());
+        assert!(mc.is_compressed());
+        assert_eq!(mc.text(), input);
+    }
+
+    #[test]
+    fn test_message_content_cow_borrowed() {
+        let mc = MessageContent::Text("hello".to_string());
+        let cow = mc.text();
+        assert!(matches!(cow, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_message_content_cow_owned() {
+        let input = "x".repeat(2000);
+        let mc = MessageContent::from_text(input);
+        assert!(mc.is_compressed());
+        let cow = mc.text();
+        assert!(matches!(cow, Cow::Owned(_)));
+    }
 }
 
 // ── Tool types ──
