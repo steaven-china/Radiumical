@@ -44,6 +44,7 @@ impl App {
                 self.blocks.clear();
                 self.session_items.clear();
                 self.render_cache.clear();
+                self.render_cache_order.clear();
                 self.markdown = crate::markdown::MarkdownRenderer::new();
                 self.full_reasoning.clear();
                 self.show_full_reasoning = false;

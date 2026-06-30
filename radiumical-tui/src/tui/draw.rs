@@ -224,7 +224,15 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
                 &mut app.markdown,
                 app.show_full_reasoning,
             );
+            // LRU eviction: limit cache to 512 entries.
+            const MAX_CACHE: usize = 512;
+            if app.render_cache.len() >= MAX_CACHE {
+                if let Some(oldest) = app.render_cache_order.pop_front() {
+                    app.render_cache.remove(&oldest);
+                }
+            }
             app.render_cache.insert(key, lines.clone());
+            app.render_cache_order.push_back(key);
             rendered_blocks.push(lines);
         }
     }
