@@ -18,14 +18,27 @@ impl App {
         self.output.push("".into());
         self.output.push("  Keys:".into());
         self.output
-            .push("  PgUp/PgDn  Scroll | Up/Down  History".into());
+            .push("  PgUp/PgDn    Scroll".into());
         self.output
-            .push("  Ctrl+W     Del word | Shift+Enter  Newline".into());
+            .push("  Up/Down       History / Hint select".into());
         self.output
-            .push("  End        Jump to bottom (empty input)".into());
+            .push("  Ctrl+W        Delete word".into());
         self.output
-            .push("  Mouse drag Scroll | PgUp/PgDn Scroll".into());
-        self.output.push("  Ctrl+C     Quit".into());
+            .push("  Ctrl+A/E      Jump to line start/end".into());
+        self.output
+            .push("  Ctrl+L        Clear screen".into());
+        self.output
+            .push("  Ctrl+O        Toggle reasoning".into());
+        self.output
+            .push("  Ctrl+C        Cancel / Quit".into());
+        self.output
+            .push("  Shift+Enter   Newline in input".into());
+        self.output
+            .push("  End           Jump to bottom (empty input)".into());
+        self.output
+            .push("  Tab           Autocomplete slash command".into());
+        self.output
+            .push("  Mouse drag    Scroll | Double-click tool call".into());
         self.output.push(String::new());
     }
 

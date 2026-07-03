@@ -7,6 +7,7 @@ mod panel;
 mod panels;
 mod session_tui;
 mod settings;
+mod tips;
 mod tui;
 
 use anyhow::Result;

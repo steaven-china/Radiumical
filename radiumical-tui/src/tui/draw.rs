@@ -1,5 +1,5 @@
 use crate::tui::app::App;
-use crate::tui::{PULSE, SLASH_COMMANDS};
+use crate::tui::PULSE;
 use radiumical_core::types::AgentMode;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -502,25 +502,66 @@ fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bo
 }
 
 fn draw_help_overlay_lines() -> Vec<Line<'static>> {
-    let max_w = SLASH_COMMANDS
-        .iter()
-        .map(|(n, _)| n.len())
-        .max()
-        .unwrap_or(10);
-    SLASH_COMMANDS
-        .iter()
-        .map(|(n, d)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{n:<w$}", w = max_w),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(format!("  {d}")),
-            ])
-        })
-        .collect()
+    vec![
+        Line::from(vec![
+            Span::styled(" //", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw("  Dashboard"),
+        ]),
+        Line::from(vec![
+            Span::styled(" /help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" All commands"),
+        ]),
+        Line::from(vec![
+            Span::styled(" /provider", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" Switch model"),
+        ]),
+        Line::from(vec![
+            Span::styled(" /sessions", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" Session mgr"),
+        ]),
+        Line::from(vec![
+            Span::styled(" /retry", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" Retry last"),
+        ]),
+        Line::from(vec![
+            Span::styled(" /status", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" Session info"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Ctrl+C", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Cancel/Quit"),
+        ]),
+        Line::from(vec![
+            Span::styled(" Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Close overlay"),
+        ]),
+        Line::from(vec![
+            Span::styled(" ↑↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" History/hints"),
+        ]),
+        Line::from(vec![
+            Span::styled(" Tab", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Autocomplete"),
+        ]),
+        Line::from(vec![
+            Span::styled(" PgUp/Dn", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Scroll"),
+        ]),
+        Line::from(vec![
+            Span::styled(" Ctrl+L", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Clear screen"),
+        ]),
+        Line::from(vec![
+            Span::styled(" Ctrl+A/E", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" Line start/end"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Press any key to close",
+            Style::default().fg(Color::Rgb(100, 100, 110)),
+        )),
+    ]
 }
 
 fn draw_status(f: &mut Frame, area: Rect, app: &App) {
@@ -547,7 +588,7 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
                 format!(" {} thinking {}s", bar, app.thinking_elapsed),
                 style,
             ),
-            Span::styled(" (Esc to cancel)", dim_style),
+            Span::styled(" (Esc/Ctrl+C to cancel)", dim_style),
         ])
     } else if let Some(ref title) = app.session_title {
         let mode = match app.mode {
@@ -579,7 +620,21 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
         };
         Line::from(Span::styled(format!(" {display}"), style))
     } else {
-        Line::from(Span::styled("Ready", style))
+        let tip_style = Style::default().fg(Color::Rgb(160, 160, 100));
+        if app.tip_state.enabled {
+            Line::from(vec![
+                Span::styled(" Ready", style),
+                Span::styled(
+                    format!("  {} ", app.tip_state.text()),
+                    tip_style,
+                ),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(" Ready", style),
+                Span::styled("  // dashboard  /help commands  Ctrl+C cancel", dim_style),
+            ])
+        }
     };
     let mode = match app.mode {
         AgentMode::Auto => "Auto",

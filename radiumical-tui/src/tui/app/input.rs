@@ -77,7 +77,36 @@ impl App {
             (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
                 self.show_full_reasoning = !self.show_full_reasoning;
             }
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => self.should_quit = true,
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                if self.thinking {
+                    let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
+                    self.thinking = false;
+                    self.thinking_cancelled = true;
+                    self.toasts.push(crate::board::Toast::new(
+                        "Cancelled".to_string(),
+                        crate::board::ToastLevel::Warn,
+                        std::time::Duration::from_secs(2),
+                    ));
+                } else if !self.session_items.is_empty() {
+                    self.confirm.visible = true;
+                    self.confirm.message = "Exit? Unsaved session will be auto-saved.".to_string();
+                    self.confirm.yes_selected = true;
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+                self.output.clear();
+                self.output.push(String::new());
+                self.scroll = 0.0;
+                self.stick_to_bottom = true;
+            }
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                self.cursor = 0;
+            }
+            (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                self.cursor = self.input.len();
+            }
             (KeyCode::PageUp, _) => {
                 if self.hint_selected.is_some() {
                     self.hint_page = self.hint_page.saturating_sub(1);
@@ -193,6 +222,25 @@ impl App {
                 if self.confirm.visible {
                     if self.confirm.yes_selected {
                         if self.confirm.message.contains("Exit") {
+                            // Auto-save session before exit
+                            if !self.session_items.is_empty() {
+                                let desc = self.history.first().cloned();
+                                let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs();
+                                let auto_name = format!("auto-{ts}");
+                                let _ = self.session_pool.save(
+                                    &auto_name,
+                                    &self.session_items,
+                                    &self.model,
+                                    &self.provider_name,
+                                    mode,
+                                    &self.thinking_effort,
+                                    desc.as_deref(),
+                                );
+                            }
                             self.should_quit = true;
                         } else if self.confirm.message.contains("Clear") {
                             self.output.clear();

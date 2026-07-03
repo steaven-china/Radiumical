@@ -1,6 +1,31 @@
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 
+fn base64_encode(s: &str) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 impl App {
     pub(crate) fn handle_command(&mut self, task: &str) {
         match task {
@@ -59,8 +84,13 @@ impl App {
                 self.output.push(String::new());
                 self.output.push("  lean CLI coding agent".into());
                 self.output.push(String::new());
-                self.output
-                    .push("Type a task or /help for commands.".into());
+                self.output.push("  Type a task to get started, or use:".into());
+                self.output.push("    //        — open dashboard".into());
+                self.output.push("    /help     — show all commands".into());
+                self.output.push("    /provider — switch model".into());
+                self.output.push("    /sessions — manage sessions".into());
+                self.output.push(String::new());
+                self.output.push("  Ctrl+C cancel  |  Esc close overlay  |  ↑↓ history".into());
                 self.output.push(String::new());
                 return;
             }
@@ -530,7 +560,11 @@ impl App {
                 return;
             }
             "/outline" | "/lint" | "/diagnostics" => {
-                self.output.push("  Command not yet implemented.".into());
+                self.output.push("> /diagnostics".into());
+                let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(
+                    "Run LSP diagnostics and lint checks on the workspace. Report findings concisely.".into(),
+                ));
+                self.output.push("  Running diagnostics…".into());
                 self.input.clear();
                 self.cursor = 0;
                 self.stick_to_bottom = true;
@@ -740,6 +774,31 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
+            "/tips" => {
+                let enabled = self.tip_state.toggle();
+                self.output.push("> /tips".into());
+                if enabled {
+                    self.output.push("  Tips enabled — shown in status bar".into());
+                } else {
+                    self.output.push("  Tips disabled".into());
+                }
+                self.output.push("  /tip next — skip to next tip".into());
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/tip next" | "/tip" => {
+                self.tip_state.next();
+                self.output.push("> /tip next".into());
+                self.output.push(format!("  {}", self.tip_state.text()));
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
             "/review" => {
                 let has_history = !self.session_items.is_empty();
                 if has_history {
@@ -869,6 +928,25 @@ impl App {
                 self.stick_to_bottom = true;
                 return;
             }
+            "/think" | "/think low" => {
+                if task == "/think" {
+                    self.output.push("> /think".into());
+                    self.output.push(format!("  Current effort: {}", self.thinking_effort));
+                    self.output.push("  Options: /think low | /think high | /think max".into());
+                } else {
+                    self.thinking_effort = "low".into();
+                    let _ = self
+                        .cmd_tx
+                        .blocking_send(BackendCmd::SetThinkingEffort("low".into()));
+                    self.output.push("> /think low".into());
+                    self.output.push("  Reasoning: low".into());
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
             _ if task.starts_with("/model ") => {
                 let m = task[7..].trim().to_string();
                 self.model = m.clone();
@@ -884,6 +962,87 @@ impl App {
                 self.input.clear();
                 self.cursor = 0;
                 self.stick_to_bottom = true;
+                return;
+            }
+            "/retry" | "/r" => {
+                if let Some(last_task) = self.history.last().cloned() {
+                    self.output.push(format!("> /retry"));
+                    self.output.push(format!("> {last_task}"));
+                    self.output.push(String::new());
+                    self.stick_to_bottom = true;
+                    self.full_reasoning.clear();
+                    self.show_full_reasoning = false;
+                    self.thinking_cancelled = false;
+                    let final_task = if self.cod_enabled {
+                        format!("{last_task}\n\n[Chain of Draft: think in <=5 word steps, be terse. Output reasoning as brief fragments, then final answer.]")
+                    } else {
+                        last_task
+                    };
+                    let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(final_task));
+                } else {
+                    self.toasts.push(crate::board::Toast::new(
+                        "Nothing to retry",
+                        crate::board::ToastLevel::Warn,
+                        std::time::Duration::from_secs(3),
+                    ));
+                }
+                self.input.clear();
+                self.cursor = 0;
+                return;
+            }
+            "/status" | "/info" => {
+                self.output.push("> /status".into());
+                let mode = match self.mode {
+                    radiumical_core::types::AgentMode::Auto => "Auto",
+                    radiumical_core::types::AgentMode::Plan => "Plan",
+                    radiumical_core::types::AgentMode::Exec => "Exec",
+                };
+                self.output.push(format!("  Model:      {}", self.model));
+                self.output.push(format!("  Provider:   {}", self.provider_name));
+                self.output.push(format!("  Mode:       {}", mode));
+                self.output.push(format!("  Effort:     {}", self.thinking_effort));
+                self.output.push(format!("  CoD:        {}", if self.cod_enabled { "on" } else { "off" }));
+                self.output.push(format!("  Messages:   {}", self.session_items.len()));
+                self.output.push(format!("  History:    {}", self.history.len()));
+                self.output.push(format!("  Agent role: {}", self.agent_role));
+                if !self.mcp_servers.is_empty() {
+                    let alive = self.mcp_servers.iter().filter(|s| s.alive).count();
+                    self.output.push(format!("  MCP:        {}/{} servers alive", alive, self.mcp_servers.len()));
+                }
+                self.output.push(String::new());
+                self.input.clear();
+                self.cursor = 0;
+                self.stick_to_bottom = true;
+                return;
+            }
+            "/copy" => {
+                if let Some(last) = self.session_items.iter().rev().find_map(|item| {
+                    if let radiumical_core::session::SessionItem::Assistant { content } = item {
+                        if !content.is_empty() { Some(content.clone()) } else { None }
+                    } else {
+                        None
+                    }
+                }) {
+                    // Copy to clipboard via OSC52 escape sequence
+                    let encoded = base64_encode(&last);
+                    let osc = format!("\x1b]52;c;{}\x07", encoded);
+                    // Write to stderr so it reaches the terminal
+                    use std::io::Write;
+                    let _ = std::io::stderr().write_all(osc.as_bytes());
+                    self.toasts.push(crate::board::Toast::new(
+                        "Copied last response to clipboard".to_string(),
+                        crate::board::ToastLevel::Info,
+                        std::time::Duration::from_secs(3),
+                    ));
+                } else {
+                    self.toasts.push(crate::board::Toast::new(
+                        "Nothing to copy",
+                        crate::board::ToastLevel::Warn,
+                        std::time::Duration::from_secs(3),
+                    ));
+                }
+                self.input.clear();
+                self.cursor = 0;
                 return;
             }
             _ => {}

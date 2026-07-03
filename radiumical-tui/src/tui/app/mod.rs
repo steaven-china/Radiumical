@@ -101,6 +101,7 @@ pub struct App {
     pub agent_role: String,
     pub agents_panel_visible: bool,
     pub agents_list: Vec<radiumical_core::agent_pool::AgentDef>,
+    pub tip_state: crate::tips::TipState,
 }
 
 impl App {
@@ -118,7 +119,13 @@ impl App {
         out.push(String::new());
         out.push("  lean CLI coding agent".into());
         out.push(String::new());
-        out.push("Type a task or /help for commands.".into());
+        out.push("  Type a task to get started, or use:".into());
+        out.push("    //        — open dashboard".into());
+        out.push("    /help     — show all commands".into());
+        out.push("    /provider — switch model".into());
+        out.push("    /sessions — manage sessions".into());
+        out.push(String::new());
+        out.push("  Ctrl+C cancel  |  Esc close overlay  |  ↑↓ history".into());
         out.push(String::new());
         Self {
             output: out,
@@ -230,6 +237,7 @@ impl App {
             session_pool: radiumical_core::session::SessionPool::for_workspace(workspace),
             memory: radiumical_core::memory::Memory::for_workspace(workspace),
             choice_panel: crate::choice_panel::ChoicePanel::new(),
+            tip_state: crate::tips::TipState::new(),
         }
     }
 
@@ -246,6 +254,9 @@ impl App {
         }
         let max = (self.rendered_total.saturating_sub(_visible_lines)) as f32;
         self.scroll = self.scroll.clamp(0.0, max.max(0.0));
+        if self.tip_state.should_rotate() {
+            self.tip_state.rotate();
+        }
     }
 
     /// Save settings board, apply changes, and sync mode/thinking effort to backend.

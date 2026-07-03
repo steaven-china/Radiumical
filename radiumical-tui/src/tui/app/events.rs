@@ -216,7 +216,18 @@ impl App {
                 }
             }
             UiEvent::Error(e) => {
-                self.output.push(format!("\x03  \u{2717} Error: {e}"));
+                let hint = if e.contains("timeout") || e.contains("timed out") {
+                    " (try /retry or increase timeout in /settings)"
+                } else if e.contains("rate limit") || e.contains("429") {
+                    " (rate limited — wait a moment, then /retry)"
+                } else if e.contains("auth") || e.contains("401") || e.contains("403") {
+                    " (check API key: /env list or /settings)"
+                } else if e.contains("context") || e.contains("token") {
+                    " (context too long — try /new to start fresh)"
+                } else {
+                    " (try /retry)"
+                };
+                self.output.push(format!("\x03  \u{2717} Error: {e}{hint}"));
                 self.thinking = false;
                 self.session_items.push(SessionItem::Raw { lines: vec![e] });
             }
