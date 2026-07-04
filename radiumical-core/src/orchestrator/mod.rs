@@ -1,67 +1,38 @@
-//! Orchestrator — task plan with dependency tracking.
+//! Orchestrator — simple linear task plan with dependency tracking.
 //!
-//! Ported from pi-agent extension. State is persisted to disk per session.
+//! This is the **simple** orchestrator for straightforward sequential workflows.
+//! Use this when you need: create plan → start task → done → auto-continue next.
+//!
+//! # When to use which orchestrator
+//!
+//! | Feature | `Orchestrator` (this) | `DynamicOrchestrator` |
+//! |---------|----------------------|----------------------|
+//! | Linear plan | ✓ | ✓ |
+//! | Dependency tracking | ✓ | ✓ |
+//! | Auto-continue | ✓ | ✓ |
+//! | Conditional guards | — | ✓ |
+//! | Lifecycle hooks | — | ✓ |
+//! | Event bus | — | ✓ |
+//! | Persistent tasks | — | ✓ |
+//! | Retry on failure | — | ✓ |
+//! | Sub-agent cluster | — | ✓ |
+//!
+//! **Use `Orchestrator`** for: simple task lists, `/plan` commands, the `orchestrate` tool.
+//! **Use `DynamicOrchestrator`** for: reactive workflows, conditional triggers, the `cluster` tool.
+//!
+//! Convert between them with `Orchestrator::to_dynamic()` and `DynamicOrchestrator::export_plan()`.
+//!
+//! State is persisted to disk per session at `~/.radi/orchestrator/{workspace}.json`.
 
-use serde::{Deserialize, Serialize};
+mod format;
+mod types;
+
+pub use types::{Plan, Task, TaskStatus};
+
+use format::format_plan;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TaskStatus {
-    Pending,
-    Active,
-    Done,
-    Blocked,
-    Skipped,
-}
-
-impl TaskStatus {
-    pub fn icon(&self) -> &'static str {
-        match self {
-            TaskStatus::Pending => "○",
-            TaskStatus::Active => "◉",
-            TaskStatus::Done => "✓",
-            TaskStatus::Blocked => "⊘",
-            TaskStatus::Skipped => "→",
-        }
-    }
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            TaskStatus::Pending => "pending",
-            TaskStatus::Active => "active",
-            TaskStatus::Done => "done",
-            TaskStatus::Blocked => "blocked",
-            TaskStatus::Skipped => "skipped",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Task {
-    pub id: u32,
-    pub title: String,
-    pub status: TaskStatus,
-    pub deps: Vec<u32>, // IDs of prerequisite tasks
-    pub order: usize,
-    /// Optional agent role to assign this task to (e.g. "debugger", "reviewer").
-    /// If set and the harness supports it, the task will be dispatched to a
-    /// sub-agent with that role.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Plan {
-    pub title: String,
-    pub tasks: Vec<Task>,
-    pub next_id: u32,
-}
 
 // ---------------------------------------------------------------------------
 // Orchestrator
@@ -491,78 +462,6 @@ impl Orchestrator {
 
         Some(parts.join("\n"))
     }
-}
-
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-
-fn format_plan(plan: &Plan) -> String {
-    let title = if plan.title.is_empty() {
-        "".into()
-    } else {
-        format!("# {}\n\n", plan.title)
-    };
-
-    let stats = {
-        let total = plan.tasks.len();
-        let done = plan
-            .tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Done)
-            .count();
-        let active = plan
-            .tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Active)
-            .count();
-        let blocked = plan
-            .tasks
-            .iter()
-            .filter(|t| t.status == TaskStatus::Blocked)
-            .count();
-        let mut parts = vec![format!("{done}/{total} done")];
-        if active > 0 {
-            parts.push(format!("{active} active"));
-        }
-        if blocked > 0 {
-            parts.push(format!("{blocked} blocked"));
-        }
-        format!("progress: {}\n", parts.join(" · "))
-    };
-
-    let mut tasks: Vec<_> = plan.tasks.iter().collect();
-    tasks.sort_by_key(|t| t.order);
-    let lines: Vec<String> = tasks
-        .into_iter()
-        .map(|t| {
-            let icon = t.status.icon();
-            let label = t.status.label();
-            let dep_str = if t.deps.is_empty() {
-                "".into()
-            } else {
-                format!(
-                    " ← deps: #{}",
-                    t.deps
-                        .iter()
-                        .map(|d| d.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", #")
-                )
-            };
-            let agent_str = t
-                .agent
-                .as_deref()
-                .map(|a| format!(" @{a}"))
-                .unwrap_or_default();
-            format!(
-                "  {icon} #{} [{}] {}{}{}",
-                t.id, label, t.title, agent_str, dep_str
-            )
-        })
-        .collect();
-
-    format!("{title}{stats}\n{}", lines.join("\n"))
 }
 
 // ── Tests ──

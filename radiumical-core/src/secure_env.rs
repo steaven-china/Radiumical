@@ -122,6 +122,17 @@ fn xor_obfuscate(data: &[u8], key: &[u8]) -> Vec<u8> {
 /// - 4 bytes: magic "RENV"
 /// - 1 byte: version (1)
 /// - Rest: XOR-obfuscated JSON (HashMap<String, String>)
+///
+/// # Security Note
+///
+/// This is **obfuscation, not encryption**. The XOR key is derived from the
+/// machine ID (hostname + username hash), so secrets are not readable on a
+/// different machine, but a determined attacker with local access can reverse
+/// it. This is equivalent to how tools like `git-credential-store` work.
+///
+/// For production secrets, use a proper secret manager (Vault, AWS SSM, etc.).
+/// This module is for developer convenience — storing API keys on a dev machine
+/// so they don't appear in shell history or env vars.
 const MAGIC: &[u8; 4] = b"RENV";
 const VERSION: u8 = 1;
 
