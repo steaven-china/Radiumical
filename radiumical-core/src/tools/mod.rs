@@ -14,6 +14,7 @@ mod agent_pool;
 pub mod cluster_tool;
 mod command;
 mod file;
+pub mod settings;
 pub mod interact;
 pub mod layout_page;
 mod layout_tool;
@@ -28,6 +29,7 @@ pub use agent::{MemoryTool, PlaywrightTool, SubAgentListTool, SubAgentTool, SubA
 pub use agent_pool::{ListAgentsTool, LoadAgentTool};
 pub use cluster_tool::ClusterTool;
 pub use command::RunCommand;
+pub use settings::SettingsTool;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
 pub use layout_tool::LayoutPageTool;
@@ -115,6 +117,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(LoadAgentTool),
         Box::new(LayoutPageTool),
         Box::new(ClusterTool),
+        Box::new(SettingsTool),
     ]
 }
 

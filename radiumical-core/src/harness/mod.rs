@@ -318,6 +318,7 @@ impl Harness {
                     &ui_tx,
                     tool_timeout,
                     &allowed_names,
+                    &mut self.config,
                 )
                 .await;
                 continue;

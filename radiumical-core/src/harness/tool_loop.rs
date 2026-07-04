@@ -26,6 +26,7 @@ pub(crate) async fn execute_tool_calls(
     ui_tx: &tokio::sync::mpsc::Sender<UiEvent>,
     tool_timeout: Duration,
     allowed_names: &HashSet<String>,
+    config: &mut crate::types::SessionConfig,
 ) {
     use crate::harness::helpers::assistant_msg;
 
@@ -91,6 +92,11 @@ pub(crate) async fn execute_tool_calls(
                     final_result = hook.after(tc, final_result, workspace);
                 }
 
+                // Intercept settings tool results — apply config changes in-place
+                if tc.function.name == "settings" {
+                    final_result = intercept_settings(final_result, config, ui_tx).await;
+                }
+
                 if let Err(e) = ui_tx.send(UiEvent::ToolDone).await {
                     tracing::warn!(error = %e, "failed to send ToolDone to UI");
                 }
@@ -131,4 +137,138 @@ pub(crate) async fn execute_tool_calls(
             }
         }
     }
+}
+
+/// Intercept settings tool markers and apply config changes.
+async fn intercept_settings(
+    result: crate::types::ToolResult,
+    config: &mut crate::types::SessionConfig,
+    ui_tx: &tokio::sync::mpsc::Sender<UiEvent>,
+) -> crate::types::ToolResult {
+    let content = result.content.trim();
+
+    // ── get ──
+    if let Some(key) = content.strip_prefix("__settings_get__:") {
+        let value = crate::tools::settings::read_setting(config, key);
+        return match value {
+            Ok(v) => crate::types::ToolResult {
+                tool_call_id: result.tool_call_id,
+                content: format!("{key} = {v}"),
+                is_error: false,
+            },
+            Err(e) if e.starts_with("__read_tui__:") => {
+                // TUI-only setting — can't read from harness, return hint
+                crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: format!("{key} is managed by the TUI. Use /{key} command."),
+                    is_error: false,
+                }
+            }
+            Err(e) => crate::types::ToolResult {
+                tool_call_id: result.tool_call_id,
+                content: e,
+                is_error: true,
+            },
+        };
+    }
+
+    // ── set ──
+    if let Some(kv) = content.strip_prefix("__settings_set__:") {
+        let (key, value) = match kv.split_once('=') {
+            Some((k, v)) => (k, v),
+            None => {
+                return crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: format!("Invalid settings format: {kv}"),
+                    is_error: true,
+                };
+            }
+        };
+        let apply_result = crate::tools::settings::apply_setting(config, key, value);
+        return match apply_result {
+            Ok(msg) => {
+                let _ = ui_tx.send(UiEvent::Toast {
+                    message: msg.clone(),
+                    level: "info".into(),
+                    duration_secs: 3,
+                }).await;
+                crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: msg,
+                    is_error: false,
+                }
+            }
+            Err(e) if e.starts_with("__forward_effort__:") => {
+                let effort = e.strip_prefix("__forward_effort__:").unwrap_or("max");
+                let _ = ui_tx.send(UiEvent::Toast {
+                    message: format!("Thinking effort → {effort}"),
+                    level: "info".into(),
+                    duration_secs: 3,
+                }).await;
+                crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: format!("Thinking effort set to: {effort} (will take effect on next request)"),
+                    is_error: false,
+                }
+            }
+            Err(e) if e.starts_with("__forward_cod__:") => {
+                let val = e.strip_prefix("__forward_cod__:").unwrap_or("off");
+                crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: format!("Chain of Draft set to: {val} (will take effect on next request)"),
+                    is_error: false,
+                }
+            }
+            Err(e) => crate::types::ToolResult {
+                tool_call_id: result.tool_call_id,
+                content: e,
+                is_error: true,
+            },
+        };
+    }
+
+    // ── save ──
+    if content == "__settings_save__" {
+        let mut cfg = crate::config::Config::load().unwrap_or(crate::config::Config {
+            model: None,
+            provider: None,
+            api_key: None,
+            api_base: None,
+            heartbeat_secs: None,
+            llm_timeout_secs: None,
+            max_iterations: None,
+            reasoning_effort: None,
+            mode: None,
+            max_context_tokens: None,
+            context_compress_ratio: None,
+        });
+        cfg.model = Some(config.model.clone());
+        cfg.mode = Some(format!("{:?}", config.mode).to_lowercase());
+        cfg.max_iterations = Some(config.max_iterations);
+        cfg.llm_timeout_secs = Some(config.llm_timeout_secs);
+        cfg.max_context_tokens = Some(config.max_context_tokens);
+        cfg.context_compress_ratio = Some(config.context_compress_ratio);
+        return match cfg.save() {
+            Ok(()) => {
+                let _ = ui_tx.send(UiEvent::Toast {
+                    message: "Settings saved to ~/.radi/config.toml".into(),
+                    level: "info".into(),
+                    duration_secs: 3,
+                }).await;
+                crate::types::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: "Settings persisted to ~/.radi/config.toml".into(),
+                    is_error: false,
+                }
+            }
+            Err(e) => crate::types::ToolResult {
+                tool_call_id: result.tool_call_id,
+                content: format!("Failed to save: {e}"),
+                is_error: true,
+            },
+        };
+    }
+
+    // Not a settings marker — pass through
+    result
 }

@@ -3076,6 +3076,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "radiumical-rpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "radiumical-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "radiumical-tauri"
 version = "0.1.0"
 dependencies = [

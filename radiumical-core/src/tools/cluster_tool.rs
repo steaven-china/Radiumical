@@ -19,6 +19,7 @@ fn clusters() -> &'static Mutex<std::collections::HashMap<String, AgentCluster>>
 static DEFAULT_CONFIG: OnceLock<Mutex<SessionConfig>> = OnceLock::new();
 static DEFAULT_PROVIDER: OnceLock<Arc<dyn Provider>> = OnceLock::new();
 
+#[allow(dead_code)]
 pub fn set_defaults(config: SessionConfig, provider: Arc<dyn Provider>) {
     let _ = DEFAULT_CONFIG.set(Mutex::new(config));
     let _ = DEFAULT_PROVIDER.set(provider);
