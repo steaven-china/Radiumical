@@ -45,15 +45,22 @@ impl Tool for RunCommand {
 
         let cmd_str = args["command"].as_str().unwrap_or("").to_string();
 
-        // Execute via sh on unix, cmd on windows
+        // Execute via sh on unix; on Windows prefer Git Bash if available,
+        // otherwise fall back to cmd.
         #[cfg(target_os = "windows")]
-        let (shell, flag): (String, String) = ("cmd".into(), "/C".into());
+        let (shell, flag, cmd_str): (String, String, String) =
+            if let Some(bash) = find_git_bash() {
+                (bash, "-c".into(), cmd_str)
+            } else {
+                (
+                    "cmd".into(),
+                    "/C".into(),
+                    format!("chcp 65001 > nul && {}", cmd_str),
+                )
+            };
         #[cfg(not(target_os = "windows"))]
-        let (shell, flag): (String, String) = ("sh".into(), "-c".into());
-
-        // Force UTF-8 codepage on Windows to avoid GBK mojibake in output
-        #[cfg(target_os = "windows")]
-        let cmd_str = format!("chcp 65001 > nul && {}", cmd_str);
+        let (shell, flag, cmd_str): (String, String, String) =
+            ("sh".into(), "-c".into(), cmd_str);
 
         let ws_clone = workspace.to_path_buf();
         let cmd = cmd_str.clone();
@@ -107,4 +114,33 @@ impl Tool for RunCommand {
             is_error: exit_code != 0,
         }
     }
+}
+
+/// Locate a usable Git Bash executable on Windows.
+///
+/// Checks common installation paths first, then falls back to PATH lookup.
+#[cfg(target_os = "windows")]
+fn find_git_bash() -> Option<String> {
+    use std::path::PathBuf;
+    let candidates: Vec<PathBuf> = vec![
+        PathBuf::from(r"C:\Program Files\Git\bin\bash.exe"),
+        PathBuf::from(r"C:\Program Files (x86)\Git\bin\bash.exe"),
+        PathBuf::from(r"C:\Program Files\Git\usr\bin\bash.exe"),
+        PathBuf::from(r"C:\Program Files (x86)\Git\usr\bin\bash.exe"),
+    ];
+    for candidate in candidates {
+        if candidate.exists() {
+            return Some(candidate.to_string_lossy().to_string());
+        }
+    }
+    // Fallback: search PATH for bash.exe.
+    if let Ok(path_env) = std::env::var("PATH") {
+        for dir in path_env.split(';') {
+            let candidate = PathBuf::from(dir).join("bash.exe");
+            if candidate.exists() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
 }
