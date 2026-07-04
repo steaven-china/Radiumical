@@ -447,7 +447,9 @@ impl Conversation {
                             .append(true)
                             .open(&zst_path)
                         {
-                            let _ = f.write_all(&compressed);
+                            if let Err(e) = f.write_all(&compressed) {
+                                tracing::error!(error = %e, "failed to write conversation JSONL (append)");
+                            }
                         }
                     }
                 }
@@ -473,7 +475,9 @@ impl Conversation {
                     .truncate(true)
                     .open(&zst_path)
                 {
-                    let _ = f.write_all(&compressed);
+                    if let Err(e) = f.write_all(&compressed) {
+                        tracing::error!(error = %e, "failed to write conversation JSONL (rewrite)");
+                    }
                 }
             }
         }

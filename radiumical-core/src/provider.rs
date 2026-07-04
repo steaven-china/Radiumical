@@ -213,9 +213,13 @@ impl Provider for OpenAICompatibleProvider {
                                 },
                             })
                             .collect();
-                        let _ = tx.send(ProviderEvent::ToolCalls(tool_calls)).await;
+                        if tx.send(ProviderEvent::ToolCalls(tool_calls)).await.is_err() {
+                            tracing::debug!("provider event channel closed");
+                        }
                     }
-                    let _ = tx.send(ProviderEvent::Done).await;
+                    if tx.send(ProviderEvent::Done).await.is_err() {
+                        tracing::debug!("provider event channel closed");
+                    }
                     return Ok(());
                 }
 
@@ -244,8 +248,12 @@ impl Provider for OpenAICompatibleProvider {
                                 })
                                 .collect();
 
-                            let _ = tx.send(ProviderEvent::ToolCalls(tool_calls)).await;
-                            let _ = tx.send(ProviderEvent::Done).await;
+                            if tx.send(ProviderEvent::ToolCalls(tool_calls)).await.is_err() {
+                                tracing::debug!("provider event channel closed");
+                            }
+                            if tx.send(ProviderEvent::Done).await.is_err() {
+                                tracing::debug!("provider event channel closed");
+                            }
                             return Ok(());
                         }
                     }
@@ -255,13 +263,17 @@ impl Provider for OpenAICompatibleProvider {
                         if let Some(rc) = delta.reasoning_content {
                             if !rc.is_empty() {
                                 reasoning_buf.push_str(&rc);
-                                let _ = tx.send(ProviderEvent::Reasoning(rc)).await;
+                                if tx.send(ProviderEvent::Reasoning(rc)).await.is_err() {
+                                    tracing::debug!("provider event channel closed");
+                                }
                             }
                         }
                         // Text content
                         if let Some(content) = delta.content {
-                            if !content.is_empty() {
-                                let _ = tx.send(ProviderEvent::Text(content)).await;
+                            if !content.is_empty()
+                                && tx.send(ProviderEvent::Text(content)).await.is_err()
+                            {
+                                tracing::debug!("provider event channel closed");
                             }
                         }
 
@@ -295,7 +307,9 @@ impl Provider for OpenAICompatibleProvider {
         }
 
         // If we got here, stream ended without explicit [DONE] or tool_calls finish
-        let _ = tx.send(ProviderEvent::Done).await;
+        if tx.send(ProviderEvent::Done).await.is_err() {
+            tracing::debug!("provider event channel closed");
+        }
         Ok(())
     }
 

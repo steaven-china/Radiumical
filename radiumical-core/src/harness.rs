@@ -154,9 +154,11 @@ impl Harness {
             return split_at - 1;
         }
 
-        let _ = ui_tx.send(UiEvent::LlmChunk(
+        if let Err(e) = ui_tx.send(UiEvent::LlmChunk(
             "\n[Compressing context…]\n".into(),
-        )).await;
+        )).await {
+            tracing::warn!(error = %e, "failed to send context compression notice to UI");
+        }
 
         // Build summarisation prompt.
         let compress_messages = vec![
@@ -216,9 +218,11 @@ impl Harness {
             ),
         );
 
-        let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+        if let Err(e) = ui_tx.send(UiEvent::LlmChunk(format!(
             "[Context compressed: {compressed_count} messages → summary]\n"
-        ))).await;
+        ))).await {
+            tracing::warn!(error = %e, "failed to send compression result to UI");
+        }
 
         compressed_count
     }
@@ -410,11 +414,15 @@ impl Harness {
 
                 match event {
                     Some(ProviderEvent::Text(chunk)) => {
-                        let _ = ui_tx.send(UiEvent::LlmChunk(chunk.clone())).await;
+                        if let Err(e) = ui_tx.send(UiEvent::LlmChunk(chunk.clone())).await {
+                            tracing::warn!(error = %e, "failed to send LlmChunk to UI");
+                        }
                         full_text.push_str(&chunk);
                     }
                     Some(ProviderEvent::Reasoning(rc)) => {
-                        let _ = ui_tx.send(UiEvent::LlmReasoning(rc.clone())).await;
+                        if let Err(e) = ui_tx.send(UiEvent::LlmReasoning(rc.clone())).await {
+                            tracing::warn!(error = %e, "failed to send LlmReasoning to UI");
+                        }
                         full_reasoning.push_str(&rc);
                     }
                     Some(ProviderEvent::ToolCalls(calls)) => {
@@ -422,14 +430,18 @@ impl Harness {
                     }
                     Some(ProviderEvent::Done) => break,
                     Some(ProviderEvent::Error(e)) => {
-                        let _ = ui_tx.send(UiEvent::Error(e)).await;
+                        if let Err(send_err) = ui_tx.send(UiEvent::Error(e)).await {
+                            tracing::warn!(error = %send_err, "failed to send provider error to UI");
+                        }
                         break;
                     }
                     None => break,
                 }
             }
 
-            let _ = ui_tx.send(UiEvent::LlmDone).await;
+            if let Err(e) = ui_tx.send(UiEvent::LlmDone).await {
+                tracing::warn!(error = %e, "failed to send LlmDone to UI");
+            }
 
             if timed_out {
                 chat_handle.abort();
@@ -438,7 +450,9 @@ impl Harness {
                     self.config.llm_timeout_secs,
                     iteration + 1
                 );
-                let _ = ui_tx.send(UiEvent::Error(explain.clone())).await;
+                if let Err(e) = ui_tx.send(UiEvent::Error(explain.clone())).await {
+                    tracing::warn!(error = %e, "failed to send timeout error to UI");
+                }
                 messages.push(user_msg(&explain));
                 continue;
             }
@@ -446,7 +460,9 @@ impl Harness {
             match chat_handle.await {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
-                    let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
+                    if let Err(send_err) = ui_tx.send(UiEvent::Error(e.to_string())).await {
+                        tracing::warn!(error = %send_err, "failed to send chat error to UI");
+                    }
                     return Err(e);
                 }
                 Err(join_err) => {
@@ -454,7 +470,9 @@ impl Harness {
                         continue;
                     }
                     let msg = format!("Provider panicked: {join_err}");
-                    let _ = ui_tx.send(UiEvent::Error(msg.clone())).await;
+                    if let Err(send_err) = ui_tx.send(UiEvent::Error(msg.clone())).await {
+                        tracing::warn!(error = %send_err, "failed to send panic error to UI");
+                    }
                     return Err(anyhow::anyhow!("{msg}"));
                 }
             }
@@ -477,7 +495,9 @@ impl Harness {
                     // Filter by agent tool allowlist + mode allowlist.
                     if !allowed_names.contains(&tc.function.name) {
                         let err = format!("Tool '{}' is not allowed for this agent/mode", tc.function.name);
-                        let _ = ui_tx.send(UiEvent::Error(err.clone())).await;
+                        if let Err(e) = ui_tx.send(UiEvent::Error(err.clone())).await {
+                            tracing::warn!(error = %e, "failed to send tool-not-allowed error to UI");
+                        }
                         let tr = ToolResult {
                             tool_call_id: tc.id.clone(),
                             content: err,
@@ -499,12 +519,14 @@ impl Harness {
 
                     match tool {
                         Some(tool) => {
-                            let _ = ui_tx.send(UiEvent::ToolStart {
+                            if let Err(e) = ui_tx.send(UiEvent::ToolStart {
                                 name: tc.function.name.clone(),
                                 index: i,
                                 total,
                                 args: tc.function.arguments.clone(),
-                            }).await;
+                            }).await {
+                                tracing::warn!(error = %e, "failed to send ToolStart to UI");
+                            }
                             let ws = workspace.clone();
                             let args = tc.function.arguments.clone();
                             let ctx = ToolContext {
@@ -520,23 +542,31 @@ impl Harness {
                                 final_result = hook.after(tc, final_result, &workspace);
                             }
 
-                            let _ = ui_tx.send(UiEvent::ToolDone).await;
-                            let _ = ui_tx.send(UiEvent::ToolResult {
+                            if let Err(e) = ui_tx.send(UiEvent::ToolDone).await {
+                                tracing::warn!(error = %e, "failed to send ToolDone to UI");
+                            }
+                            if let Err(e) = ui_tx.send(UiEvent::ToolResult {
                                 content: final_result.content.trim_end().to_string(),
-                            }).await;
+                            }).await {
+                                tracing::warn!(error = %e, "failed to send ToolResult to UI");
+                            }
                             self.conversation
                                 .push_tool_result(tc, &final_result, Some(&workspace));
                             messages.push(tool_result_msg(tc, final_result));
                         }
                         None => {
-                            let _ = ui_tx.send(UiEvent::ToolStart {
+                            if let Err(e) = ui_tx.send(UiEvent::ToolStart {
                                 name: tc.function.name.clone(),
                                 index: i,
                                 total,
                                 args: String::new(),
-                            }).await;
+                            }).await {
+                                tracing::warn!(error = %e, "failed to send ToolStart to UI");
+                            }
                             let err = format!("Unknown tool: {}", tc.function.name);
-                            let _ = ui_tx.send(UiEvent::Error(err.clone())).await;
+                            if let Err(e) = ui_tx.send(UiEvent::Error(err.clone())).await {
+                                tracing::warn!(error = %e, "failed to send unknown-tool error to UI");
+                            }
                             let tr = ToolResult {
                                 tool_call_id: tc.id.clone(),
                                 content: err,
@@ -565,10 +595,12 @@ impl Harness {
                     let next_id = next.id;
                     let next_title = next.title.clone();
                     let next_agent = next.agent.clone();
-                    let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+                    if let Err(e) = ui_tx.send(UiEvent::LlmChunk(format!(
                         "\n\n▶ Auto-continuing plan: #{} {}\n\n",
                         next_id, next_title
-                    ))).await;
+                    ))).await {
+                        tracing::warn!(error = %e, "failed to send auto-continue notice to UI");
+                    }
                     // Inject the next task as a new user message
                     let agent_hint = next_agent
                         .as_deref()
@@ -630,7 +662,9 @@ impl Harness {
                         }
                         let title = title.trim().to_string();
                         if !title.is_empty() && title.len() < 80 {
-                            let _ = title_tx.send(UiEvent::TitleGenerated(title)).await;
+                            if let Err(e) = title_tx.send(UiEvent::TitleGenerated(title)).await {
+                                tracing::warn!(error = %e, "failed to send TitleGenerated to UI");
+                            }
                         }
                     }
                 });
@@ -643,7 +677,9 @@ impl Harness {
             "⚠️  Reached max iterations ({}) without completing.",
             self.config.max_iterations
         );
-        let _ = ui_tx.send(UiEvent::Error(msg)).await;
+        if let Err(e) = ui_tx.send(UiEvent::Error(msg)).await {
+            tracing::warn!(error = %e, "failed to send max-iterations error to UI");
+        }
         Ok(())
     }
 }

@@ -462,7 +462,9 @@ impl DynamicOrchestrator {
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".radi")
                 .join("dynamic");
-            let _ = std::fs::create_dir_all(&dir);
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                tracing::error!(error = %e, "failed to create dynamic orchestrator state directory");
+            }
             dir.join(format!("{name}.json"))
         });
 
@@ -717,7 +719,9 @@ impl DynamicOrchestrator {
     pub fn execute_action(&mut self, action: &HookAction) {
         match action {
             HookAction::StartTask(id) => {
-                let _ = self.transition(*id, TaskState::Ready);
+                if let Err(e) = self.transition(*id, TaskState::Ready) {
+                    tracing::warn!(error = %e, task_id = *id, "state transition to Ready failed");
+                }
             }
             HookAction::EmitEvent(key) => {
                 self.event_bus.emit(Event {
@@ -731,13 +735,19 @@ impl DynamicOrchestrator {
                 self.metrics.insert(key.clone(), *value);
             }
             HookAction::MarkDone(id) => {
-                let _ = self.tagged_done(*id, None);
+                if let Err(e) = self.tagged_done(*id, None) {
+                    tracing::warn!(error = %e, task_id = *id, "tagged_done failed");
+                }
             }
             HookAction::SuspendTask(id) => {
-                let _ = self.transition(*id, TaskState::Suspended);
+                if let Err(e) = self.transition(*id, TaskState::Suspended) {
+                    tracing::warn!(error = %e, task_id = *id, "state transition to Suspended failed");
+                }
             }
             HookAction::ResumeTask(id) => {
-                let _ = self.transition(*id, TaskState::Ready);
+                if let Err(e) = self.transition(*id, TaskState::Ready) {
+                    tracing::warn!(error = %e, task_id = *id, "state transition to Ready (resume) failed");
+                }
             }
             HookAction::Sequence(actions) => {
                 for a in actions {
@@ -759,7 +769,9 @@ impl DynamicOrchestrator {
                 next_id: self.next_id,
             };
             if let Ok(json) = serde_json::to_string_pretty(&state) {
-                let _ = std::fs::write(path, json);
+                if let Err(e) = std::fs::write(path, json) {
+                    tracing::error!(error = %e, "failed to save dynamic orchestrator state");
+                }
             }
         }
     }

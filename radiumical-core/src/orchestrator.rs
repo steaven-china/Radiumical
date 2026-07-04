@@ -79,7 +79,9 @@ impl Orchestrator {
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".radi")
                 .join("orchestrator");
-            let _ = fs::create_dir_all(&dir);
+            if let Err(e) = fs::create_dir_all(&dir) {
+                tracing::error!(error = %e, "failed to create orchestrator state directory");
+            }
             dir.join(format!("{name}.json"))
         });
 
@@ -106,7 +108,9 @@ impl Orchestrator {
     fn save(&self) {
         if let Some(ref path) = self.state_path {
             if let Ok(json) = serde_json::to_string_pretty(&self.plan) {
-                let _ = fs::write(path, json);
+                if let Err(e) = fs::write(path, json) {
+                    tracing::error!(error = %e, "failed to save orchestrator state");
+                }
             }
         }
     }

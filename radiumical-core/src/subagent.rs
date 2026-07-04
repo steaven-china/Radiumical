@@ -203,10 +203,12 @@ pub async fn spawn(
             }
         }
         if let Some(tx) = notify {
-            let _ = tx.send(UiEvent::SubAgentDone {
+            if let Err(e) = tx.send(UiEvent::SubAgentDone {
                 id: id_for_task.clone(),
                 success,
-            }).await;
+            }).await {
+                tracing::warn!(error = %e, subagent_id = %id_for_task, "failed to send SubAgentDone");
+            }
         }
         drop(cancel_tx);
     });

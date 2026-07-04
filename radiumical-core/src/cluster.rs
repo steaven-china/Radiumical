@@ -229,10 +229,12 @@ impl AgentCluster {
 
             // Feed result into orchestrator
             if result.success {
-                let _ = self.orchestrator.tagged_done(
+                if let Err(e) = self.orchestrator.tagged_done(
                     result.task_id,
                     Some(result.output.clone()),
-                );
+                ) {
+                    tracing::warn!(error = %e, task_id = result.task_id, "tagged_done failed in cluster");
+                }
                 self.orchestrator.event_bus.emit(Event {
                     key: format!("task.done.{}", result.task_id),
                     source_task: Some(result.task_id),
@@ -241,10 +243,12 @@ impl AgentCluster {
                 });
             } else {
                 // Transition to Failed (which may trigger retry via tick)
-                let _ = self.orchestrator.transition(
+                if let Err(e) = self.orchestrator.transition(
                     result.task_id,
                     TaskState::Failed,
-                );
+                ) {
+                    tracing::warn!(error = %e, task_id = result.task_id, "state transition to Failed in cluster");
+                }
                 self.orchestrator.event_bus.emit(Event {
                     key: format!("task.failed.{}", result.task_id),
                     source_task: Some(result.task_id),
@@ -308,16 +312,20 @@ impl AgentCluster {
                             tokio::spawn(async move {
                                 let mut handle = handle;
                                 let result = handle.wait().await;
-                                let _ = tx.send(ClusterResult {
+                                if let Err(e) = tx.send(ClusterResult {
                                     task_id: 0,
                                     worker_id: hook_id,
                                     success: result.success,
                                     output: result.output,
-                                });
+                                }) {
+                                    tracing::warn!(error = %e, "failed to send hook spawn result to cluster");
+                                }
                             });
                         }
                         HookAction::StartTask(id) => {
-                            let _ = self.orchestrator.transition(*id, TaskState::Ready);
+                            if let Err(e) = self.orchestrator.transition(*id, TaskState::Ready) {
+                                tracing::warn!(error = %e, task_id = *id, "state transition to Ready in cluster hook");
+                            }
                         }
                         HookAction::EmitEvent(key) => {
                             self.orchestrator.event_bus.emit(Event {
@@ -328,16 +336,22 @@ impl AgentCluster {
                             });
                         }
                         HookAction::MarkDone(id) => {
-                            let _ = self.orchestrator.tagged_done(*id, None);
+                            if let Err(e) = self.orchestrator.tagged_done(*id, None) {
+                                tracing::warn!(error = %e, task_id = *id, "tagged_done failed in cluster hook");
+                            }
                         }
                         HookAction::SetMetric(key, value) => {
                             self.orchestrator.metrics.insert(key.clone(), *value);
                         }
                         HookAction::SuspendTask(id) => {
-                            let _ = self.orchestrator.transition(*id, TaskState::Suspended);
+                            if let Err(e) = self.orchestrator.transition(*id, TaskState::Suspended) {
+                                tracing::warn!(error = %e, task_id = *id, "state transition to Suspended in cluster hook");
+                            }
                         }
                         HookAction::ResumeTask(id) => {
-                            let _ = self.orchestrator.transition(*id, TaskState::Ready);
+                            if let Err(e) = self.orchestrator.transition(*id, TaskState::Ready) {
+                                tracing::warn!(error = %e, task_id = *id, "state transition to Ready (resume) in cluster hook");
+                            }
                         }
                         HookAction::Sequence(actions) => {
                             for a in actions {
@@ -424,7 +438,9 @@ impl AgentCluster {
         }
 
         // Transition task to Running
-        let _ = self.orchestrator.transition(task_id, TaskState::Running);
+        if let Err(e) = self.orchestrator.transition(task_id, TaskState::Running) {
+            tracing::warn!(error = %e, task_id = task_id, "state transition to Running in cluster");
+        }
 
         // Build prompt for the sub-agent
         let prompt = format!(
@@ -450,12 +466,14 @@ impl AgentCluster {
         tokio::spawn(async move {
             let mut handle = handle;
             let result = handle.wait().await;
-            let _ = tx.send(ClusterResult {
+            if let Err(e) = tx.send(ClusterResult {
                 task_id,
                 worker_id: wid,
                 success: result.success,
                 output: result.output,
-            });
+            }) {
+                tracing::warn!(error = %e, task_id = task_id, "failed to send worker result to cluster");
+            }
         });
     }
 
@@ -507,7 +525,9 @@ impl AgentCluster {
     }
 
     pub fn emit(&self, event: ClusterEvent) {
-        let _ = self.event_tx.send(event);
+        if let Err(e) = self.event_tx.send(event) {
+            tracing::warn!(error = %e, "failed to emit cluster event");
+        }
     }
 }
 

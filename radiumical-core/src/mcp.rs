@@ -267,7 +267,9 @@ impl McpClient {
 
 impl Drop for McpClient {
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        if let Err(e) = self.child.start_kill() {
+            tracing::debug!(error = %e, "failed to kill MCP child process");
+        }
     }
 }
 

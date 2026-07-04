@@ -325,7 +325,9 @@ impl Tool for EditFile {
                 } else {
                     new_content_lf
                 };
-                std::fs::write(&full_path, &new_content).ok();
+                if let Err(e) = std::fs::write(&full_path, &new_content) {
+                    tracing::error!(error = %e, path = %full_path.display(), "failed to write file (line-ending adjusted)");
+                }
                 return ToolResult {
                     tool_call_id: String::new(),
                     content: format!(
