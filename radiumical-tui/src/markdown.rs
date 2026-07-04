@@ -339,12 +339,10 @@ fn apply_sgr(mut style: Style, seq: &str) -> Style {
                     i += 4;
                 }
             }
-            48 => {
+            48 if i + 4 < codes.len() && codes[i + 1] == 2 => {
                 // Background truecolor
-                if i + 4 < codes.len() && codes[i + 1] == 2 {
-                    style = style.bg(Color::Rgb(codes[i + 2], codes[i + 3], codes[i + 4]));
-                    i += 4;
-                }
+                style = style.bg(Color::Rgb(codes[i + 2], codes[i + 3], codes[i + 4]));
+                i += 4;
             }
             _ => {}
         }

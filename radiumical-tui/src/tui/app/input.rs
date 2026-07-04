@@ -605,10 +605,8 @@ impl App {
             (KeyCode::End, _) => {
                 self.settings_board.edit_cursor = self.settings_board.edit_buffer.len()
             }
-            (KeyCode::Char(ch), mods) => {
-                if !mods.contains(KeyModifiers::CONTROL) {
-                    self.settings_board.edit_insert(ch);
-                }
+            (KeyCode::Char(ch), mods) if !mods.contains(KeyModifiers::CONTROL) => {
+                self.settings_board.edit_insert(ch);
             }
             _ => {}
         }
@@ -814,18 +812,19 @@ impl App {
                 }
                 _ => {}
             },
-            KeyCode::Backspace if self.choice_panel.mode == ChoiceMode::Input => {
-                if self.choice_panel.input_cursor > 0 {
-                    let prev = self
-                        .choice_panel
-                        .input_buffer
-                        .char_indices()
-                        .nth(self.choice_panel.input_cursor - 1)
-                        .map(|(i, c)| i + c.len_utf8())
-                        .unwrap_or(0);
-                    self.choice_panel.input_buffer.drain(prev..);
-                    self.choice_panel.input_cursor = prev;
-                }
+            KeyCode::Backspace
+                if self.choice_panel.mode == ChoiceMode::Input
+                    && self.choice_panel.input_cursor > 0 =>
+            {
+                let prev = self
+                    .choice_panel
+                    .input_buffer
+                    .char_indices()
+                    .nth(self.choice_panel.input_cursor - 1)
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(0);
+                self.choice_panel.input_buffer.drain(prev..);
+                self.choice_panel.input_cursor = prev;
             }
             _ => {}
         }
