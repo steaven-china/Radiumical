@@ -24,14 +24,17 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: radiumical
             rpc_binary: radiumical-rpc
+            suffix: linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
             binary: radiumical
             rpc_binary: radiumical-rpc
+            suffix: macos-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: radiumical.exe
             rpc_binary: radiumical-rpc.exe
+            suffix: windows-x64.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -55,10 +58,16 @@ jobs:
           strip target/${{ matrix.target }}/release-small/${{ matrix.binary }}
           strip target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }}
 
+      - name: Rename binaries
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release-small/${{ matrix.binary }} radiumical-${{ matrix.suffix }}
+          cp target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }} radiumical-rpc-${{ matrix.suffix }}
+
       - name: Upload TUI to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/${{ matrix.target }}/release-small/${{ matrix.binary }}
+          files: radiumical-${{ matrix.suffix }}
           name: ${{ github.ref_name }}
           prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
           body: |
@@ -74,7 +83,7 @@ jobs:
       - name: Upload RPC to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }}
+          files: radiumical-rpc-${{ matrix.suffix }}
           name: ${{ github.ref_name }}
           prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
         env:
