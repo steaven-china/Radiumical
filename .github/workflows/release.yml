@@ -19,15 +19,21 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: radiumical
+            rpc_binary: radiumical-rpc
             asset_name: radiumical-linux-x64
+            rpc_asset_name: radiumical-rpc-linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
             binary: radiumical
+            rpc_binary: radiumical-rpc
             asset_name: radiumical-macos-x64
+            rpc_asset_name: radiumical-rpc-macos-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: radiumical.exe
+            rpc_binary: radiumical-rpc.exe
             asset_name: radiumical-windows-x64.exe
+            rpc_asset_name: radiumical-rpc-windows-x64.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -38,6 +44,9 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
@@ -52,17 +61,17 @@ jobs:
             build-essential wget file libssl-dev
 
       - name: Build release
-        run: cargo build --workspace --release --target ${{ matrix.target }}
+        run: cargo build --workspace --profile release-small --target ${{ matrix.target }}
 
       - name: Strip binary (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
-          strip target/${{ matrix.target }}/release/${{ matrix.binary }}
+          strip target/${{ matrix.target }}/release-small/${{ matrix.binary }}
 
-      - name: Upload to GitHub Release
+      - name: Upload TUI to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          files: target/${{ matrix.target }}/release-small/${{ matrix.binary }}
           name: ${{ github.ref_name }}
           prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
           body: |
@@ -72,5 +81,14 @@ jobs:
             - Linux x64 (`radiumical-linux-x64`)
             - macOS x64 (`radiumical-macos-x64`)
             - Windows x64 (`radiumical-windows-x64.exe`)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload RPC to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }}
+          name: ${{ github.ref_name }}
+          prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

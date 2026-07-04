@@ -70,12 +70,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: radiumical
+            rpc_binary: radiumical-rpc
           - os: macos-latest
             target: x86_64-apple-darwin
             binary: radiumical
+            rpc_binary: radiumical-rpc
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: radiumical.exe
+            rpc_binary: radiumical-rpc.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -86,6 +89,9 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}-${{ matrix.target }}
@@ -102,11 +108,17 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --release --target ${{ matrix.target }}
 
-      - name: Upload binary artifact
+      - name: Upload TUI binary
         uses: actions/upload-artifact@v4
         with:
           name: radiumical-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+      - name: Upload RPC binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiumical-rpc-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.rpc_binary }}
 
   # ── Bench / Memory sanity ───────────────────────────────────
   bench:
