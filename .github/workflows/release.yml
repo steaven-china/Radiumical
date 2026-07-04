@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
@@ -20,20 +21,14 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: radiumical
             rpc_binary: radiumical-rpc
-            asset_name: radiumical-linux-x64
-            rpc_asset_name: radiumical-rpc-linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
             binary: radiumical
             rpc_binary: radiumical-rpc
-            asset_name: radiumical-macos-x64
-            rpc_asset_name: radiumical-rpc-macos-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: radiumical.exe
             rpc_binary: radiumical-rpc.exe
-            asset_name: radiumical-windows-x64.exe
-            rpc_asset_name: radiumical-rpc-windows-x64.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,29 +39,18 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
 
-      - name: Install Tauri system deps (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev libappindicator3-dev librsvg2-dev \
-            build-essential wget file libssl-dev
-
       - name: Build release
-        run: cargo build --workspace --profile release-small --target ${{ matrix.target }}
+        run: cargo build --package radiumical --package radiumical-rpc --profile release-small --target ${{ matrix.target }}
 
-      - name: Strip binary (Linux/macOS)
+      - name: Strip binaries (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
           strip target/${{ matrix.target }}/release-small/${{ matrix.binary }}
+          strip target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }}
 
       - name: Upload TUI to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -78,9 +62,9 @@ jobs:
             ${{ startsWith(github.ref_name, 'pre-') && '⚠️ **Pre-release** — not production ready.' || format('Release {} of Radiumical.', github.ref_name) }}
 
             Binaries:
-            - Linux x64 (`radiumical-linux-x64`)
-            - macOS x64 (`radiumical-macos-x64`)
-            - Windows x64 (`radiumical-windows-x64.exe`)
+            - Linux x64: `radiumical-linux-x64`, `radiumical-rpc-linux-x64`
+            - macOS x64: `radiumical-macos-x64`, `radiumical-rpc-macos-x64`
+            - Windows x64: `radiumical-windows-x64.exe`, `radiumical-rpc-windows-x64.exe`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
