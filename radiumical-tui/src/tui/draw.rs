@@ -528,6 +528,8 @@ fn draw_perf_overlay_at(f: &mut Frame, r: Rect) {
 
 /// Render a single slash-command hint row.
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {
+    use ratatui::widgets::Clear;
+    f.render_widget(Clear, area);
     let bg = if selected {
         Style::default().bg(Color::Rgb(50, 50, 60))
     } else {
@@ -682,8 +684,10 @@ fn draw_help_overlay_lines() -> Vec<Line<'static>> {
 /// Render the bottom status bar (left: session/tip, right: model | mode).
 fn draw_status(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::layout::Alignment;
+    use ratatui::widgets::Clear;
     use unicode_width::UnicodeWidthStr;
 
+    f.render_widget(Clear, area);
     let style = Style::default().fg(Color::Rgb(130, 130, 130));
     let dim_style = Style::default().fg(Color::Rgb(100, 100, 110));
     let filter_style = Style::default().fg(Color::Rgb(180, 180, 100));

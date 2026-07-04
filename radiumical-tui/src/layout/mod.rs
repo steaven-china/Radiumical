@@ -161,8 +161,11 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             continue;
         }
 
-        // Tool call box
-        if trimmed.contains('┌') && trimmed.contains('─') {
+        // Tool call box — only match lines with the embedded \x02 tool ID marker.
+        // LLM markdown output may contain box-drawing chars (┌─┐) in tables or
+        // ASCII art, so we cannot rely on them alone. The \x02 marker is injected
+        // by the TUI's tool rendering code (events.rs) and never appears in LLM text.
+        if line.contains('\x02') {
             let start = i;
             let raw_first = &output[start];
             // Strip invisible id marker if present at the end.
