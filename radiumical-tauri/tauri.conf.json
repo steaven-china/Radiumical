@@ -1,21 +1,37 @@
 {
   "productName": "Radiumical",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "dev.radiumical.app",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "frontendDist": "dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{
-      "title": "Radiumical",
-      "width": 1100,
-      "height": 750
-    }],
-    "security": { "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'" }
+    "windows": [
+      {
+        "title": "Radiumical",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 680,
+        "minHeight": 500,
+        "decorations": true,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://radiumical.dev ipc: http://ipc.localhost; img-src 'self' asset: https://asset.localhost"
+    }
   },
-  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico"] }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  }
 }

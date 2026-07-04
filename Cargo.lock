@@ -3459,6 +3459,7 @@ dependencies = [
 name = "radiumical-tauri"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "futures",
  "radiumical-core",
  "serde",

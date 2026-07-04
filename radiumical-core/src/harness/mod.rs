@@ -60,7 +60,7 @@ impl Harness {
         let tool_defs = tools.iter().map(|t| t.definition()).collect();
         let conversation = Conversation::new(
             config.system_prompt.clone(),
-            Some(PathBuf::from("conversation.jsonl")),
+            None,
         );
         Self {
             config,
