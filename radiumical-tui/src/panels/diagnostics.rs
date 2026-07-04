@@ -1,3 +1,5 @@
+//! Diagnostic item model, parser, and panel renderer for LSP / lint output.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -5,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 #[allow(dead_code)]
+/// A single diagnostic entry (file, line, severity, message).
 #[derive(Debug, Clone)]
 pub struct DiagnosticItem {
     pub file: String,
@@ -13,6 +16,7 @@ pub struct DiagnosticItem {
     pub message: String,
 }
 
+/// Severity level for a diagnostic entry.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosticSeverity {
@@ -21,6 +25,7 @@ pub enum DiagnosticSeverity {
     Info,
 }
 
+/// Parse `cargo check`-style diagnostic lines into structured items.
 #[allow(dead_code)]
 pub fn parse_diagnostics(raw: &str) -> Vec<DiagnosticItem> {
     let mut items = Vec::new();
@@ -56,6 +61,7 @@ pub fn parse_diagnostics(raw: &str) -> Vec<DiagnosticItem> {
     items
 }
 
+/// Render the diagnostics panel into the given `area`, respecting scroll offset.
 #[allow(dead_code)]
 pub fn render_diagnostics_panel(
     f: &mut Frame,

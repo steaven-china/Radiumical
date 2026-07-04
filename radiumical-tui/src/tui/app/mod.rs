@@ -1,3 +1,8 @@
+//! Central application state for the interactive TUI.
+//!
+//! Owns all UI sub-states (input, viewport, overlays, thinking indicator)
+//! and the channels used to communicate with the async backend loop.
+
 use crate::tui::{BackendCmd, UiEvent, LOGO};
 use radiumical_core::types::{AgentMode, SessionConfig};
 use ratatui::text::Line;
@@ -15,6 +20,11 @@ pub use state::{InputState, OverlayState, ThinkingState, ViewportState};
 
 // ═══ App ═══
 
+/// Top-level TUI application state.
+///
+/// Holds the conversation output buffer, all overlay/panel visibility flags,
+/// input line state, scroll position, session data, and communication handles
+/// to the async backend (pipeline runner / MCP / command pool).
 pub struct App {
     pub output: Vec<String>,
     pub overlays: OverlayState,
@@ -61,6 +71,8 @@ pub struct App {
 }
 
 impl App {
+    /// Create a new `App` instance, seeding the output buffer with the
+    /// welcome banner and connecting the backend communication channels.
     pub fn new(
         cmd_tx: tokio::sync::mpsc::Sender<BackendCmd>,
         ui_rx: tokio::sync::mpsc::Receiver<UiEvent>,
@@ -156,6 +168,8 @@ impl App {
         }
     }
 
+    /// Advance animation state each frame: update thinking elapsed time,
+    /// apply scroll velocity, clamp scroll bounds, and rotate tips.
     pub fn tick(&mut self, _visible_lines: usize) {
         self.viewport.visible_lines = _visible_lines;
         if self.thinking.active {
@@ -195,6 +209,7 @@ impl App {
         }
     }
 
+    /// Scroll the viewport up by `lines` fractional rows, breaking sticky-to-bottom mode.
     pub fn scroll_up(&mut self, lines: f32) {
         let lines = lines.max(0.0);
         let max = self
@@ -211,6 +226,7 @@ impl App {
         }
     }
 
+    /// Scroll the viewport down by `lines` fractional rows.
     pub fn scroll_down(&mut self, lines: f32) {
         let lines = lines.max(0.0);
         let max = self

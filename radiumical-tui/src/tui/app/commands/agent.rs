@@ -1,3 +1,6 @@
+//! Agent-mode and reasoning-effort slash commands (`/plan`, `/exec`, `/auto`,
+//! `/review`, `/think`, `/agents`).
+
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 

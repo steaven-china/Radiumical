@@ -1,3 +1,6 @@
+//! Sub-agent status panel: lists spawned sub-agents with running/done/failed
+//! indicators and task descriptions.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -6,6 +9,7 @@ use ratatui::Frame;
 
 use crate::panel::PanelSlot;
 
+/// Render the sub-agents panel showing each agent's id, status, and task.
 pub fn render(f: &mut Frame, slot: &PanelSlot) {
     let inner = Rect {
         x: slot.rect.x + 1,

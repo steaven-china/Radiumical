@@ -1,5 +1,9 @@
+//! Value-type structs that hold discrete slices of [`App`](crate::tui::app::App) state,
+//! grouped by concern to keep `mod.rs` manageable.
+
 use std::time::Instant;
 
+/// Visibility flags for every overlay / floating panel in the TUI.
 #[derive(Debug)]
 pub struct OverlayState {
     pub help: bool,
@@ -29,6 +33,8 @@ pub struct OverlayState {
     pub agents_list: Vec<radiumical_core::agent_pool::AgentDef>,
 }
 
+/// Single-line text input buffer with cursor position, autocomplete hints,
+/// and scrollable command history.
 #[derive(Debug)]
 pub struct InputState {
     pub text: String,
@@ -42,6 +48,8 @@ pub struct InputState {
     pub(crate) history_filter_prefix: Option<String>,
 }
 
+/// Tracks the "thinking" animation state, reasoning-effort level, and
+/// optional chain-of-draft reasoning buffer.
 #[derive(Debug)]
 pub struct ThinkingState {
     pub active: bool,
@@ -55,6 +63,7 @@ pub struct ThinkingState {
     pub show_full_reasoning: bool,
 }
 
+/// Scroll position, velocity, and layout metrics for the main output viewport.
 #[derive(Debug)]
 pub struct ViewportState {
     pub scroll: f32,

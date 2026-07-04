@@ -1,13 +1,17 @@
+//! Persistent agent pool for long-running workers in the dynamic orchestrator.
+
 use std::collections::HashMap;
 
 use tokio::sync::mpsc;
 
+/// Current status of a persistent agent worker.
 pub enum AgentStatus {
     Idle,
     Working(u32),
     Draining,
 }
 
+/// A long-lived worker agent that processes tasks from the orchestrator.
 pub struct PersistentAgent {
     pub id: String,
     pub role: String,
@@ -17,18 +21,21 @@ pub struct PersistentAgent {
     pub result_rx: Option<mpsc::UnboundedReceiver<AgentResult>>,
 }
 
+/// A work item dispatched to a persistent agent.
 pub struct AgentWork {
     pub task_id: u32,
     pub task_title: String,
     pub prompt: String,
 }
 
+/// The result returned by a persistent agent after completing work.
 pub struct AgentResult {
     pub task_id: u32,
     pub success: bool,
     pub output: String,
 }
 
+/// Manages a set of persistent agent workers, tracking idle/busy state.
 pub struct PersistentAgentPool {
     agents: HashMap<String, PersistentAgent>,
 }

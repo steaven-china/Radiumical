@@ -1,9 +1,12 @@
+//! Shell command execution tool.
+
 use std::path::Path;
 use std::process::Command;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Executes a shell command in the workspace directory and returns stdout/stderr.
 pub struct RunCommand;
 
 #[async_trait::async_trait]

@@ -1,3 +1,6 @@
+//! Utility slash commands: memory, MCP, environment variables, status,
+//! retry, clipboard copy, tips, chain-of-draft toggle, and scroll helpers.
+
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 

@@ -1,5 +1,11 @@
+//! Rotating tip / keyboard-shortcut hints shown in the TUI status bar.
+//!
+//! Contains the static [`TIPS`] table and [`TipState`] which tracks rotation
+//! timing and enable/disable toggle.
+
 use std::time::Instant;
 
+/// Static table of all tips shown in the status bar, grouped by category.
 pub const TIPS: &[Tip] = &[
     // ── Keyboard shortcuts ──
     Tip {
@@ -134,12 +140,14 @@ pub const TIPS: &[Tip] = &[
     },
 ];
 
+/// A single tip entry with display text and category tag.
 pub struct Tip {
     pub text: &'static str,
     #[allow(dead_code)]
     pub category: &'static str,
 }
 
+/// Tracks which tip is currently displayed and when to rotate.
 pub struct TipState {
     pub current: usize,
     pub shown_count: usize,

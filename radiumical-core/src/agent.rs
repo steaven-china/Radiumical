@@ -1,7 +1,7 @@
 //! Agent — a configured role/persona for the harness.
 //!
 //! An agent is the policy layer: it decides which system prompt, which tools,
-//! and which operating mode are in effect for a run. The [`Harness`] is the
+//! and which operating mode are in effect for a run. The [`Harness`](crate::harness::Harness) is the
 //! generic execution runtime that actually drives the LLM loop.
 
 use crate::agent_pool::AgentDef;

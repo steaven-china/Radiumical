@@ -1,9 +1,12 @@
+//! Conditional guards that control task readiness and hook firing.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use super::task::TaskState;
 
+/// A composable boolean condition evaluated against the orchestrator state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Guard {
     Always,
@@ -22,6 +25,7 @@ pub enum Guard {
     Custom(String),
 }
 
+/// Comparison operator for metric-based guards.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum CompareOp {
     Eq,
@@ -67,6 +71,7 @@ impl Guard {
     }
 }
 
+/// Read-only snapshot of orchestrator state passed to [`Guard::evaluate`].
 pub struct GuardContext<'a> {
     pub task_states: &'a HashMap<u32, TaskState>,
     pub emitted_events: &'a std::collections::HashSet<String>,

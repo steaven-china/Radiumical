@@ -1,3 +1,5 @@
+//! Cluster tool — dynamic orchestration with tasks, workers, guards, and hooks.
+
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -22,6 +24,8 @@ pub fn set_defaults(config: SessionConfig, provider: Arc<dyn Provider>) {
     let _ = DEFAULT_PROVIDER.set(provider);
 }
 
+/// Dynamic orchestration cluster tool — create/manage task graphs with workers,
+/// guards, hooks, events, and metrics in a single unified interface.
 pub struct ClusterTool;
 
 #[async_trait::async_trait]

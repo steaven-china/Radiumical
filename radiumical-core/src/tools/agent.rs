@@ -1,12 +1,22 @@
+//! Sub-agent and memory management tools.
+//!
+//! Provides tools for spawning parallel sub-agents, waiting for their results,
+//! managing persistent memory, and browser automation via Playwright.
+
 use std::path::Path;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Spawns a parallel sub-agent to work on an independent task.
 pub struct SubAgentTool;
+/// Lists all sub-agents and their current status.
 pub struct SubAgentListTool;
+/// Waits for a spawned sub-agent to complete and returns its output.
 pub struct SubAgentWaitTool;
+/// Manages persistent memory across sessions (core/mino/short tiers).
 pub struct MemoryTool;
+/// Browser automation tool using Playwright (screenshot, content, click).
 pub struct PlaywrightTool;
 
 #[async_trait::async_trait]

@@ -1,3 +1,8 @@
+//! LLM provider abstraction and OpenAI-compatible streaming implementation.
+//!
+//! The [`Provider`] trait unifies different LLM backends behind a single
+//! streaming chat interface. [`create_provider`] is the factory entry point.
+
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -90,6 +95,7 @@ macro_rules! clone_box_impl {
 
 // ── OpenAI-compatible provider (works with OpenAI, DeepSeek, Ollama) ──
 
+/// Provider implementation for OpenAI-compatible APIs (OpenAI, DeepSeek, Ollama).
 pub struct OpenAICompatibleProvider {
     client: reqwest::Client,
     api_base: String,
@@ -353,6 +359,7 @@ impl Provider for UnsupportedProvider {
     }
 }
 
+/// Create a boxed, cache-wrapped provider for the given kind and credentials.
 pub fn create_provider(
     kind: &ProviderKind,
     api_base: Option<&str>,

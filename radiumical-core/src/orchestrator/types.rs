@@ -1,5 +1,8 @@
+//! Core types for the simple orchestrator: task status, task, and plan.
+
 use serde::{Deserialize, Serialize};
 
+/// Status of a task in the orchestration plan.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
     Pending,
@@ -31,6 +34,7 @@ impl TaskStatus {
     }
 }
 
+/// A single task in the orchestration plan with optional dependencies and agent assignment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: u32,
@@ -42,6 +46,7 @@ pub struct Task {
     pub agent: Option<String>,
 }
 
+/// An ordered list of tasks with a title and auto-incrementing ID counter.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Plan {
     pub title: String,

@@ -1,3 +1,12 @@
+//! Core library for the Radiumical CLI coding agent.
+//!
+//! This crate provides the runtime primitives that power the agent:
+//! - **LLM provider abstraction** (`provider`, `providers`)
+//! - **Tool system** (`tools`) with file, command, search, orchestration, and more
+//! - **Harness** (`harness`) — the generic LLM-loop runtime
+//! - **Orchestrators** — linear (`orchestrator`) and dynamic/conditional (`dynamic`)
+//! - **Shared types** (`types`) for messages, events, and configuration
+
 pub mod agent;
 pub mod agent_pool;
 pub mod cluster;

@@ -91,6 +91,7 @@ impl PanelId {
 
 // ── Layout slot ──
 
+/// A concrete on-screen rectangle assigned to an open panel.
 #[derive(Debug, Clone, Copy)]
 pub struct PanelSlot {
     pub id: PanelId,
@@ -99,6 +100,7 @@ pub struct PanelSlot {
 
 // ── Drag state ──
 
+/// Tracks which panel is currently being dragged and where it started.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DragState {
     /// The panel being dragged.
@@ -119,6 +121,7 @@ struct PanelPos {
 
 // ── Panel manager ──
 
+/// Owns the set of open panels, their drag positions, and computes layout.
 pub struct PanelManager {
     open: Vec<PanelId>,
     /// Position overrides from dragging.
@@ -147,12 +150,14 @@ impl PanelManager {
         }
     }
 
+    /// Open a panel if it is not already open.
     pub fn open(&mut self, id: PanelId) {
         if !self.open.contains(&id) {
             self.open.push(id);
         }
     }
 
+    /// Close a panel and discard any drag position override.
     pub fn close(&mut self, id: PanelId) {
         self.open.retain(|p| *p != id);
         self.positions.remove(&id);
@@ -165,6 +170,7 @@ impl PanelManager {
         self.drag = DragState::default();
     }
 
+    /// Return whether the given panel is currently open.
     pub fn is_open(&self, id: PanelId) -> bool {
         self.open.contains(&id)
     }

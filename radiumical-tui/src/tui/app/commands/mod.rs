@@ -1,3 +1,9 @@
+//! Slash-command router for the TUI input line.
+//!
+//! Dispatches `/`-prefixed commands to dedicated handler methods split
+//! across sub-modules by domain (session, agent/mode, view, utility).
+//! Unrecognised input is forwarded to the backend as a new task.
+
 mod agent;
 mod session;
 mod util;

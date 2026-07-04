@@ -1,3 +1,5 @@
+//! MCP (Model Context Protocol) server status panel renderer.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -6,6 +8,7 @@ use ratatui::Frame;
 
 use crate::panel::PanelSlot;
 
+/// Runtime status of a single MCP server connection.
 #[derive(Debug, Clone)]
 pub struct McpServerStatus {
     pub name: String,
@@ -14,6 +17,7 @@ pub struct McpServerStatus {
     pub enabled: bool,
 }
 
+/// Render the MCP server status panel, showing alive/enabled state and tool count.
 pub fn render(f: &mut Frame, slot: &PanelSlot, servers: &[McpServerStatus], selected: usize) {
     let inner = Rect {
         x: slot.rect.x + 1,

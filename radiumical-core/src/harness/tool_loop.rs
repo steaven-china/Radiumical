@@ -1,3 +1,6 @@
+//! Tool execution loop — dispatches tool calls from the LLM response and
+//! collects results back into the conversation.
+
 use super::helpers::{exec_with_timeout, tool_result_msg};
 use crate::conversation::Conversation;
 use crate::plugins::source::SourcePluginRegistry;

@@ -1,3 +1,15 @@
+//! Main rendering pass for the Radiumical TUI.
+//!
+//! This module takes the current `App` state and draws one frame:
+//!   - output area with scrollback, tool-call boxes, and scrollbar
+//!   - floating panels (dashboard, settings, perf, plan, agents, ...)
+//!   - help overlay
+//!   - session manager and choice panel modals
+//!   - bottom input box, slash hints, and status bar
+//!
+//! Rendering is two-pass internally: `draw_output` first measures blocks to
+//! compute layout, then renders visible lines with LRU caching.
+
 use crate::tui::app::App;
 use crate::tui::PULSE;
 use radiumical_core::types::AgentMode;
@@ -9,6 +21,7 @@ use ratatui::Frame;
 
 // ═══ Draw ═══
 
+/// Render the entire TUI frame from `app` state.
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let hint_page_start = app.input.hint_page * 8;
@@ -207,7 +220,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_status(f, bottom[bottom.len() - 1], app);
 }
 
-/// Sync PanelManager from legacy boolean flags.
+/// Sync `PanelManager` state from legacy boolean overlay flags.
+///
+/// This is a temporary bridge: most of the app still uses boolean flags such
+/// as `dashboard.visible` or `app.overlays.settings`. Before layout, those
+/// flags are converted into the panel manager's open/closed state.
 fn sync_panels(app: &mut App) {
     use crate::panel::PanelId;
     let flags = [
@@ -233,6 +250,7 @@ fn sync_panels(app: &mut App) {
     }
 }
 
+/// Render the scrollback output area, including tool-call boxes and scrollbar.
 fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     use crate::layout::measure_blocks;
     use crate::tui::app::mouse::tool_call_key;
@@ -426,6 +444,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     }
 }
 
+/// Render the multi-line input box with a blinking block cursor.
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::widgets::{Block as RBlock, BorderType, Borders, Wrap};
     let lines: Vec<&str> = app.input.text.split('\n').collect();
@@ -483,6 +502,7 @@ fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+/// Render the small performance overlay in the top-right corner.
 fn draw_perf_overlay_at(f: &mut Frame, r: Rect) {
     let report = radiumical_core::perf::report();
     f.render_widget(
@@ -495,6 +515,7 @@ fn draw_perf_overlay_at(f: &mut Frame, r: Rect) {
     );
 }
 
+/// Render a single slash-command hint row.
 fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bool) {
     let bg = if selected {
         Style::default().bg(Color::Rgb(50, 50, 60))
@@ -518,6 +539,7 @@ fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bo
     f.render_widget(Paragraph::new(line).style(bg), area);
 }
 
+/// Build the lines shown in the bottom-right help overlay.
 fn draw_help_overlay_lines() -> Vec<Line<'static>> {
     vec![
         Line::from(vec![
@@ -646,6 +668,7 @@ fn draw_help_overlay_lines() -> Vec<Line<'static>> {
     ]
 }
 
+/// Render the bottom status bar (left: session/tip, right: model | mode).
 fn draw_status(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::layout::Alignment;
     use unicode_width::UnicodeWidthStr;
@@ -738,6 +761,10 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+/// Compute a cache key for a rendered `Block` at a given width.
+///
+/// The key combines the block kind, source content, width, and whether full
+/// reasoning is shown, so the render cache can reuse identical blocks.
 fn block_render_key(block: &crate::layout::Block, width: u16, show_full: bool) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};

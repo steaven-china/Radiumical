@@ -1,3 +1,5 @@
+//! Task management tools — todo list, orchestration plan, and goal tracking.
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -8,6 +10,7 @@ use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 use serde::{Deserialize, Serialize};
 
+/// Priority level for todo items.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TodoPriority {
     Low,
@@ -33,6 +36,7 @@ impl TodoPriority {
     }
 }
 
+/// A single todo item with text, priority, category, and optional note.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TodoItem {
     pub text: String,
@@ -43,6 +47,7 @@ pub struct TodoItem {
     pub created_ts: u64,
 }
 
+/// Persistent todo list storage, keyed by workspace path.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TodoStore {
     pub items: Vec<TodoItem>,
@@ -81,8 +86,11 @@ impl TodoStore {
     }
 }
 
+/// Persistent task list tool with priorities, categories, and notes.
 pub struct TodoList;
+/// Manages a task orchestration plan with dependency tracking and agent assignments.
 pub struct OrchestrateTool;
+/// Tracks the current goal and sub-goals for the working session.
 pub struct GoalTool;
 
 #[async_trait::async_trait]

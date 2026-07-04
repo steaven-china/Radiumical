@@ -1,9 +1,13 @@
+//! Workspace outline panel: displays per-file symbols (functions, structs, etc.)
+//! grouped by path.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+/// Render the workspace outline panel, colour-coded by symbol kind.
 #[allow(dead_code)]
 pub fn render_outline_panel(
     f: &mut Frame,

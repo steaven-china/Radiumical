@@ -1,5 +1,8 @@
+//! Event bus for the dynamic orchestrator — emits and queries named events.
+
 use std::sync::{Arc, Mutex};
 
+/// A named event emitted during orchestration.
 #[derive(Debug, Clone)]
 pub struct Event {
     pub key: String,
@@ -8,6 +11,7 @@ pub struct Event {
     pub timestamp: u64,
 }
 
+/// Thread-safe event bus that stores emitted events and supports key-based queries.
 pub struct EventBus {
     pub(crate) log: Arc<Mutex<Vec<Event>>>,
     pub(crate) emitted_keys: Arc<Mutex<std::collections::HashSet<String>>>,

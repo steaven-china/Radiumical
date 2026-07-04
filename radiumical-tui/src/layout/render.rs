@@ -1,3 +1,7 @@
+//! Block-level rendering: converts each [`Block`] into styled [`Line`]s for
+//! ratatui, handling code fences (with syntax highlighting), Markdown headings,
+//! lists, block-quotes, tables, tool-call boxes, and diff colouring.
+
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -75,6 +79,11 @@ fn collect_diff_result_lines(result: &str, content_w: usize) -> Vec<(DiffLineTyp
 // ── Pass 2: render blocks ──
 
 impl Block {
+    /// Render this block into styled ratatui [`Line`]s at the given area width.
+    ///
+    /// Handles syntax-highlighted code fences, Markdown headings/lists/quotes,
+    /// tables with proportional columns, tool-call boxes with scrollable
+    /// results, and diff colouring.
     pub fn render(
         &self,
         _area_width: u16,

@@ -1,3 +1,5 @@
+//! MCP tool adapter — wraps Model Context Protocol server tools as native agent tools.
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -7,6 +9,7 @@ use crate::mcp::{McpClient, McpToolInfo};
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Adapts an MCP server tool into the agent's [`Tool`] trait.
 pub struct McpToolAdapter {
     pub info: McpToolInfo,
     pub client: Arc<McpClient>,

@@ -1,3 +1,11 @@
+//! Keyboard input handling for the TUI.
+//!
+//! This module implements `App::handle_key` and all related helpers.
+//! It is responsible for routing key events to the correct sub-system:
+//! choice panels, provider/model picker, settings overlay, MCP server list,
+//! session manager, dashboard, or the main input line. It also handles
+//! slash-command completion, input history navigation, and multi-line input.
+
 use crate::session_tui::SessionAction;
 use crate::tui::app::App;
 use crate::tui::complete_slash;
@@ -6,6 +14,11 @@ use crate::tui::BackendCmd;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
 impl App {
+    /// Dispatch a single crossterm key event to the appropriate handler.
+    ///
+    /// Modal overlays consume input first (choice panel, provider picker,
+    /// settings, MCP list). If no overlay is active, keys are handled by the
+    /// main input loop (history, hints, scrolling, and command dispatch).
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         if key.kind == KeyEventKind::Release {
             return;
@@ -443,6 +456,7 @@ impl App {
         }
     }
 
+    /// Handle keys while the provider/model picker overlay is open.
     fn handle_provider_picker_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
         match (key.code, key.modifiers) {
@@ -479,6 +493,7 @@ impl App {
         }
     }
 
+    /// Return the previous Unicode scalar boundary before `pos` in the input line.
     pub(crate) fn prev_char_boundary(&self, pos: usize) -> usize {
         self.input.text[..pos]
             .char_indices()
@@ -486,6 +501,7 @@ impl App {
             .map(|(i, _)| i)
             .unwrap_or(pos.saturating_sub(1))
     }
+    /// Return the next Unicode scalar boundary after `pos` in the input line.
     pub(crate) fn next_char_boundary(&self, pos: usize) -> usize {
         self.input.text[pos..]
             .char_indices()
@@ -493,6 +509,7 @@ impl App {
             .map(|(i, _)| pos + i)
             .unwrap_or(self.input.text.len())
     }
+    /// Delete the whitespace-delimited word immediately before the cursor.
     pub(crate) fn delete_word_before(&mut self) {
         let before = &self.input.text[..self.input.cursor];
         let cut = before
@@ -504,6 +521,7 @@ impl App {
         self.input.text.drain(cut..self.input.cursor);
         self.input.cursor = cut;
     }
+    /// Refresh slash-command hints based on the current input text.
     pub(crate) fn update_hints(&mut self) {
         if self.input.text.starts_with('/') && self.input.text.len() <= 30 {
             self.input.hints = matching_hints(&self.input.text)
@@ -517,12 +535,14 @@ impl App {
         self.input.hint_selected = None;
     }
 
+    /// Update `hint_page` so the currently selected hint is visible.
     pub(crate) fn sync_hint_page(&mut self) {
         if let Some(sel) = self.input.hint_selected {
             self.input.hint_page = sel / 8;
         }
     }
 
+    /// Find the most recent history entry at or before `from` that starts with `prefix`.
     pub(crate) fn find_prev_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
         if prefix.is_empty() {
             return if from < self.input.history.len() {
@@ -536,6 +556,7 @@ impl App {
             .find(|&i| self.input.history[i].starts_with(prefix))
     }
 
+    /// Find the next history entry at or after `from` that starts with `prefix`.
     pub(crate) fn find_next_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
         if prefix.is_empty() {
             return if from < self.input.history.len() {
@@ -547,6 +568,7 @@ impl App {
         (from..self.input.history.len()).find(|&i| self.input.history[i].starts_with(prefix))
     }
 
+    /// Handle keys while the settings overlay has focus (not editing a value).
     pub(crate) fn handle_settings_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
         match (key.code, key.modifiers) {
@@ -566,6 +588,7 @@ impl App {
         }
     }
 
+    /// Handle keys while editing a single settings value.
     pub(crate) fn handle_settings_edit_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
         match (key.code, key.modifiers) {
@@ -591,6 +614,7 @@ impl App {
         }
     }
 
+    /// Dispatch Enter inside the full-screen session manager.
     fn handle_session_tui_enter(&mut self) {
         use crate::session_tui::{SessionAction, SessionFocus};
         match self.session_tui.focus {
@@ -615,6 +639,7 @@ impl App {
         }
     }
 
+    /// Execute a session manager action (new/load/save/delete).
     fn dispatch_session_action(&mut self, action: SessionAction) {
         use crate::session_tui::SessionFocus;
         use radiumical_core::session::SessionMode;
@@ -733,6 +758,7 @@ impl App {
         }
     }
 
+    /// Reload the session list and keep the current selection stable.
     fn refresh_session_tui_list(&mut self) {
         if let Ok(sessions) = self.session_pool.list() {
             let selected_name = self.session_tui.name_buffer.clone();

@@ -1,6 +1,6 @@
 //! Plugin system — extensible analysis and behavior hooks.
 //!
-//! Plugins can be registered with the [`Harness`] and are used by built-in
+//! Plugins can be registered with the [`Harness`](crate::harness::Harness) and are used by built-in
 //! tools (e.g. `source_code`) to enrich the agent's view of the workspace.
 
 use std::collections::HashMap;

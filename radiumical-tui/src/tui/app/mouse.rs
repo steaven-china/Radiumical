@@ -1,3 +1,9 @@
+//! Mouse event handling for the TUI.
+//!
+//! Routes crossterm mouse events (scroll, click, drag) to the appropriate
+//! handler: panel drag, scrollbar, tool-call expand/collapse, or viewport
+//! scrolling.
+
 use crate::tui::app::App;
 use crossterm::event::{MouseButton, MouseEventKind};
 use ratatui::layout::Rect;
@@ -8,6 +14,10 @@ use std::time::{Duration, Instant};
 const DOUBLE_CLICK_MS: u64 = 300;
 
 impl App {
+    /// Dispatch a mouse event to the correct handler based on kind and position.
+    ///
+    /// Handles scroll (viewport or tool-result), panel close/drag, scrollbar
+    /// thumb dragging, help-board drag, and double-click tool-call expansion.
     pub fn handle_mouse(
         &mut self,
         kind: MouseEventKind,
@@ -267,6 +277,8 @@ impl App {
     }
 }
 
+/// Derive a stable string key for a tool-call block, used to index
+/// expansion state and scroll offsets across render frames.
 pub fn tool_call_key(block: &crate::layout::Block) -> String {
     // Use the unique ID embedded after the box top line's trailing \x02.
     if let Some(first) = block.source_lines.first() {

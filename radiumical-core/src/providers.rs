@@ -242,7 +242,7 @@ pub async fn discover_models(
     }
 }
 
-/// Convenience wrapper that discovers models for a [`SessionConfig`].
+/// Convenience wrapper that discovers models for a [`SessionConfig`](crate::types::SessionConfig).
 pub async fn discover_models_for_config(config: &crate::types::SessionConfig) -> Vec<String> {
     use crate::types::ProviderKind;
     let client = reqwest::Client::new();

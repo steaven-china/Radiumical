@@ -1,3 +1,5 @@
+//! Unit tests for the dynamic orchestrator, guards, hooks, and task state machine.
+
 use std::collections::HashMap;
 
 use super::guard::{CompareOp, Guard, GuardContext};

@@ -1,3 +1,9 @@
+//! Radiumical TUI application entry point.
+//!
+//! Parses CLI arguments, initializes the LLM provider and MCP servers,
+//! then launches either a non-interactive pipeline run (`--task`) or the
+//! interactive terminal UI on a dedicated OS thread.
+
 mod board;
 mod choice_panel;
 mod dashboard;

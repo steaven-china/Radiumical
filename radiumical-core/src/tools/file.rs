@@ -1,3 +1,5 @@
+//! File manipulation tools — read, write, and edit files with CRLF auto-detection.
+
 use std::path::Path;
 
 use crate::tools::interact::get_annotations;
@@ -47,8 +49,11 @@ fn format_diff_marker(old: &str, new: &str) -> String {
     out
 }
 
+/// Reads file contents with optional line-range selection and annotations.
 pub struct ReadFile;
+/// Creates or overwrites a file with the given content.
 pub struct WriteFile;
+/// Performs targeted text replacements in a file with automatic CRLF/LF handling.
 pub struct EditFile;
 
 #[async_trait::async_trait]

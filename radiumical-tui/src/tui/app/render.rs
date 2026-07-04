@@ -1,3 +1,6 @@
+//! In-place output buffer manipulation: help text, debug introspection,
+//! and session-item-to-output-line re-rendering after a session load.
+
 use crate::tui::app::events::{box_args_line, box_bottom, box_result_line, box_top, box_width};
 use crate::tui::app::App;
 use crate::tui::{LOGO, SLASH_COMMANDS};

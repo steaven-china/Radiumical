@@ -1,3 +1,8 @@
+//! Built-in tools available to the agent.
+//!
+//! Each tool implements the [`Tool`] trait, providing a JSON-schema [`ToolDefinition`]
+//! and an async `execute` method. The [`all_tools`] function returns the full registry.
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -59,12 +64,15 @@ impl Default for ToolContext {
     }
 }
 
-/// A tool that the agent can call.
+/// A tool that the agent can invoke via a function call.
 #[async_trait::async_trait]
 pub trait Tool: Send + Sync {
+    /// Return the JSON-schema definition for this tool.
     fn definition(&self) -> ToolDefinition;
+    /// Execute the tool with the given arguments in the workspace directory.
     async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult;
 
+    /// Execute with access to harness-level context (UI channel, source plugins).
     async fn execute_with_context(
         &self,
         workspace: &Path,
@@ -75,7 +83,7 @@ pub trait Tool: Send + Sync {
     }
 }
 
-/// Returns all tools as Vec.
+/// Return the complete set of built-in tools as boxed trait objects.
 pub fn all_tools() -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(ReadFile),

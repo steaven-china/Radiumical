@@ -1,3 +1,6 @@
+//! View and configuration slash commands (`/help`, `/settings`, `/provider`,
+//! `/model`, `/tools`, `/skills`, `/perf`, `/debug`, `/diagnostics`).
+
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 

@@ -1,3 +1,5 @@
+//! Codebase search tools — regex search and glob-based file finding.
+
 use std::path::Path;
 
 use regex::Regex;
@@ -5,7 +7,9 @@ use regex::Regex;
 use crate::tools::{is_hidden, simple_glob_match, Tool};
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Searches for a regex pattern across all files in the workspace.
 pub struct SearchCode;
+/// Finds files matching a glob pattern in the workspace.
 pub struct FindFiles;
 
 #[async_trait::async_trait]

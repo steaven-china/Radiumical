@@ -1,3 +1,6 @@
+//! Persistent memory panel: renders the three-tier memory store (core / mino /
+//! short) and provides navigation helpers.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -5,6 +8,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 #[allow(dead_code)]
+/// Navigation state for the memory panel (current tier and entry index).
 #[derive(Debug, Clone, Default)]
 pub struct MemoryPanelState {
     pub tier_idx: usize,
@@ -57,6 +61,8 @@ impl MemoryPanelState {
     }
 }
 
+/// Render the three-tier memory panel with tier headers, entry list, and
+/// navigation footer.
 #[allow(dead_code)]
 pub fn render_memory_panel(
     f: &mut Frame,

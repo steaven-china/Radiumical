@@ -1,8 +1,13 @@
+//! OpenAI-compatible message types for LLM communication.
+//!
+//! Includes transparent lz4 compression for large message content.
+
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 use super::compress::{compress_text, decompress_text, COMPRESS_THRESHOLD, LZ4_PREFIX};
 
+/// A chat message in the OpenAI-compatible format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
@@ -17,6 +22,7 @@ pub struct Message {
     pub reasoning_content: Option<String>,
 }
 
+/// Role of a message participant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -26,6 +32,8 @@ pub enum Role {
     Tool,
 }
 
+/// Message body — either a plain text string or a list of content parts.
+/// Text content larger than 1 KB is transparently lz4-compressed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MessageContent {
@@ -82,6 +90,7 @@ impl MessageContent {
     }
 }
 
+/// A single content part within a multipart message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ContentPart {
@@ -89,6 +98,7 @@ pub enum ContentPart {
     Text { text: String },
 }
 
+/// A tool call requested by the LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
@@ -97,12 +107,14 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
+/// The function name and serialized arguments of a tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
 
+/// Describes a tool available to the LLM (sent in the API request).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     #[serde(rename = "type")]
@@ -110,6 +122,7 @@ pub struct ToolDefinition {
     pub function: FunctionDef,
 }
 
+/// Function metadata inside a [`ToolDefinition`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionDef {
     pub name: String,
@@ -117,6 +130,7 @@ pub struct FunctionDef {
     pub parameters: serde_json::Value,
 }
 
+/// The result of executing a tool, sent back to the LLM as a tool-role message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     pub tool_call_id: String,

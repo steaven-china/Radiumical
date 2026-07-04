@@ -1,3 +1,9 @@
+//! Backend-to-UI event processing.
+//!
+//! Maps each [`UiEvent`] variant emitted by the async backend into the
+//! corresponding mutation on [`App`] output lines, session items, thinking
+//! state, and overlay data.
+
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 use crate::tui::UiEvent;
@@ -78,6 +84,8 @@ pub(crate) fn box_bottom(width: usize) -> String {
 }
 
 impl App {
+    /// Process a single [`UiEvent`] from the backend, updating output lines,
+    /// session history, thinking state, tool-call boxes, and overlay data.
     pub fn handle_ui_event(&mut self, event: UiEvent) {
         match event {
             UiEvent::LlmChunk(chunk) => {

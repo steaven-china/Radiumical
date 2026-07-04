@@ -1,3 +1,5 @@
+//! Event types exchanged between the LLM provider, the harness, and the UI layer.
+
 use crate::orchestrator::TaskStatus;
 use crate::providers::ProviderSource;
 use crate::session::SessionItem;
@@ -7,6 +9,7 @@ use super::message::ToolCall;
 
 // ── Provider response ──
 
+/// A single streaming event from the LLM provider.
 #[derive(Debug, Clone)]
 pub enum ProviderEvent {
     Text(String),
@@ -17,6 +20,7 @@ pub enum ProviderEvent {
     Error(String),
 }
 
+/// Events sent from the backend to the UI for rendering.
 #[derive(Debug)]
 pub enum UiEvent {
     LlmChunk(String),
@@ -63,6 +67,7 @@ pub enum UiEvent {
     },
 }
 
+/// A lightweight task update emitted when the orchestration plan changes.
 #[derive(Debug, Clone)]
 pub struct PlanTaskUpdate {
     pub id: u32,
@@ -70,6 +75,7 @@ pub struct PlanTaskUpdate {
     pub status: TaskStatus,
 }
 
+/// Commands sent from the UI to the backend agent loop.
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum BackendCmd {

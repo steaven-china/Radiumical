@@ -1,3 +1,5 @@
+//! Interactive tools — user choice/input prompts and file annotations.
+
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -23,6 +25,7 @@ pub fn set_choice_tx(tx: tokio::sync::oneshot::Sender<String>) {
         .replace(tx);
 }
 
+/// Prompts the user to choose from options (single, multi, or free-text input).
 pub struct ChoiceTool;
 
 /// Non-interactive fallback: return a prompt listing the options.
@@ -262,6 +265,7 @@ pub fn get_annotations(path: &str) -> Vec<(usize, String)> {
         .unwrap_or_default()
 }
 
+/// Adds virtual annotations to file lines without modifying the file on disk.
 pub struct AnnotateTool;
 
 #[async_trait::async_trait]

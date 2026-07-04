@@ -1,3 +1,5 @@
+//! Renders the agent-role selection panel inside a [`PanelSlot`].
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -8,6 +10,7 @@ use radiumical_core::agent_pool::AgentDef;
 
 use crate::panel::PanelSlot;
 
+/// Render the agent roles list, highlighting the currently active role.
 pub fn render_agents_panel(
     f: &mut Frame,
     slot: &PanelSlot,

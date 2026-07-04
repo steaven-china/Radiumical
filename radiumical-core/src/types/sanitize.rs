@@ -1,3 +1,5 @@
+//! Message sanitization for providers that require strict tool_call/tool_result pairing.
+
 use super::message::{Message, Role, ToolCall};
 
 /// Sanitize messages for providers that strictly require tool_calls → tool_results pairing.

@@ -42,6 +42,7 @@ pub use self::hook::{Hook, HookAction, HookTrigger};
 pub use self::pool::{AgentResult, AgentStatus, AgentWork, PersistentAgent, PersistentAgentPool};
 pub use self::task::{DynamicTask, TaskState};
 
+/// Action produced by a single tick of the dynamic orchestrator.
 #[derive(Debug)]
 pub enum TickAction {
     TaskReady(u32),
@@ -54,6 +55,7 @@ pub enum TickAction {
     EventEmitted(String),
 }
 
+/// Event-driven, condition-guarded orchestrator for reactive workflows.
 pub struct DynamicOrchestrator {
     pub tasks: HashMap<u32, DynamicTask>,
     pub hooks: Vec<Hook>,

@@ -1,3 +1,5 @@
+//! Session-management slash commands (`/new`, `/clear`, `/session save|load|list|delete`).
+
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 

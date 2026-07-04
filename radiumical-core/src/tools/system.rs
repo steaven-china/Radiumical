@@ -1,13 +1,21 @@
+//! System information and filesystem navigation tools.
+
 use std::path::Path;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Runs language-specific linters/diagnostics on the workspace.
 pub struct LspDiagnostics;
+/// Returns system information (OS, CPU, memory, disk, uptime).
 pub struct SysInfo;
+/// Lists directory contents with sizes and types.
 pub struct ListDir;
+/// Shows directory tree structure (max depth 3).
 pub struct TreeDir;
+/// Returns the current date and time.
 pub struct TimeNow;
+/// Shows current user crontab entries.
 pub struct CronTab;
 
 #[async_trait::async_trait]

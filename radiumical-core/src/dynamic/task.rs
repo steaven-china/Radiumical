@@ -1,8 +1,11 @@
+//! Task model for the dynamic orchestrator — state machine with guards and hooks.
+
 use serde::{Deserialize, Serialize};
 
 use super::guard::Guard;
 use super::hook::Hook;
 
+/// Lifecycle states of a dynamic task.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskState {
     Pending,
@@ -44,6 +47,7 @@ impl TaskState {
     }
 }
 
+/// A task in the dynamic orchestrator with dependencies, guards, hooks, and retry logic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynamicTask {
     pub id: u32,

@@ -1,3 +1,7 @@
+//! Dashboard action dispatch — maps each [`DashAction`] to the corresponding
+//! state mutation or backend command (open settings, switch mode, manage
+//! sessions, etc.).
+
 use crate::dashboard::DashAction;
 use crate::panel::PanelId;
 use crate::tui::app::App;

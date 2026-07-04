@@ -1,3 +1,5 @@
+//! Skill discovery and loading tools.
+
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -45,6 +47,7 @@ fn skill_tool_defs() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Lists available agent skills with their names and descriptions.
 pub struct ListSkillsTool;
 
 #[async_trait]
@@ -76,6 +79,7 @@ impl Tool for ListSkillsTool {
     }
 }
 
+/// Loads a skill's full instructions by name.
 pub struct LoadSkillTool;
 
 #[async_trait]

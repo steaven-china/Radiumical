@@ -1,7 +1,11 @@
+//! Pure-text layout helpers: word-wrapping to a column width, Markdown inline
+//! stripping, and proportional table-column width fitting.
+
 use unicode_width::UnicodeWidthStr;
 
 // ── Table width fitting ──
 
+/// Scale `widths` proportionally so their sum (with padding) fits within `avail`.
 pub fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
     let total: usize = widths.iter().sum::<usize>() + widths.len() * 3 + 1;
     if total <= avail || avail == 0 {
@@ -27,6 +31,8 @@ pub fn fit_table_widths(widths: &[usize], avail: usize) -> Vec<usize> {
     result
 }
 
+/// Remove Markdown inline markers (`**`, `*`, `` ` ``) from `text`, returning
+/// the plain content.
 pub fn strip_markdown(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let chars: Vec<char> = text.chars().collect();
@@ -71,6 +77,8 @@ pub(crate) fn find_md_single(chars: &[char], start: usize, d: char) -> Option<us
         .map(|p| start + p)
 }
 
+/// Word-wrap `text` into lines that do not exceed `max_width` display columns
+/// (Unicode-width-aware).
 pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
     if text.is_empty() || max_width == 0 {
         return vec!["".to_string()];

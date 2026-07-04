@@ -1,7 +1,10 @@
+//! Lifecycle hooks that fire actions when triggers match in the dynamic orchestrator.
+
 use serde::{Deserialize, Serialize};
 
 use super::guard::Guard;
 
+/// When a hook should fire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HookTrigger {
     OnStart,
@@ -12,6 +15,7 @@ pub enum HookTrigger {
     OnEvent(String),
 }
 
+/// The action to perform when a hook fires.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HookAction {
     StartTask(u32),
@@ -29,6 +33,7 @@ pub enum HookAction {
     Sequence(Vec<HookAction>),
 }
 
+/// A named hook with a trigger condition, optional guard, and action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hook {
     pub id: String,

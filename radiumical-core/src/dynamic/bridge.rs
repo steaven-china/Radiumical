@@ -1,3 +1,5 @@
+//! Conversion bridge between the simple [`Orchestrator`] and the [`DynamicOrchestrator`].
+
 use super::task::{DynamicTask, TaskState};
 use super::DynamicOrchestrator;
 use crate::orchestrator::{Orchestrator, Plan, Task, TaskStatus};

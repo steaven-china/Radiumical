@@ -1,3 +1,5 @@
+//! Formatting helpers for rendering orchestration plans as human-readable text.
+
 use super::types::{Plan, TaskStatus};
 
 pub(super) fn format_plan(plan: &Plan) -> String {

@@ -1,3 +1,5 @@
+//! Agent pool tools — list and load agent role definitions.
+
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -6,6 +8,7 @@ use crate::agent_pool;
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Lists available agent roles with their names, descriptions, and modes.
 pub struct ListAgentsTool;
 
 #[async_trait]
@@ -53,6 +56,7 @@ impl Tool for ListAgentsTool {
     }
 }
 
+/// Loads an agent role's full definition (prompt, mode, allowed tools) by name.
 pub struct LoadAgentTool;
 
 #[async_trait]

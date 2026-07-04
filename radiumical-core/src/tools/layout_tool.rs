@@ -1,3 +1,5 @@
+//! Layout page tool — renders structured terminal output via a compact DSL.
+
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -6,6 +8,7 @@ use crate::tools::layout_page;
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
+/// Renders grids, tables, boxes, splits, rows, and columns from a layout DSL specification.
 pub struct LayoutPageTool;
 
 #[async_trait]

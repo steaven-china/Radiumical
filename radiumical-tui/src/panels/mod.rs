@@ -1,3 +1,6 @@
+//! Dedicated panel renderers for the floating overlay panels (agents,
+//! diagnostics, MCP status, memory, outline, plan, sub-agents).
+
 pub mod agents;
 pub mod diagnostics;
 pub mod mcp_status;

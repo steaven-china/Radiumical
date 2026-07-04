@@ -1,3 +1,6 @@
+//! Session configuration and agent operating modes.
+
+/// Operating mode that controls which tools the agent can use.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentMode {
     /// All tools available (default)
@@ -8,6 +11,8 @@ pub enum AgentMode {
     Exec,
 }
 
+/// Configuration for a single agent session, including provider, model,
+/// timeouts, context limits, and operating mode.
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
     pub provider: ProviderKind,
@@ -39,6 +44,7 @@ pub struct SessionConfig {
     pub auto_continue: bool,
 }
 
+/// Supported LLM provider backends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProviderKind {
     OpenAI,
@@ -94,6 +100,7 @@ impl Default for SessionConfig {
     }
 }
 
+/// Build the default system prompt, including environment info and core memory.
 pub fn default_system_prompt() -> String {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".into());
     let os = std::env::consts::OS;

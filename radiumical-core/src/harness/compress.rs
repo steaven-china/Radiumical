@@ -1,8 +1,14 @@
+//! Context-window compression — summarises old messages when token count exceeds threshold.
+
 use crate::conversation::Conversation;
 use crate::provider::Provider;
 use crate::types::{Message, MessageContent, ProviderEvent, Role, SessionConfig, UiEvent};
 use std::sync::Arc;
 
+/// Compress the conversation context by summarising older messages via the LLM.
+///
+/// Returns the number of messages that were compressed, or 0 if the context
+/// was within budget.
 pub async fn compress_context(
     config: &SessionConfig,
     provider: &Arc<dyn Provider>,

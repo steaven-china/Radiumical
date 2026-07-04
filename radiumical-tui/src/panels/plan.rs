@@ -1,3 +1,6 @@
+//! Plan / orchestration panel: shows task list with status icons and a
+//! progress bar.
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -8,6 +11,7 @@ use radiumical_core::orchestrator::TaskStatus;
 
 use crate::panel::PanelSlot;
 
+/// A single plan task with an id, title, and execution status.
 #[derive(Debug, Clone)]
 pub struct PlanTask {
     pub id: u32,
@@ -15,6 +19,7 @@ pub struct PlanTask {
     pub status: TaskStatus,
 }
 
+/// Render the plan panel showing the task list and an overall progress bar.
 pub fn render_plan_panel(f: &mut Frame, slot: &PanelSlot, title: &str, tasks: &[PlanTask]) {
     let inner = Rect {
         x: slot.rect.x + 1,

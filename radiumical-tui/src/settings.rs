@@ -1,3 +1,7 @@
+//! Interactive settings board: a navigable list of typed configuration items
+//! (string, u64, usize, enum) with inline editing, persistence to
+//! `radiumical.json`, and live application to the running [`App`](crate::tui::app::App).
+
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
@@ -6,6 +10,7 @@ use ratatui::{
     Frame,
 };
 
+/// Typed variant for a single setting (string, numeric range, or enum choice).
 #[derive(Debug, Clone)]
 pub enum SettingKind {
     String {
@@ -30,12 +35,15 @@ pub enum SettingKind {
     },
 }
 
+/// A labelled setting with its current typed value.
 #[derive(Debug, Clone)]
 pub struct SettingItem {
     pub label: String,
     pub kind: SettingKind,
 }
 
+/// Navigable settings board: owns the item list, selection cursor, and
+/// optional inline-edit state for string values.
 #[derive(Debug, Clone)]
 pub struct SettingsBoard {
     pub visible: bool,
@@ -47,6 +55,7 @@ pub struct SettingsBoard {
 }
 
 impl SettingItem {
+    /// Return the display representation of this item's value, masking API keys.
     pub fn display_value(&self) -> String {
         match &self.kind {
             SettingKind::String { value, mask } => {
@@ -64,6 +73,7 @@ impl SettingItem {
 }
 
 impl SettingsBoard {
+    /// Build a `SettingsBoard` from the on-disk config and current agent mode.
     pub fn from_config(
         config: &radiumical_core::config::Config,
         mode: &radiumical_core::types::AgentMode,
@@ -192,6 +202,7 @@ impl SettingsBoard {
         }
     }
 
+    /// Convert the current board state back into a [`radiumical_core::config::Config`].
     pub fn to_config(&self) -> radiumical_core::config::Config {
         let mut config = radiumical_core::config::Config {
             model: None,
@@ -273,6 +284,7 @@ impl SettingsBoard {
         config
     }
 
+    /// Apply provider, model, mode, and effort settings from this board to the [`App`](crate::tui::app::App).
     pub fn apply_to_app(&self, app: &mut crate::tui::app::App) {
         for item in &self.items {
             match item.label.as_str() {

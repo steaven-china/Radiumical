@@ -1,7 +1,7 @@
 //! Agent pipeline — backwards-compatible wrapper around the agent harness.
 //!
-//! New code should prefer [`Harness`][crate::harness::Harness] directly so it
-//! can choose an [`Agent`][crate::agent::Agent]. This module keeps the old
+//! New code should prefer [`Harness`] directly so it
+//! can choose an [`Agent`]. This module keeps the old
 //! `PipelineRunner` API alive.
 
 pub use crate::harness::ToolHook;

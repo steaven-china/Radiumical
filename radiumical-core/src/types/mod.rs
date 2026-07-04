@@ -1,3 +1,6 @@
+//! Shared types used across the Radiumical core: messages, events, configuration,
+//! and message sanitization for provider compatibility.
+
 mod compress;
 mod config;
 mod event;
