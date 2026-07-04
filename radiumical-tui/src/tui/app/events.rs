@@ -133,13 +133,13 @@ impl App {
                 }
             }
             UiEvent::ThinkingTick => {
-                if self.thinking_cancelled {
+                if self.thinking.cancelled {
                     return;
                 }
-                if !self.thinking {
-                    self.thinking_start = Instant::now();
+                if !self.thinking.active {
+                    self.thinking.start = Instant::now();
                 }
-                self.thinking = true;
+                self.thinking.active = true;
             }
             UiEvent::LlmDone => {
                 if self.output.last().is_none_or(|l| !l.is_empty()) {
@@ -228,11 +228,11 @@ impl App {
                     " (try /retry)"
                 };
                 self.output.push(format!("\x03  \u{2717} Error: {e}{hint}"));
-                self.thinking = false;
+                self.thinking.active = false;
                 self.session_items.push(SessionItem::Raw { lines: vec![e] });
             }
             UiEvent::ThinkingDone => {
-                self.thinking = false;
+                self.thinking.active = false;
             }
             UiEvent::Choice { id, mode, options } => {
                 self.choice_panel.open(id, &mode, options);
@@ -309,8 +309,8 @@ impl App {
                 }
             }
             UiEvent::PlanUpdated { title, tasks } => {
-                self.plan_title = title;
-                self.plan_tasks = tasks
+                self.overlays.plan_title = title;
+                self.overlays.plan_tasks = tasks
                     .into_iter()
                     .map(|t| crate::panels::plan::PlanTask {
                         id: t.id,

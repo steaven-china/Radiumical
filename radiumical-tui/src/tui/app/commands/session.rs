@@ -4,7 +4,7 @@ use crate::tui::BackendCmd;
 impl App {
     pub(super) fn cmd_new(&mut self) -> bool {
         if !self.session_items.is_empty() {
-            let desc = self.history.first().cloned();
+            let desc = self.input.history.first().cloned();
             let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -17,22 +17,22 @@ impl App {
                 &self.model,
                 &self.provider_name,
                 mode,
-                &self.thinking_effort,
+                &self.thinking.effort,
                 desc.as_deref(),
             );
         }
         self.output.clear();
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.scroll = 0.0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.viewport.scroll = 0.0;
+        self.viewport.stick_to_bottom = true;
         self.welcome = true;
-        self.show_help_overlay = true;
-        self.show_model_picker = false;
+        self.overlays.help = true;
+        self.overlays.model_picker = false;
         self.provider_picker.close();
-        self.hint_selected = None;
+        self.input.hint_selected = None;
         self.help_board.visible = false;
         self.blocks.clear();
         self.session_items.clear();
@@ -40,8 +40,8 @@ impl App {
         self.render_cache_order.clear();
         self.session_title = None;
         self.markdown = crate::markdown::MarkdownRenderer::new();
-        self.full_reasoning.clear();
-        self.show_full_reasoning = false;
+        self.thinking.full_reasoning.clear();
+        self.thinking.show_full_reasoning = false;
         let _ = self.cmd_tx.blocking_send(BackendCmd::ResetConversation);
         self.output
             .push(format!("Radiumical — {} @ {}", self.model, "."));
@@ -66,16 +66,16 @@ impl App {
     pub(super) fn cmd_clear(&mut self) -> bool {
         self.output.clear();
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.scroll = 0.0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.viewport.scroll = 0.0;
+        self.viewport.stick_to_bottom = true;
         self.welcome = false;
-        self.show_help_overlay = false;
-        self.show_model_picker = false;
+        self.overlays.help = false;
+        self.overlays.model_picker = false;
         self.provider_picker.close();
-        self.hint_selected = None;
+        self.input.hint_selected = None;
         self.help_board.visible = false;
         true
     }
@@ -88,9 +88,9 @@ impl App {
                 self.session_tui.desc_buffer = first.description.clone();
             }
         }
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
         true
     }
 
@@ -98,10 +98,10 @@ impl App {
         self.output.push(
             "  /session save <name> [desc] | load <name> | list | delete <name> | tui".into(),
         );
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.viewport.stick_to_bottom = true;
         self.output.push(String::new());
         true
     }
@@ -121,7 +121,7 @@ impl App {
                     &self.model,
                     &self.provider_name,
                     mode,
-                    &self.thinking_effort,
+                    &self.thinking.effort,
                     desc,
                 ) {
                     Ok(()) => self.output.push(format!("  Session saved: {name}")),
@@ -137,7 +137,7 @@ impl App {
                         self.mode = meta.mode.into();
                         self.model = meta.model.clone();
                         self.provider_name = meta.provider.clone();
-                        self.thinking_effort = meta.thinking_effort.clone();
+                        self.thinking.effort = meta.thinking_effort.clone();
                         let _ = self
                             .cmd_tx
                             .blocking_send(BackendCmd::SetMode(self.mode.clone()));
@@ -145,7 +145,7 @@ impl App {
                             .cmd_tx
                             .blocking_send(BackendCmd::SetModel(self.model.clone()));
                         let _ = self.cmd_tx.blocking_send(
-                            BackendCmd::SetThinkingEffort(self.thinking_effort.clone()),
+                            BackendCmd::SetThinkingEffort(self.thinking.effort.clone()),
                         );
                         let _ = self
                             .cmd_tx
@@ -191,9 +191,9 @@ impl App {
                 );
             }
         }
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         self.output.push(String::new());
         true
     }

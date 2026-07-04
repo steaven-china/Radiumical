@@ -3,63 +3,63 @@ use crate::tui::BackendCmd;
 
 impl App {
     pub(super) fn cmd_help(&mut self) -> bool {
-        self.show_help_overlay = !self.show_help_overlay;
+        self.overlays.help = !self.overlays.help;
         if !self.welcome {
             self.output.push("> /help".into());
             self.show_help();
         }
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_settings(&mut self) -> bool {
         if !self.settings_board.visible {
             self.settings_board.visible = true;
-            self.settings_visible = true;
+            self.overlays.settings = true;
             self.panels.open(crate::panel::PanelId::Settings);
         } else {
             self.commit_settings();
             self.settings_board.visible = false;
-            self.settings_visible = false;
+            self.overlays.settings = false;
             self.panels.close(crate::panel::PanelId::Settings);
         }
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_provider(&mut self) -> bool {
-        self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
-        if self.show_model_picker {
+        self.overlays.model_picker = self.provider_picker.toggle(&self.cmd_tx);
+        if self.overlays.model_picker {
             self.panels.open(crate::panel::PanelId::ProviderPicker);
         } else {
             self.panels.close(crate::panel::PanelId::ProviderPicker);
         }
-        self.input.clear();
-        self.cursor = 0;
+        self.input.text.clear();
+        self.input.cursor = 0;
         true
     }
 
     pub(super) fn cmd_models(&mut self) -> bool {
-        self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
-        if self.show_model_picker {
+        self.overlays.model_picker = self.provider_picker.toggle(&self.cmd_tx);
+        if self.overlays.model_picker {
             self.panels.open(crate::panel::PanelId::ProviderPicker);
         } else {
             self.panels.close(crate::panel::PanelId::ProviderPicker);
         }
-        if self.show_model_picker && self.available_models.len() <= 1 {
+        if self.overlays.model_picker && self.available_models.len() <= 1 {
             let _ = self.cmd_tx.blocking_send(BackendCmd::RefreshModels);
             self.output.push("> /models".into());
             self.output.push("  Refreshing models…".into());
             self.output.push(String::new());
         }
-        self.input.clear();
-        self.cursor = 0;
+        self.input.text.clear();
+        self.input.cursor = 0;
         true
     }
 
@@ -75,9 +75,9 @@ impl App {
         self.output.push(format!(" > /model {m}"));
         self.output.push(format!("  Model -> {m}"));
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -107,9 +107,9 @@ impl App {
             ));
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -138,9 +138,9 @@ impl App {
                 .push("  /skill <name> to activate, /skill off <name> to deactivate".into());
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -187,20 +187,20 @@ impl App {
             }
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_perf(&mut self) -> bool {
-        self.perf_visible = !self.perf_visible;
+        self.overlays.perf = !self.overlays.perf;
         self.output.push("> /perf".into());
         self.output.push(radiumical_core::perf::report());
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -209,23 +209,23 @@ impl App {
         self.output.push(format!(
             "  total: {} | vis: {} | scroll: {:.0} | stick: {}",
             self.output.len(),
-            self.output_vis,
-            self.scroll,
-            self.stick_to_bottom
+            self.viewport.visible_lines,
+            self.viewport.scroll,
+            self.viewport.stick_to_bottom
         ));
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_debug(&mut self, task: &str) -> bool {
         let topic = task[6..].trim();
         self.show_debug(topic);
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -235,9 +235,9 @@ impl App {
             "Run LSP diagnostics and lint checks on the workspace. Report findings concisely.".into(),
         ));
         self.output.push("  Running diagnostics…".into());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         self.output.push(String::new());
         true
     }

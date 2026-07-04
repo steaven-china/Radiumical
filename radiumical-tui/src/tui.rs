@@ -145,10 +145,10 @@ pub fn run(
 
         let mut next_frame = Instant::now() + frame_time;
         loop {
-            let hint_page_start = app.hint_page * 8;
-            let hint_page_end = (hint_page_start + 8).min(app.hints.len());
+            let hint_page_start = app.input.hint_page * 8;
+            let hint_page_end = (hint_page_start + 8).min(app.input.hints.len());
             let hint_count = hint_page_end.saturating_sub(hint_page_start);
-            let input_lines = app.input.split('\n').count().clamp(1, 5);
+            let input_lines = app.input.text.split('\n').count().clamp(1, 5);
             let bottom_h = ((input_lines + 2) + hint_count + 1)
                 .min(term_size.height.saturating_sub(1) as usize) as u16;
             let out_h = term_size.height.saturating_sub(bottom_h).max(1) as usize;
@@ -193,7 +193,7 @@ pub fn run(
         Ok(())
     })();
 
-    let desc = app.history.first().cloned();
+    let desc = app.input.history.first().cloned();
     let mode: radiumical_core::session::SessionMode = app.mode.clone().into();
     // Only autosave if there are actual session items (not empty).
     if !app.session_items.is_empty() {
@@ -203,7 +203,7 @@ pub fn run(
             &app.model,
             &app.provider_name,
             mode,
-            &app.thinking_effort,
+            &app.thinking.effort,
             desc.as_deref(),
         );
     }

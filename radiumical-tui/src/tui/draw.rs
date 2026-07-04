@@ -11,11 +11,11 @@ use ratatui::Frame;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
-    let hint_page_start = app.hint_page * 8;
-    let hint_page_end = (hint_page_start + 8).min(app.hints.len());
-    let visible_hints: Vec<(String, String)> = app.hints[hint_page_start..hint_page_end].to_vec();
+    let hint_page_start = app.input.hint_page * 8;
+    let hint_page_end = (hint_page_start + 8).min(app.input.hints.len());
+    let visible_hints: Vec<(String, String)> = app.input.hints[hint_page_start..hint_page_end].to_vec();
     let hint_count = visible_hints.len();
-    let input_lines = app.input.split('\n').count().clamp(1, 5);
+    let input_lines = app.input.text.split('\n').count().clamp(1, 5);
     let input_h = (input_lines + 2) as u16;
     let status_h = 1u16;
     let bottom_h = (input_h as usize + hint_count + status_h as usize)
@@ -72,7 +72,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             }
             crate::panel::PanelId::Mcp => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
-                crate::panels::mcp_status::render(f, slot, &app.mcp_servers, app.mcp_panel_selected);
+                crate::panels::mcp_status::render(f, slot, &app.mcp_servers, app.overlays.mcp_selected);
             }
             crate::panel::PanelId::Outline => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
@@ -88,8 +88,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 crate::panels::plan::render_plan_panel(
                     f,
                     slot,
-                    &app.plan_title,
-                    &app.plan_tasks,
+                    &app.overlays.plan_title,
+                    &app.overlays.plan_tasks,
                 );
             }
             crate::panel::PanelId::Agents => {
@@ -97,7 +97,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 crate::panels::agents::render_agents_panel(
                     f,
                     slot,
-                    &app.agents_list,
+                    &app.overlays.agents_list,
                     &app.agent_role,
                 );
             }
@@ -108,7 +108,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 
     // ── Help overlay (bottom-right, not tiled) ──
-    if app.show_help_overlay {
+    if app.overlays.help {
         let help_w = 40u16.min(chunks[0].width.saturating_sub(2));
         let help_h = 20u16.min(chunks[0].height.saturating_sub(2));
         let help_r = Rect {
@@ -185,7 +185,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     app.progress.render(f, area);
 
     for (i, (n, d)) in visible_hints.iter().take(hint_count).enumerate() {
-        let selected = app.hint_selected == Some(hint_page_start + i);
+        let selected = app.input.hint_selected == Some(hint_page_start + i);
         draw_hint_row(f, bottom[1 + i], n, d, selected);
     }
     draw_status(f, bottom[bottom.len() - 1], app);
@@ -196,17 +196,17 @@ fn sync_panels(app: &mut App) {
     use crate::panel::PanelId;
     let flags = [
         (PanelId::Dashboard, app.dashboard.visible),
-        (PanelId::ProviderPicker, app.show_model_picker),
-        (PanelId::Settings, app.settings_visible),
+        (PanelId::ProviderPicker, app.overlays.model_picker),
+        (PanelId::Settings, app.overlays.settings),
         (PanelId::Confirm, app.confirm.visible),
-        (PanelId::Perf, app.perf_visible),
-        (PanelId::Outline, app.outline_visible),
-        (PanelId::Diagnostics, app.diagnostics_visible),
-        (PanelId::Memory, app.memory_visible),
-        (PanelId::SubAgents, app.subagents_panel_visible),
-        (PanelId::Mcp, app.mcp_panel_visible),
-        (PanelId::Plan, app.plan_visible),
-        (PanelId::Agents, app.agents_panel_visible),
+        (PanelId::Perf, app.overlays.perf),
+        (PanelId::Outline, app.overlays.outline),
+        (PanelId::Diagnostics, app.overlays.diagnostics),
+        (PanelId::Memory, app.overlays.memory),
+        (PanelId::SubAgents, app.overlays.subagents),
+        (PanelId::Mcp, app.overlays.mcp),
+        (PanelId::Plan, app.overlays.plan),
+        (PanelId::Agents, app.overlays.agents),
     ];
     for (id, visible) in flags {
         if visible && !app.panels.is_open(id) {
@@ -225,9 +225,9 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         return;
     }
     let vis = _vis.min(area.height as usize).max(1);
-    app.output_vis = vis;
+    app.viewport.visible_lines = vis;
     // Use previous frame's rendered_total for scrollbar decision (updated below)
-    let needs_scrollbar = app.rendered_total > vis;
+    let needs_scrollbar = app.viewport.rendered_total > vis;
     let text_area = Rect {
         x: area.x,
         y: area.y,
@@ -238,10 +238,10 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         },
         height: area.height,
     };
-    app.output_width = text_area.width as usize;
+    app.viewport.width = text_area.width as usize;
     f.render_widget(Clear, area);
 
-    app.blocks = measure_blocks(&app.output, text_area.width, app.show_full_reasoning);
+    app.blocks = measure_blocks(&app.output, text_area.width, app.thinking.show_full_reasoning);
     for block in &mut app.blocks {
         if let crate::layout::BlockKind::ToolCall {
             name,
@@ -279,7 +279,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         }
     }
     let total: usize = app.blocks.iter().map(|b| b.height).sum();
-    app.rendered_total = total;
+    app.viewport.rendered_total = total;
 
     let start = app.scroll_start(total, vis);
     let end = (start + vis).min(total);
@@ -290,21 +290,21 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         if matches!(block.kind, crate::layout::BlockKind::Logo) {
             rendered_blocks.push(block.render(
                 text_area.width,
-                app.thinking_frame,
+                app.thinking.frame,
                 &mut app.markdown,
-                app.show_full_reasoning,
+                app.thinking.show_full_reasoning,
             ));
             continue;
         }
-        let key = block_render_key(block, text_area.width, app.show_full_reasoning);
+        let key = block_render_key(block, text_area.width, app.thinking.show_full_reasoning);
         if let Some(lines) = app.render_cache.get(&key) {
             rendered_blocks.push(lines.clone());
         } else {
             let lines = block.render(
                 text_area.width,
-                app.thinking_frame,
+                app.thinking.frame,
                 &mut app.markdown,
-                app.show_full_reasoning,
+                app.thinking.show_full_reasoning,
             );
             // LRU eviction: limit cache to 512 entries.
             const MAX_CACHE: usize = 512;
@@ -350,10 +350,10 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         let sb_h = area.height.saturating_sub(1) as usize;
         let thumb_h =
             ((vis as f32 / total.max(vis) as f32).min(1.0) * sb_h as f32).max(1.0) as usize;
-        let thumb_y = if app.stick_to_bottom {
+        let thumb_y = if app.viewport.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {
-            let progress = (app.scroll / (total - vis).max(1) as f32).clamp(0.0, 1.0);
+            let progress = (app.viewport.scroll / (total - vis).max(1) as f32).clamp(0.0, 1.0);
             ((progress * sb_h.saturating_sub(thumb_h) as f32) as usize).min(sb_h.saturating_sub(1))
         };
         let mut bar = String::with_capacity(sb_h * 4);
@@ -377,7 +377,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     }
 
     let content_h = filled.iter().filter(|l| l.width() > 0).count();
-    if app.welcome && content_h < vis && app.scroll <= 0.0 && content_h > 0 {
+    if app.welcome && content_h < vis && app.viewport.scroll <= 0.0 && content_h > 0 {
         let pad_top = (vis - content_h) / 2;
         let max_w = filled.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
         let pad_left = (text_area.width.saturating_sub(max_w) / 2) as usize;
@@ -408,14 +408,14 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
 
 fn draw_input(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::widgets::{Block as RBlock, BorderType, Borders, Wrap};
-    let lines: Vec<&str> = app.input.split('\n').collect();
-    let cursor_line = app.input[..app.cursor]
+    let lines: Vec<&str> = app.input.text.split('\n').collect();
+    let cursor_line = app.input.text[..app.input.cursor]
         .chars()
         .filter(|c| *c == '\n')
         .count()
         .min(lines.len().saturating_sub(1));
-    let cursor_col = app.cursor
-        - app.input[..app.cursor]
+    let cursor_col = app.input.cursor
+        - app.input.text[..app.input.cursor]
             .rfind('\n')
             .map(|p| p + 1)
             .unwrap_or(0);
@@ -568,7 +568,7 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
     let style = Style::default().fg(Color::Rgb(130, 130, 130));
     let dim_style = Style::default().fg(Color::Rgb(100, 100, 110));
     let filter_style = Style::default().fg(Color::Rgb(180, 180, 100));
-    let left = if let Some(ref prefix) = app.history_filter_prefix {
+    let left = if let Some(ref prefix) = app.input.history_filter_prefix {
         let display = if prefix.len() > 20 {
             format!("{}...", &prefix[..20])
         } else {
@@ -578,11 +578,11 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
             format!(" [↑ history: {display}]"),
             filter_style,
         ))
-    } else if app.thinking {
-        let bar = PULSE[app.thinking_frame % PULSE.len()];
+    } else if app.thinking.active {
+        let bar = PULSE[app.thinking.frame % PULSE.len()];
         Line::from(vec![
             Span::styled(
-                format!(" {} thinking {}s", bar, app.thinking_elapsed),
+                format!(" {} thinking {}s", bar, app.thinking.elapsed),
                 style,
             ),
             Span::styled(" (Esc/Ctrl+C to cancel)", dim_style),

@@ -297,7 +297,7 @@ impl SettingsBoard {
                 }
                 "Reasoning effort" => {
                     if let SettingKind::String { value, .. } = &item.kind {
-                        app.thinking_effort = value.clone();
+                        app.thinking.effort = value.clone();
                     }
                 }
                 _ => {}

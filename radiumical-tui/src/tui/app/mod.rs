@@ -2,7 +2,6 @@ use crate::tui::{BackendCmd, UiEvent, LOGO};
 use radiumical_core::types::{AgentMode, SessionConfig};
 use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
 
 pub mod commands;
 pub mod dashboard;
@@ -10,24 +9,18 @@ pub mod events;
 pub mod input;
 pub mod mouse;
 pub mod render;
+pub mod state;
+
+pub use state::{InputState, OverlayState, ThinkingState, ViewportState};
 
 // ═══ App ═══
 
 pub struct App {
     pub output: Vec<String>,
-    pub input: String,
-    pub cursor: usize,
-    pub thinking: bool,
-    pub thinking_cancelled: bool,
-    pub thinking_start: Instant,
-    pub thinking_elapsed: u64,
-    pub thinking_frame: usize,
-    pub hints: Vec<(String, String)>,
-    pub hint_selected: Option<usize>,
-    pub hint_page: usize,
-    pub scroll: f32,
-    pub stick_to_bottom: bool,
-    pub(crate) scroll_velocity: f32,
+    pub overlays: OverlayState,
+    pub input: InputState,
+    pub thinking: ThinkingState,
+    pub viewport: ViewportState,
     pub mode: AgentMode,
     pub model: String,
     pub provider_name: String,
@@ -38,19 +31,8 @@ pub struct App {
     pub memory: radiumical_core::memory::Memory,
     pub choice_panel: crate::choice_panel::ChoicePanel,
     pub should_quit: bool,
-    pub history: Vec<String>,
-    pub history_idx: Option<usize>,
-    pub(crate) history_draft: String,
-    pub(crate) history_filter_prefix: Option<String>,
     pub welcome: bool,
-    pub show_help_overlay: bool,
-    pub show_model_picker: bool,
-    pub settings_visible: bool,
     pub settings_board: crate::settings::SettingsBoard,
-    pub cod_enabled: bool,
-    pub thinking_effort: String,
-    pub full_reasoning: Vec<String>,
-    pub show_full_reasoning: bool,
     pub help_board: crate::board::BoardState,
     pub provider_picker: crate::board::ProviderPicker,
     pub confirm: crate::board::ConfirmBoard,
@@ -63,44 +45,18 @@ pub struct App {
     pub render_cache: HashMap<u64, Vec<Line<'static>>>,
     pub render_cache_order: VecDeque<u64>,
     pub markdown: crate::markdown::MarkdownRenderer,
-    pub perf_visible: bool,
-    pub output_vis: usize,
-    pub output_width: usize,
-    pub rendered_total: usize,
     pub progress: crate::board::ProgressBoard,
     #[allow(dead_code)]
     pub plan_board: crate::board::BoardState,
     pub toasts: Vec<crate::board::Toast>,
     pub available_models: Vec<String>,
-    pub scrollbar_dragging: bool,
-    pub tool_expanded: std::collections::HashMap<String, bool>,
-    pub tool_result_scroll: std::collections::HashMap<String, usize>,
+    pub tool_expanded: HashMap<String, bool>,
+    pub tool_result_scroll: HashMap<String, usize>,
     pub next_tool_id: usize,
     pub last_click: Option<(std::time::Instant, u16, u16)>,
     pub hovered_block: Option<usize>,
-    pub subagents_panel_visible: bool,
-    pub mcp_panel_visible: bool,
-    pub mcp_panel_selected: usize,
     pub mcp_servers: Vec<crate::panels::mcp_status::McpServerStatus>,
-    pub outline_visible: bool,
-    #[allow(dead_code)]
-    pub outline_data: Option<String>,
-    #[allow(dead_code)]
-    pub outline_scroll: usize,
-    pub diagnostics_visible: bool,
-    #[allow(dead_code)]
-    pub diagnostics: Vec<crate::panels::diagnostics::DiagnosticItem>,
-    #[allow(dead_code)]
-    pub diagnostics_scroll: usize,
-    pub memory_visible: bool,
-    #[allow(dead_code)]
-    pub memory_panel_state: crate::panels::memory::MemoryPanelState,
-    pub plan_visible: bool,
-    pub plan_title: String,
-    pub plan_tasks: Vec<crate::panels::plan::PlanTask>,
     pub agent_role: String,
-    pub agents_panel_visible: bool,
-    pub agents_list: Vec<radiumical_core::agent_pool::AgentDef>,
     pub tip_state: crate::tips::TipState,
 }
 
@@ -129,33 +85,17 @@ impl App {
         out.push(String::new());
         Self {
             output: out,
-            input: String::new(),
-            cursor: 0,
-            thinking: false,
-            thinking_cancelled: false,
-            thinking_start: Instant::now(),
-            thinking_elapsed: 0,
-            thinking_frame: 0,
-            hints: Vec::new(),
-            hint_selected: None,
-            hint_page: 0,
-            scroll: 0.0,
-            stick_to_bottom: true,
-            scroll_velocity: 0.0,
+            overlays: OverlayState::new(),
+            input: InputState::new(),
+            thinking: ThinkingState::new(),
+            viewport: ViewportState::new(),
             mode: config.mode.clone(),
             model: config.model.clone(),
             provider_name: config.provider.name().to_string(),
             cmd_tx,
             ui_rx,
             should_quit: false,
-            history: Vec::new(),
-            history_idx: None,
-            history_draft: String::new(),
-            history_filter_prefix: None,
             welcome: true,
-            show_help_overlay: true,
-            show_model_picker: false,
-            settings_visible: false,
             settings_board: crate::settings::SettingsBoard::from_config(
                 &radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
                     model: None,
@@ -172,10 +112,6 @@ impl App {
                 }),
                 &config.mode,
             ),
-            cod_enabled: false,
-            thinking_effort: "max".into(),
-            full_reasoning: Vec::new(),
-            show_full_reasoning: false,
             help_board: crate::board::BoardState::new(
                 " Help ",
                 36,
@@ -194,11 +130,7 @@ impl App {
             render_cache: HashMap::new(),
             render_cache_order: VecDeque::new(),
             markdown: crate::markdown::MarkdownRenderer::new(),
-            perf_visible: false,
             progress: crate::board::ProgressBoard::new("Working"),
-            output_vis: 20,
-            output_width: 80,
-            rendered_total: 0,
             plan_board: crate::board::BoardState::new(
                 " Plan ",
                 30,
@@ -206,30 +138,13 @@ impl App {
                 crate::board::Corner::TopRight,
             ),
             available_models: vec![config.model.clone()],
-            scrollbar_dragging: false,
-            tool_expanded: std::collections::HashMap::new(),
-            tool_result_scroll: std::collections::HashMap::new(),
+            tool_expanded: HashMap::new(),
+            tool_result_scroll: HashMap::new(),
             next_tool_id: 1,
             last_click: None,
             hovered_block: None,
-            subagents_panel_visible: false,
-            mcp_panel_visible: false,
-            mcp_panel_selected: 0,
             mcp_servers: Vec::new(),
-            outline_visible: false,
-            outline_data: None,
-            outline_scroll: 0,
-            diagnostics_visible: false,
-            diagnostics: Vec::new(),
-            diagnostics_scroll: 0,
-            memory_visible: false,
-            memory_panel_state: crate::panels::memory::MemoryPanelState::default(),
-            plan_visible: false,
-            plan_title: String::new(),
-            plan_tasks: Vec::new(),
             agent_role: "coder".into(),
-            agents_panel_visible: false,
-            agents_list: radiumical_core::agent_pool::load_agents(),
 
             session_items: Vec::new(),
             session_pool: radiumical_core::session::SessionPool::for_workspace(workspace),
@@ -240,18 +155,18 @@ impl App {
     }
 
     pub fn tick(&mut self, _visible_lines: usize) {
-        self.output_vis = _visible_lines;
-        if self.thinking {
-            self.thinking_elapsed = self.thinking_start.elapsed().as_secs();
-            self.thinking_frame = (self.thinking_start.elapsed().as_millis() / 150) as usize;
+        self.viewport.visible_lines = _visible_lines;
+        if self.thinking.active {
+            self.thinking.elapsed = self.thinking.start.elapsed().as_secs();
+            self.thinking.frame = (self.thinking.start.elapsed().as_millis() / 150) as usize;
         }
-        if self.scroll_velocity.abs() > 0.01 && !self.stick_to_bottom {
-            self.scroll += self.scroll_velocity;
-            self.scroll = self.scroll.max(0.0);
-            self.scroll_velocity *= 0.85;
+        if self.viewport.scroll_velocity.abs() > 0.01 && !self.viewport.stick_to_bottom {
+            self.viewport.scroll += self.viewport.scroll_velocity;
+            self.viewport.scroll = self.viewport.scroll.max(0.0);
+            self.viewport.scroll_velocity *= 0.85;
         }
-        let max = (self.rendered_total.saturating_sub(_visible_lines)) as f32;
-        self.scroll = self.scroll.clamp(0.0, max.max(0.0));
+        let max = (self.viewport.rendered_total.saturating_sub(_visible_lines)) as f32;
+        self.viewport.scroll = self.viewport.scroll.clamp(0.0, max.max(0.0));
         if self.tip_state.should_rotate() {
             self.tip_state.rotate();
         }
@@ -262,45 +177,45 @@ impl App {
         self.settings_board.save();
         let board = self.settings_board.clone();
         let old_mode = self.mode.clone();
-        let old_effort = self.thinking_effort.clone();
+        let old_effort = self.thinking.effort.clone();
         board.apply_to_app(self);
         if self.mode != old_mode {
             let _ = self
                 .cmd_tx
                 .blocking_send(crate::tui::BackendCmd::SetMode(self.mode.clone()));
         }
-        if self.thinking_effort != old_effort {
+        if self.thinking.effort != old_effort {
             let _ = self
                 .cmd_tx
                 .blocking_send(crate::tui::BackendCmd::SetThinkingEffort(
-                    self.thinking_effort.clone(),
+                    self.thinking.effort.clone(),
                 ));
         }
     }
 
     pub fn scroll_up(&mut self, lines: f32) {
         let lines = lines.max(0.0);
-        let max = self.rendered_total.saturating_sub(self.output_vis.max(1)) as f32;
-        if self.stick_to_bottom {
-            self.stick_to_bottom = false;
+        let max = self.viewport.rendered_total.saturating_sub(self.viewport.visible_lines.max(1)) as f32;
+        if self.viewport.stick_to_bottom {
+            self.viewport.stick_to_bottom = false;
             // scroll is already at max, just unset stick — next scroll will move
         }
-        self.scroll = (self.scroll + lines).min(max.max(0.0)).max(0.0);
+        self.viewport.scroll = (self.viewport.scroll + lines).min(max.max(0.0)).max(0.0);
         if lines > 0.0 {
-            self.scroll_velocity = lines;
+            self.viewport.scroll_velocity = lines;
         }
     }
 
     pub fn scroll_down(&mut self, lines: f32) {
         let lines = lines.max(0.0);
-        let max = self.rendered_total.saturating_sub(self.output_vis.max(1)) as f32;
-        if self.stick_to_bottom {
-            self.stick_to_bottom = false;
+        let max = self.viewport.rendered_total.saturating_sub(self.viewport.visible_lines.max(1)) as f32;
+        if self.viewport.stick_to_bottom {
+            self.viewport.stick_to_bottom = false;
         }
-        self.scroll = (self.scroll - lines).max(0.0);
-        self.scroll = self.scroll.min(max.max(0.0));
+        self.viewport.scroll = (self.viewport.scroll - lines).max(0.0);
+        self.viewport.scroll = self.viewport.scroll.min(max.max(0.0));
         if lines > 0.0 {
-            self.scroll_velocity = -lines;
+            self.viewport.scroll_velocity = -lines;
         }
     }
 
@@ -308,10 +223,10 @@ impl App {
     /// Shared by draw.rs (rendering) and mouse.rs (hit-testing) so they never diverge.
     pub fn scroll_start(&self, total: usize, vis: usize) -> usize {
         let vis = vis.max(1);
-        if self.stick_to_bottom {
+        if self.viewport.stick_to_bottom {
             total.saturating_sub(vis)
         } else {
-            (self.scroll as usize).min(total.saturating_sub(vis))
+            (self.viewport.scroll as usize).min(total.saturating_sub(vis))
         }
     }
 }

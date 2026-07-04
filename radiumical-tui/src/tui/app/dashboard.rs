@@ -7,31 +7,31 @@ impl App {
     pub(crate) fn dispatch_dash_action(&mut self, action: DashAction) {
         match action {
             DashAction::ShowModels => {
-                self.show_model_picker = true;
+                self.overlays.model_picker = true;
                 self.provider_picker.visible = true;
                 self.panels.open(PanelId::ProviderPicker);
                 let _ = self.cmd_tx.blocking_send(BackendCmd::FetchProviders);
             }
             DashAction::ShowSettings => {
-                self.settings_visible = true;
+                self.overlays.settings = true;
                 self.settings_board.visible = true;
                 self.panels.open(PanelId::Settings);
             }
             DashAction::ShowHelp => {
-                self.show_help_overlay = !self.show_help_overlay;
+                self.overlays.help = !self.overlays.help;
                 self.panels.toggle(PanelId::Help);
-                self.stick_to_bottom = true;
+                self.viewport.stick_to_bottom = true;
             }
             DashAction::SetMode(mode) => {
                 self.mode = mode.clone();
                 let _ = self.cmd_tx.blocking_send(BackendCmd::SetMode(mode));
                 self.output.push(format!("  {:?} mode", self.mode));
                 self.output.push(String::new());
-                self.stick_to_bottom = true;
+                self.viewport.stick_to_bottom = true;
             }
             DashAction::ToggleReasoning => {
-                self.show_full_reasoning = !self.show_full_reasoning;
-                self.stick_to_bottom = true;
+                self.thinking.show_full_reasoning = !self.thinking.show_full_reasoning;
+                self.viewport.stick_to_bottom = true;
             }
             DashAction::SessionNew => {
                 self.handle_command("/new");
@@ -40,7 +40,7 @@ impl App {
                 if let Ok(sessions) = self.session_pool.list() {
                     self.session_tui.open(sessions, None, None);
                     // Pre-fill with first history entry as name suggestion
-                    if let Some(first) = self.history.first() {
+                    if let Some(first) = self.input.history.first() {
                         self.session_tui.name_buffer = first.clone();
                     }
                     // Focus name input for immediate typing
@@ -70,7 +70,7 @@ impl App {
             DashAction::Diagnostics => {
                 self.output.push("  Diagnostics is not yet implemented.".into());
                 self.output.push(String::new());
-                self.stick_to_bottom = true;
+                self.viewport.stick_to_bottom = true;
             }
             DashAction::ShowTools => {
                 self.output.push("> /tools".into());
@@ -99,14 +99,14 @@ impl App {
                     ));
                 }
                 self.output.push(String::new());
-                self.stick_to_bottom = true;
+                self.viewport.stick_to_bottom = true;
             }
             DashAction::About => {
                 self.output
                     .push("  Radiumical — lean CLI coding agent".into());
                 self.output.push("  https://radiumical.dev".into());
                 self.output.push(String::new());
-                self.stick_to_bottom = true;
+                self.viewport.stick_to_bottom = true;
             }
         }
     }

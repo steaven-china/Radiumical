@@ -5,10 +5,10 @@ use super::base64_encode;
 
 impl App {
     pub(super) fn cmd_end(&mut self) -> bool {
-        self.stick_to_bottom = true;
-        self.scroll = 0.0;
-        self.input.clear();
-        self.cursor = 0;
+        self.viewport.stick_to_bottom = true;
+        self.viewport.scroll = 0.0;
+        self.input.text.clear();
+        self.input.cursor = 0;
         true
     }
 
@@ -41,9 +41,9 @@ impl App {
             self.output.push("  No memories stored.".into());
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -65,9 +65,9 @@ impl App {
             }
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -79,9 +79,9 @@ impl App {
             Err(e) => self.output.push(format!("  Error: {e}")),
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -113,50 +113,50 @@ impl App {
                 Err(e) => self.output.push(format!("  Memory error: {e}")),
             }
         }
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         self.output.push(String::new());
         true
     }
 
     pub(super) fn cmd_subagents(&mut self) -> bool {
-        self.subagents_panel_visible = !self.subagents_panel_visible;
-        if self.subagents_panel_visible {
+        self.overlays.subagents = !self.overlays.subagents;
+        if self.overlays.subagents {
             self.panels.open(crate::panel::PanelId::SubAgents);
         } else {
             self.panels.close(crate::panel::PanelId::SubAgents);
         }
         self.output.push("> /subagents".into());
-        if self.subagents_panel_visible {
+        if self.overlays.subagents {
             self.output.push("  Sub-agents panel opened".into());
         } else {
             self.output.push("  Sub-agents panel closed".into());
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_mcp(&mut self) -> bool {
-        self.mcp_panel_visible = !self.mcp_panel_visible;
-        if self.mcp_panel_visible {
+        self.overlays.mcp = !self.overlays.mcp;
+        if self.overlays.mcp {
             self.panels.open(crate::panel::PanelId::Mcp);
         } else {
             self.panels.close(crate::panel::PanelId::Mcp);
         }
         self.output.push("> /mcp".into());
-        if self.mcp_panel_visible {
+        if self.overlays.mcp {
             self.output.push("  MCP servers panel opened".into());
         } else {
             self.output.push("  MCP servers panel closed".into());
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -198,9 +198,9 @@ impl App {
                 .push("  /mcp — toggle panel | /mcp toggle <name>".into());
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -283,31 +283,31 @@ impl App {
             }
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_cod_on(&mut self) -> bool {
-        self.cod_enabled = true;
+        self.thinking.cod_enabled = true;
         self.output.push("> /cod on".into());
         self.output.push("  Chain of Draft enabled".into());
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_cod_off(&mut self) -> bool {
-        self.cod_enabled = false;
+        self.thinking.cod_enabled = false;
         self.output.push("> /cod off".into());
         self.output.push("  Chain of Draft disabled".into());
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -321,32 +321,32 @@ impl App {
         self.output.push(format!("  Model:      {}", self.model));
         self.output.push(format!("  Provider:   {}", self.provider_name));
         self.output.push(format!("  Mode:       {}", mode));
-        self.output.push(format!("  Effort:     {}", self.thinking_effort));
-        self.output.push(format!("  CoD:        {}", if self.cod_enabled { "on" } else { "off" }));
+        self.output.push(format!("  Effort:     {}", self.thinking.effort));
+        self.output.push(format!("  CoD:        {}", if self.thinking.cod_enabled { "on" } else { "off" }));
         self.output.push(format!("  Messages:   {}", self.session_items.len()));
-        self.output.push(format!("  History:    {}", self.history.len()));
+        self.output.push(format!("  History:    {}", self.input.history.len()));
         self.output.push(format!("  Agent role: {}", self.agent_role));
         if !self.mcp_servers.is_empty() {
             let alive = self.mcp_servers.iter().filter(|s| s.alive).count();
             self.output.push(format!("  MCP:        {}/{} servers alive", alive, self.mcp_servers.len()));
         }
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
     pub(super) fn cmd_retry(&mut self) -> bool {
-        if let Some(last_task) = self.history.last().cloned() {
+        if let Some(last_task) = self.input.history.last().cloned() {
             self.output.push("> /retry".to_string());
             self.output.push(format!("> {last_task}"));
             self.output.push(String::new());
-            self.stick_to_bottom = true;
-            self.full_reasoning.clear();
-            self.show_full_reasoning = false;
-            self.thinking_cancelled = false;
-            let final_task = if self.cod_enabled {
+            self.viewport.stick_to_bottom = true;
+            self.thinking.full_reasoning.clear();
+            self.thinking.show_full_reasoning = false;
+            self.thinking.cancelled = false;
+            let final_task = if self.thinking.cod_enabled {
                 format!("{last_task}\n\n[Chain of Draft: think in <=5 word steps, be terse. Output reasoning as brief fragments, then final answer.]")
             } else {
                 last_task
@@ -359,8 +359,8 @@ impl App {
                 std::time::Duration::from_secs(3),
             ));
         }
-        self.input.clear();
-        self.cursor = 0;
+        self.input.text.clear();
+        self.input.cursor = 0;
         true
     }
 
@@ -388,8 +388,8 @@ impl App {
                 std::time::Duration::from_secs(3),
             ));
         }
-        self.input.clear();
-        self.cursor = 0;
+        self.input.text.clear();
+        self.input.cursor = 0;
         true
     }
 
@@ -403,9 +403,9 @@ impl App {
         }
         self.output.push("  /tip next — skip to next tip".into());
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 
@@ -414,9 +414,9 @@ impl App {
         self.output.push("> /tip next".into());
         self.output.push(format!("  {}", self.tip_state.text()));
         self.output.push(String::new());
-        self.input.clear();
-        self.cursor = 0;
-        self.stick_to_bottom = true;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
         true
     }
 }

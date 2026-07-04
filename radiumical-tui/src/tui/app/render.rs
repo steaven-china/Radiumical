@@ -50,7 +50,7 @@ impl App {
         self.output.push(format!("  Model    : {}", self.model));
         self.output.push(format!("  Mode     : {:?}", self.mode));
         self.output
-            .push(format!("  History  : {} items", self.history.len()));
+            .push(format!("  History  : {} items", self.input.history.len()));
         self.output.push(String::new());
     }
 
@@ -68,13 +68,13 @@ impl App {
                 self.output.push(format!(
                     "  Lines: {} | Scroll: {:.1} | Stick: {}",
                     self.output.len(),
-                    self.scroll,
-                    self.stick_to_bottom
+                    self.viewport.scroll,
+                    self.viewport.stick_to_bottom
                 ));
             }
             "blocks" => {
                 let blocks =
-                    crate::layout::measure_blocks(&self.output, 80, self.show_full_reasoning);
+                    crate::layout::measure_blocks(&self.output, 80, self.thinking.show_full_reasoning);
                 self.output.push(format!("  Blocks: {}", blocks.len()));
                 for (i, b) in blocks.iter().enumerate() {
                     self.output
@@ -148,7 +148,7 @@ impl App {
         if self.output.is_empty() {
             self.output.push(String::new());
         }
-        self.stick_to_bottom = true;
+        self.viewport.stick_to_bottom = true;
         self.welcome = false;
     }
 }

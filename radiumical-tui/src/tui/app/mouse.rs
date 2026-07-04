@@ -24,7 +24,7 @@ impl App {
         let output_area = Rect {
             x: 0,
             y: output_top,
-            width: self.output_width as u16,
+            width: self.viewport.width as u16,
             height: output_h,
         };
         let slots = self.panels.layout(output_area);
@@ -77,15 +77,15 @@ impl App {
                 }
 
                 // 4. Scrollbar click
-                let on_scrollbar = col >= self.output_width as u16;
-                let total = self.rendered_total;
-                let needs_scrollbar = total > self.output_vis;
+                let on_scrollbar = col >= self.viewport.width as u16;
+                let total = self.viewport.rendered_total;
+                let needs_scrollbar = total > self.viewport.visible_lines;
                 if on_scrollbar
                     && needs_scrollbar
                     && row > output_top
                     && row < output_top + output_h
                 {
-                    self.scrollbar_dragging = true;
+                    self.viewport.scrollbar_dragging = true;
                     self.set_scroll_from_thumb(row, output_top, output_h);
                     return;
                 }
@@ -131,7 +131,7 @@ impl App {
                     self.panels.drag_move(col, row);
                     return;
                 }
-                if self.scrollbar_dragging {
+                if self.viewport.scrollbar_dragging {
                     self.set_scroll_from_thumb(row, output_top, output_h);
                 }
             }
@@ -141,7 +141,7 @@ impl App {
                 if self.panels.is_dragging() {
                     self.panels.drag_end();
                 }
-                self.scrollbar_dragging = false;
+                self.viewport.scrollbar_dragging = false;
             }
 
             _ => {}
@@ -155,19 +155,19 @@ impl App {
         match id {
             PanelId::Dashboard => self.dashboard.visible = false,
             PanelId::ProviderPicker => {
-                self.show_model_picker = false;
+                self.overlays.model_picker = false;
                 self.provider_picker.close();
             }
             PanelId::Settings => {
-                self.settings_visible = false;
+                self.overlays.settings = false;
                 self.settings_board.visible = false;
             }
-            PanelId::Help => self.show_help_overlay = false,
+            PanelId::Help => self.overlays.help = false,
             PanelId::Confirm => {
                 self.confirm.visible = false;
             }
             PanelId::Perf => {
-                self.perf_visible = false;
+                self.overlays.perf = false;
             }
             PanelId::SessionList => {
                 self.session_tui.close();
@@ -177,11 +177,11 @@ impl App {
     }
 
     fn set_scroll_from_thumb(&mut self, row: u16, output_top: u16, output_h: u16) {
-        let total = self.rendered_total;
-        let vis = self.output_vis.max(1);
+        let total = self.viewport.rendered_total;
+        let vis = self.viewport.visible_lines.max(1);
         if total <= vis {
-            self.scroll = 0.0;
-            self.stick_to_bottom = true;
+            self.viewport.scroll = 0.0;
+            self.viewport.stick_to_bottom = true;
             return;
         }
         let sb_h = output_h.saturating_sub(1) as f32;
@@ -191,8 +191,8 @@ impl App {
         let rel = (row.saturating_sub(output_top).saturating_sub(1)) as f32;
         let progress = (rel / sb_h).clamp(0.0, 1.0);
         let max_scroll = (total - vis) as f32;
-        self.scroll = (progress * max_scroll).round();
-        self.stick_to_bottom = self.scroll >= max_scroll - 0.5;
+        self.viewport.scroll = (progress * max_scroll).round();
+        self.viewport.stick_to_bottom = self.viewport.scroll >= max_scroll - 0.5;
     }
 
     fn block_at_row(&self, screen_row: u16, output_top: u16, output_h: u16) -> Option<usize> {
@@ -200,8 +200,8 @@ impl App {
             return None;
         }
         let blocks = &self.blocks;
-        let vis = self.output_vis;
-        let total = self.rendered_total;
+        let vis = self.viewport.visible_lines;
+        let total = self.viewport.rendered_total;
         let start = self.scroll_start(total, vis);
         let rel = (screen_row - output_top) as usize + start;
         let mut off = 0usize;
@@ -238,7 +238,7 @@ impl App {
         if !expanded {
             return false;
         }
-        let content_w = self.output_width.saturating_sub(4 + 1).max(1);
+        let content_w = self.viewport.width.saturating_sub(4 + 1).max(1);
         let wrapped_count = crate::layout::wrapped_tool_result_lines(result, content_w).len();
         if wrapped_count <= MAX_RESULT_VIS {
             return false;

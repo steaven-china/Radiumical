@@ -24,7 +24,7 @@ impl App {
                 }
             }
         }
-        if self.settings_visible {
+        if self.overlays.settings {
             if self.settings_board.is_editing() {
                 self.handle_settings_edit_key(key);
             } else {
@@ -32,21 +32,21 @@ impl App {
             }
             return;
         }
-        if self.mcp_panel_visible && !self.mcp_servers.is_empty() {
+        if self.overlays.mcp && !self.mcp_servers.is_empty() {
             match (key.code, key.modifiers) {
                 (KeyCode::Up, _) => {
-                    self.mcp_panel_selected =
-                        self.mcp_panel_selected.saturating_sub(1);
+                    self.overlays.mcp_selected =
+                        self.overlays.mcp_selected.saturating_sub(1);
                     return;
                 }
                 (KeyCode::Down, _) => {
-                    if self.mcp_panel_selected + 1 < self.mcp_servers.len() {
-                        self.mcp_panel_selected += 1;
+                    if self.overlays.mcp_selected + 1 < self.mcp_servers.len() {
+                        self.overlays.mcp_selected += 1;
                     }
                     return;
                 }
                 (KeyCode::Enter, _) => {
-                    if let Some(server) = self.mcp_servers.get_mut(self.mcp_panel_selected) {
+                    if let Some(server) = self.mcp_servers.get_mut(self.overlays.mcp_selected) {
                         server.enabled = !server.enabled;
                         let name = server.name.clone();
                         let enabled = server.enabled;
@@ -66,7 +66,7 @@ impl App {
                     return;
                 }
                 (KeyCode::Esc, _) => {
-                    self.mcp_panel_visible = false;
+                    self.overlays.mcp = false;
                     self.panels.close(crate::panel::PanelId::Mcp);
                     return;
                 }
@@ -75,13 +75,13 @@ impl App {
         }
         match (key.code, key.modifiers) {
             (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
-                self.show_full_reasoning = !self.show_full_reasoning;
+                self.thinking.show_full_reasoning = !self.thinking.show_full_reasoning;
             }
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                if self.thinking {
+                if self.thinking.active {
                     let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
-                    self.thinking = false;
-                    self.thinking_cancelled = true;
+                    self.thinking.active = false;
+                    self.thinking.cancelled = true;
                     self.toasts.push(crate::board::Toast::new(
                         "Cancelled".to_string(),
                         crate::board::ToastLevel::Warn,
@@ -98,28 +98,28 @@ impl App {
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                 self.output.clear();
                 self.output.push(String::new());
-                self.scroll = 0.0;
-                self.stick_to_bottom = true;
+                self.viewport.scroll = 0.0;
+                self.viewport.stick_to_bottom = true;
             }
             (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                self.cursor = 0;
+                self.input.cursor = 0;
             }
             (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
-                self.cursor = self.input.len();
+                self.input.cursor = self.input.text.len();
             }
             (KeyCode::PageUp, _) => {
-                if self.hint_selected.is_some() {
-                    self.hint_page = self.hint_page.saturating_sub(1);
-                    self.hint_selected = Some(0);
+                if self.input.hint_selected.is_some() {
+                    self.input.hint_page = self.input.hint_page.saturating_sub(1);
+                    self.input.hint_selected = Some(0);
                 } else if !self.welcome {
                     self.scroll_down(12.0);
                 }
             }
             (KeyCode::PageDown, _) => {
-                if self.hint_selected.is_some() {
-                    let max_page = self.hints.len().saturating_sub(1) / 8;
-                    self.hint_page = (self.hint_page + 1).min(max_page);
-                    self.hint_selected = Some(0);
+                if self.input.hint_selected.is_some() {
+                    let max_page = self.input.hints.len().saturating_sub(1) / 8;
+                    self.input.hint_page = (self.input.hint_page + 1).min(max_page);
+                    self.input.hint_selected = Some(0);
                 } else if !self.welcome {
                     self.scroll_up(12.0);
                 }
@@ -133,34 +133,34 @@ impl App {
                     self.dashboard.up();
                     return;
                 }
-                if self.input.starts_with('/') && self.hint_selected.is_some() {
-                    let max = self.hints.len().saturating_sub(1);
-                    self.hint_selected =
-                        Some(self.hint_selected.unwrap_or(0).saturating_sub(1).min(max));
+                if self.input.text.starts_with('/') && self.input.hint_selected.is_some() {
+                    let max = self.input.hints.len().saturating_sub(1);
+                    self.input.hint_selected =
+                        Some(self.input.hint_selected.unwrap_or(0).saturating_sub(1).min(max));
                     self.sync_hint_page();
-                } else if self.input.starts_with('/') && !self.hints.is_empty() {
-                    self.hint_selected = Some(self.hints.len() - 1);
+                } else if self.input.text.starts_with('/') && !self.input.hints.is_empty() {
+                    self.input.hint_selected = Some(self.input.hints.len() - 1);
                     self.sync_hint_page();
-                } else if !self.history.is_empty() {
-                    let prefix = if self.input.is_empty() {
+                } else if !self.input.history.is_empty() {
+                    let prefix = if self.input.text.is_empty() {
                         String::new()
-                    } else if self.history_idx.is_none() {
-                        self.history_filter_prefix = Some(self.input.clone());
-                        self.input.clone()
+                    } else if self.input.history_idx.is_none() {
+                        self.input.history_filter_prefix = Some(self.input.text.clone());
+                        self.input.text.clone()
                     } else {
-                        self.history_filter_prefix.clone().unwrap_or_default()
+                        self.input.history_filter_prefix.clone().unwrap_or_default()
                     };
-                    if self.history_idx.is_none() {
-                        self.history_draft = self.input.clone();
+                    if self.input.history_idx.is_none() {
+                        self.input.history_draft = self.input.text.clone();
                     }
                     let from = self
-                        .history_idx
-                        .map_or(self.history.len() - 1, |i| i.saturating_sub(1));
+                        .input.history_idx
+                        .map_or(self.input.history.len() - 1, |i| i.saturating_sub(1));
                     if let Some(i) = self.find_prev_history_match(&prefix, from) {
-                        self.history_idx = Some(i);
-                        self.input = self.history[i].clone();
-                        self.cursor = self.input.len();
-                        self.hints.clear();
+                        self.input.history_idx = Some(i);
+                        self.input.text = self.input.history[i].clone();
+                        self.input.cursor = self.input.text.len();
+                        self.input.hints.clear();
                     }
                 }
             }
@@ -173,39 +173,39 @@ impl App {
                     self.dashboard.down();
                     return;
                 }
-                if self.input.starts_with('/') && self.hint_selected.is_some() {
-                    let max = self.hints.len().saturating_sub(1);
-                    let next = (self.hint_selected.unwrap_or(0) + 1).min(max);
-                    self.hint_selected = Some(next);
+                if self.input.text.starts_with('/') && self.input.hint_selected.is_some() {
+                    let max = self.input.hints.len().saturating_sub(1);
+                    let next = (self.input.hint_selected.unwrap_or(0) + 1).min(max);
+                    self.input.hint_selected = Some(next);
                     self.sync_hint_page();
-                } else if self.input.starts_with('/') && !self.hints.is_empty() {
-                    self.hint_selected = Some(0);
-                } else if let Some(i) = self.history_idx {
-                    let prefix = self.history_filter_prefix.clone().unwrap_or_default();
+                } else if self.input.text.starts_with('/') && !self.input.hints.is_empty() {
+                    self.input.hint_selected = Some(0);
+                } else if let Some(i) = self.input.history_idx {
+                    let prefix = self.input.history_filter_prefix.clone().unwrap_or_default();
                     let next_start = i + 1;
-                    if next_start < self.history.len() {
+                    if next_start < self.input.history.len() {
                         if let Some(j) = self.find_next_history_match(&prefix, next_start) {
-                            self.input = self.history[j].clone();
-                            self.history_idx = Some(j);
+                            self.input.text = self.input.history[j].clone();
+                            self.input.history_idx = Some(j);
                         } else {
-                            self.input = self.history_draft.clone();
-                            self.history_idx = None;
-                            self.history_filter_prefix = None;
+                            self.input.text = self.input.history_draft.clone();
+                            self.input.history_idx = None;
+                            self.input.history_filter_prefix = None;
                         }
                     } else {
-                        self.input = self.history_draft.clone();
-                        self.history_idx = None;
-                        self.history_filter_prefix = None;
+                        self.input.text = self.input.history_draft.clone();
+                        self.input.history_idx = None;
+                        self.input.history_filter_prefix = None;
                     }
-                    self.cursor = self.input.len();
-                    self.hints.clear();
+                    self.input.cursor = self.input.text.len();
+                    self.input.hints.clear();
                 }
             }
             (KeyCode::Enter, KeyModifiers::SHIFT) => {
-                self.history_idx = None;
-                self.history_filter_prefix = None;
-                self.input.insert(self.cursor, '\n');
-                self.cursor += 1;
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
+                self.input.text.insert(self.input.cursor, '\n');
+                self.input.cursor += 1;
                 self.update_hints();
             }
             (KeyCode::Enter, _) => {
@@ -213,10 +213,10 @@ impl App {
                     self.handle_session_tui_enter();
                     return;
                 }
-                if self.input.trim() == "//" {
+                if self.input.text.trim() == "//" {
                     self.dashboard.toggle();
-                    self.input.clear();
-                    self.cursor = 0;
+                    self.input.text.clear();
+                    self.input.cursor = 0;
                     return;
                 }
                 if self.confirm.visible {
@@ -224,7 +224,7 @@ impl App {
                         if self.confirm.message.contains("Exit") {
                             // Auto-save session before exit
                             if !self.session_items.is_empty() {
-                                let desc = self.history.first().cloned();
+                                let desc = self.input.history.first().cloned();
                                 let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
                                 let ts = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -237,18 +237,18 @@ impl App {
                                     &self.model,
                                     &self.provider_name,
                                     mode,
-                                    &self.thinking_effort,
+                                    &self.thinking.effort,
                                     desc.as_deref(),
                                 );
                             }
                             self.should_quit = true;
                         } else if self.confirm.message.contains("Clear") {
                             self.output.clear();
-                            self.input.clear();
-                            self.cursor = 0;
-                            self.hints.clear();
-                            self.scroll = 0.0;
-                            self.stick_to_bottom = true;
+                            self.input.text.clear();
+                            self.input.cursor = 0;
+                            self.input.hints.clear();
+                            self.viewport.scroll = 0.0;
+                            self.viewport.stick_to_bottom = true;
                         }
                     }
                     self.confirm.visible = false;
@@ -261,29 +261,29 @@ impl App {
                     }
                     return;
                 }
-                if let Some(idx) = self.hint_selected {
-                    if let Some((name, _)) = self.hints.get(idx) {
-                        self.input = format!("{} ", name);
-                        self.cursor = self.input.len();
+                if let Some(idx) = self.input.hint_selected {
+                    if let Some((name, _)) = self.input.hints.get(idx) {
+                        self.input.text = format!("{} ", name);
+                        self.input.cursor = self.input.text.len();
                     }
-                    self.hint_selected = None;
+                    self.input.hint_selected = None;
                     self.update_hints();
                     return;
                 }
-                let task = self.input.trim().to_string();
+                let task = self.input.text.trim().to_string();
                 self.handle_command(&task);
             }
             (KeyCode::Char(ch), mods) => {
-                self.history_idx = None;
-                self.history_filter_prefix = None;
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
                 if mods.contains(KeyModifiers::CONTROL) {
                     match ch {
-                        'w' if self.cursor > 0 => {
+                        'w' if self.input.cursor > 0 => {
                             self.delete_word_before();
                         }
                         'u' => {
-                            self.input.drain(..self.cursor);
-                            self.cursor = 0;
+                            self.input.text.drain(..self.input.cursor);
+                            self.input.cursor = 0;
                         }
                         _ => {}
                     }
@@ -298,24 +298,24 @@ impl App {
                         _ => {}
                     }
                 } else {
-                    self.input.insert(self.cursor, ch);
-                    self.cursor += ch.len_utf8();
+                    self.input.text.insert(self.input.cursor, ch);
+                    self.input.cursor += ch.len_utf8();
                 }
                 self.update_hints();
             }
-            (KeyCode::Backspace, _) if self.cursor > 0 => {
-                self.history_idx = None;
-                self.history_filter_prefix = None;
-                let prev = self.prev_char_boundary(self.cursor);
-                self.input.drain(prev..self.cursor);
-                self.cursor = prev;
+            (KeyCode::Backspace, _) if self.input.cursor > 0 => {
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
+                let prev = self.prev_char_boundary(self.input.cursor);
+                self.input.text.drain(prev..self.input.cursor);
+                self.input.cursor = prev;
                 self.update_hints();
             }
-            (KeyCode::Delete, _) if self.cursor < self.input.len() => {
-                self.history_idx = None;
-                self.history_filter_prefix = None;
-                let next = self.next_char_boundary(self.cursor);
-                self.input.drain(self.cursor..next);
+            (KeyCode::Delete, _) if self.input.cursor < self.input.text.len() => {
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
+                let next = self.next_char_boundary(self.input.cursor);
+                self.input.text.drain(self.input.cursor..next);
                 self.update_hints();
             }
             (KeyCode::Left, _) => {
@@ -331,7 +331,7 @@ impl App {
                     self.settings_board.adjust(-1);
                     return;
                 }
-                self.cursor = self.prev_char_boundary(self.cursor);
+                self.input.cursor = self.prev_char_boundary(self.input.cursor);
             }
             (KeyCode::Right, _) => {
                 if self.session_tui.visible {
@@ -342,23 +342,23 @@ impl App {
                     self.dashboard.right();
                     return;
                 }
-                self.history_idx = None;
-                self.history_filter_prefix = None;
-                self.cursor = self.next_char_boundary(self.cursor);
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
+                self.input.cursor = self.next_char_boundary(self.input.cursor);
             }
             (KeyCode::Home, _) => {
-                self.history_idx = None;
-                self.history_filter_prefix = None;
-                self.cursor = 0;
+                self.input.history_idx = None;
+                self.input.history_filter_prefix = None;
+                self.input.cursor = 0;
             }
             (KeyCode::End, _) => {
-                if self.input.is_empty() {
-                    self.stick_to_bottom = true;
-                    self.scroll = 0.0;
+                if self.input.text.is_empty() {
+                    self.viewport.stick_to_bottom = true;
+                    self.viewport.scroll = 0.0;
                 } else {
-                    self.history_idx = None;
-                    self.history_filter_prefix = None;
-                    self.cursor = self.input.len();
+                    self.input.history_idx = None;
+                    self.input.history_filter_prefix = None;
+                    self.input.cursor = self.input.text.len();
                 }
             }
             (KeyCode::Tab, _) => {
@@ -376,16 +376,16 @@ impl App {
                     }
                     return;
                 }
-                if self.input.starts_with('/') && self.hint_selected.is_none() {
-                    if let Some(completed) = complete_slash(&self.input) {
-                        self.input = completed;
-                        self.cursor = self.input.len();
+                if self.input.text.starts_with('/') && self.input.hint_selected.is_none() {
+                    if let Some(completed) = complete_slash(&self.input.text) {
+                        self.input.text = completed;
+                        self.input.cursor = self.input.text.len();
                         self.update_hints();
                         return;
                     }
                 }
-                if self.input.starts_with('/') && !self.hints.is_empty() {
-                    self.hint_selected = Some(0);
+                if self.input.text.starts_with('/') && !self.input.hints.is_empty() {
+                    self.input.hint_selected = Some(0);
                     self.sync_hint_page();
                 }
             }
@@ -403,8 +403,8 @@ impl App {
                     }
                     return;
                 }
-                if self.hint_selected.is_some() {
-                    self.hint_selected = Some(self.hint_selected.unwrap_or(0).saturating_sub(1));
+                if self.input.hint_selected.is_some() {
+                    self.input.hint_selected = Some(self.input.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
             (KeyCode::Esc, _) => {
@@ -420,22 +420,22 @@ impl App {
                     self.confirm.visible = false;
                     return;
                 }
-                if self.settings_visible {
+                if self.overlays.settings {
                     self.commit_settings();
-                    self.settings_visible = false;
+                    self.overlays.settings = false;
                     self.settings_board.visible = false;
                     return;
                 }
-                if self.thinking {
+                if self.thinking.active {
                     let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::Cancel);
-                    self.thinking = false;
-                    self.thinking_cancelled = true;
+                    self.thinking.active = false;
+                    self.thinking.cancelled = true;
                 }
-                self.show_help_overlay = false;
-                self.show_model_picker = false;
+                self.overlays.help = false;
+                self.overlays.model_picker = false;
                 self.provider_picker.close();
-                self.hint_selected = None;
-                self.hint_page = 0;
+                self.input.hint_selected = None;
+                self.input.hint_page = 0;
                 self.help_board.visible = false;
             }
             _ => {}
@@ -446,7 +446,7 @@ impl App {
         use crossterm::event::{KeyCode, KeyModifiers};
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                self.show_model_picker = self.provider_picker.toggle(&self.cmd_tx);
+                self.overlays.model_picker = self.provider_picker.toggle(&self.cmd_tx);
             }
             (KeyCode::Up, _) => self.provider_picker.select_prev(),
             (KeyCode::Down, _) => self.provider_picker.select_next(),
@@ -471,7 +471,7 @@ impl App {
                         std::time::Duration::from_secs(3),
                     ));
                     self.provider_picker.close();
-                    self.show_model_picker = false;
+                    self.overlays.model_picker = false;
                 }
             }
             _ => {}
@@ -479,69 +479,69 @@ impl App {
     }
 
     pub(crate) fn prev_char_boundary(&self, pos: usize) -> usize {
-        self.input[..pos]
+        self.input.text[..pos]
             .char_indices()
             .next_back()
             .map(|(i, _)| i)
             .unwrap_or(pos.saturating_sub(1))
     }
     pub(crate) fn next_char_boundary(&self, pos: usize) -> usize {
-        self.input[pos..]
+        self.input.text[pos..]
             .char_indices()
             .nth(1)
             .map(|(i, _)| pos + i)
-            .unwrap_or(self.input.len())
+            .unwrap_or(self.input.text.len())
     }
     pub(crate) fn delete_word_before(&mut self) {
-        let before = &self.input[..self.cursor];
+        let before = &self.input.text[..self.input.cursor];
         let cut = before
             .char_indices()
             .rev()
             .find(|(_, c)| c.is_whitespace())
             .map(|(i, _)| i + 1)
             .unwrap_or(0);
-        self.input.drain(cut..self.cursor);
-        self.cursor = cut;
+        self.input.text.drain(cut..self.input.cursor);
+        self.input.cursor = cut;
     }
     pub(crate) fn update_hints(&mut self) {
-        if self.input.starts_with('/') && self.input.len() <= 30 {
-            self.hints = matching_hints(&self.input)
+        if self.input.text.starts_with('/') && self.input.text.len() <= 30 {
+            self.input.hints = matching_hints(&self.input.text)
                 .into_iter()
                 .map(|(n, d)| (n.to_string(), d.to_string()))
                 .collect();
         } else {
-            self.hints.clear();
+            self.input.hints.clear();
         }
-        self.hint_page = 0;
-        self.hint_selected = None;
+        self.input.hint_page = 0;
+        self.input.hint_selected = None;
     }
 
     pub(crate) fn sync_hint_page(&mut self) {
-        if let Some(sel) = self.hint_selected {
-            self.hint_page = sel / 8;
+        if let Some(sel) = self.input.hint_selected {
+            self.input.hint_page = sel / 8;
         }
     }
 
     pub(crate) fn find_prev_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
         if prefix.is_empty() {
-            return if from < self.history.len() {
+            return if from < self.input.history.len() {
                 Some(from)
             } else {
                 None
             };
         }
-        (0..=from).rev().find(|&i| self.history[i].starts_with(prefix))
+        (0..=from).rev().find(|&i| self.input.history[i].starts_with(prefix))
     }
 
     pub(crate) fn find_next_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
         if prefix.is_empty() {
-            return if from < self.history.len() {
+            return if from < self.input.history.len() {
                 Some(from)
             } else {
                 None
             };
         }
-        (from..self.history.len()).find(|&i| self.history[i].starts_with(prefix))
+        (from..self.input.history.len()).find(|&i| self.input.history[i].starts_with(prefix))
     }
 
     pub(crate) fn handle_settings_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -549,7 +549,7 @@ impl App {
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => {
                 self.commit_settings();
-                self.settings_visible = false;
+                self.overlays.settings = false;
                 self.settings_board.visible = false;
             }
             (KeyCode::Up, _) => self.settings_board.select_prev(),
@@ -637,7 +637,7 @@ impl App {
                         self.mode = meta.mode.into();
                         self.model = meta.model.clone();
                         self.provider_name = meta.provider.clone();
-                        self.thinking_effort = meta.thinking_effort.clone();
+                        self.thinking.effort = meta.thinking_effort.clone();
                         let _ = self
                             .cmd_tx
                             .blocking_send(BackendCmd::SetMode(self.mode.clone()));
@@ -645,7 +645,7 @@ impl App {
                             .cmd_tx
                             .blocking_send(BackendCmd::SetModel(self.model.clone()));
                         let _ = self.cmd_tx.blocking_send(BackendCmd::SetThinkingEffort(
-                            self.thinking_effort.clone(),
+                            self.thinking.effort.clone(),
                         ));
                         let _ = self
                             .cmd_tx
@@ -680,7 +680,7 @@ impl App {
                     &self.model,
                     &self.provider_name,
                     mode,
-                    &self.thinking_effort,
+                    &self.thinking.effort,
                     desc.as_deref(),
                 ) {
                     Ok(()) => {

@@ -95,15 +95,15 @@ impl App {
             return;
         }
 
-        self.input.clear();
-        self.cursor = 0;
-        self.hints.clear();
-        self.history_idx = None;
-        self.history_filter_prefix = None;
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.input.history_idx = None;
+        self.input.history_filter_prefix = None;
         self.welcome = false;
-        self.show_help_overlay = false;
+        self.overlays.help = false;
         if !task.is_empty() {
-            self.history.push(task.to_string());
+            self.input.history.push(task.to_string());
             self.session_items
                 .push(radiumical_core::session::SessionItem::User {
                     content: task.to_string(),
@@ -112,11 +112,11 @@ impl App {
                 self.output.push(format!("> {line}"));
             }
             self.output.push(String::new());
-            self.stick_to_bottom = true;
-            self.full_reasoning.clear();
-            self.show_full_reasoning = false;
-            self.thinking_cancelled = false;
-            let final_task = if self.cod_enabled {
+            self.viewport.stick_to_bottom = true;
+            self.thinking.full_reasoning.clear();
+            self.thinking.show_full_reasoning = false;
+            self.thinking.cancelled = false;
+            let final_task = if self.thinking.cod_enabled {
                 format!("{task}\n\n[Chain of Draft: think in <=5 word steps, be terse. Output reasoning as brief fragments, then final answer.]")
             } else {
                 task.to_string()
