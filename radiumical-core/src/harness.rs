@@ -556,27 +556,34 @@ impl Harness {
             messages.push(assistant_msg(&full_text, None, &full_reasoning));
 
             // ── 4. Session-level orchestration: auto-continue if plan has ready tasks ──
-            let orch = Orchestrator::new(Some(&workspace.to_string_lossy()));
-            let ready = orch.get_ready_tasks();
-            if !ready.is_empty() {
-                let next = ready[0];
-                let next_id = next.id;
-                let next_title = next.title.clone();
-                let _ = ui_tx.send(UiEvent::LlmChunk(format!(
-                    "\n\n▶ Auto-continuing plan: #{} {}\n\n",
-                    next_id, next_title
-                ))).await;
-                // Inject the next task as a new user message
-                let prompt = format!(
-                    "Continue the plan. Execute task #{}: {}",
-                    next_id, next_title
-                );
-                self.conversation.push_user(&prompt);
-                messages.push(user_msg(&prompt));
-                // Mark the task as active
-                let mut orch_mut = Orchestrator::new(Some(&workspace.to_string_lossy()));
-                let _ = orch_mut.start(next_id);
-                continue;
+            if self.config.auto_continue {
+                let orch = Orchestrator::new(Some(&workspace.to_string_lossy()));
+                let ready = orch.get_ready_tasks();
+                if !ready.is_empty() {
+                    let next = ready[0];
+                    let next_id = next.id;
+                    let next_title = next.title.clone();
+                    let next_agent = next.agent.clone();
+                    let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+                        "\n\n▶ Auto-continuing plan: #{} {}\n\n",
+                        next_id, next_title
+                    ))).await;
+                    // Inject the next task as a new user message
+                    let agent_hint = next_agent
+                        .as_deref()
+                        .map(|a| format!(" (use agent role: {a})"))
+                        .unwrap_or_default();
+                    let prompt = format!(
+                        "Continue the plan. Execute task #{}: {}{}",
+                        next_id, next_title, agent_hint
+                    );
+                    self.conversation.push_user(&prompt);
+                    messages.push(user_msg(&prompt));
+                    // Mark the task as active
+                    let mut orch_mut = Orchestrator::new(Some(&workspace.to_string_lossy()));
+                    let _ = orch_mut.start(next_id);
+                    continue;
+                }
             }
 
             // ── 5. Auto-generate session title on first turn ──

@@ -49,6 +49,11 @@ pub struct Task {
     pub status: TaskStatus,
     pub deps: Vec<u32>, // IDs of prerequisite tasks
     pub order: usize,
+    /// Optional agent role to assign this task to (e.g. "debugger", "reviewer").
+    /// If set and the harness supports it, the task will be dispatched to a
+    /// sub-agent with that role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -121,6 +126,35 @@ impl Orchestrator {
                 status: TaskStatus::Pending,
                 deps,
                 order: i + 1,
+                agent: None,
+            })
+            .collect();
+        self.plan.next_id = self.plan.tasks.len() as u32 + 1;
+        self.save();
+        format!(
+            "Plan created: {} ({} tasks)",
+            self.plan.title,
+            self.plan.tasks.len()
+        )
+    }
+
+    /// Create a plan with agent assignments on tasks.
+    pub fn create_with_agents(
+        &mut self,
+        title: &str,
+        tasks: Vec<(String, Vec<u32>, Option<String>)>,
+    ) -> String {
+        self.plan.title = title.to_string();
+        self.plan.tasks = tasks
+            .into_iter()
+            .enumerate()
+            .map(|(i, (t, deps, agent))| Task {
+                id: (i + 1) as u32,
+                title: t,
+                status: TaskStatus::Pending,
+                deps,
+                order: i + 1,
+                agent,
             })
             .collect();
         self.plan.next_id = self.plan.tasks.len() as u32 + 1;
@@ -283,6 +317,37 @@ impl Orchestrator {
                 status: TaskStatus::Pending,
                 deps,
                 order: self.plan.tasks.len() + i + 1,
+                agent: None,
+            })
+            .collect();
+
+        self.plan.tasks.extend(new_tasks);
+        self.plan.next_id = start_id + count as u32;
+        self.save();
+        Ok(format!(
+            "Added {} task(s).\n\n{}",
+            count,
+            format_plan(&self.plan)
+        ))
+    }
+
+    /// Add tasks with agent assignments.
+    pub fn add_with_agents(
+        &mut self,
+        tasks: Vec<(String, Vec<u32>, Option<String>)>,
+    ) -> Result<String, String> {
+        let start_id = self.plan.next_id;
+        let count = tasks.len();
+        let new_tasks: Vec<Task> = tasks
+            .into_iter()
+            .enumerate()
+            .map(|(i, (t, deps, agent))| Task {
+                id: start_id + i as u32,
+                title: t,
+                status: TaskStatus::Pending,
+                deps,
+                order: self.plan.tasks.len() + i + 1,
+                agent,
             })
             .collect();
 
@@ -481,7 +546,15 @@ fn format_plan(plan: &Plan) -> String {
                         .join(", #")
                 )
             };
-            format!("  {icon} #{} [{}] {}{}", t.id, label, t.title, dep_str)
+            let agent_str = t
+                .agent
+                .as_deref()
+                .map(|a| format!(" @{a}"))
+                .unwrap_or_default();
+            format!(
+                "  {icon} #{} [{}] {}{}{}",
+                t.id, label, t.title, agent_str, dep_str
+            )
         })
         .collect();
 

@@ -847,6 +847,9 @@ pub struct SessionConfig {
     pub max_context_tokens: usize,
     /// Compress when context exceeds this ratio of max_context_tokens (default 0.8)
     pub context_compress_ratio: f64,
+    /// Whether the harness should auto-continue when the orchestrator has ready tasks.
+    /// When false, the harness stops after each LLM turn and waits for the user.
+    pub auto_continue: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -909,6 +912,7 @@ impl Default for SessionConfig {
             mode: AgentMode::Auto,
             max_context_tokens: 1_000_000,
             context_compress_ratio: 0.8,
+            auto_continue: true,
         }
     }
 }

@@ -18,7 +18,7 @@ mod source_plugin;
 mod system;
 mod task;
 
-pub use agent::{MemoryTool, PlaywrightTool, SubAgentListTool, SubAgentTool};
+pub use agent::{MemoryTool, PlaywrightTool, SubAgentListTool, SubAgentTool, SubAgentWaitTool};
 pub use agent_pool::{ListAgentsTool, LoadAgentTool};
 pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
@@ -95,6 +95,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(AnnotateTool),
         Box::new(SubAgentTool),
         Box::new(SubAgentListTool),
+        Box::new(SubAgentWaitTool),
         Box::new(MemoryTool),
         Box::new(PlaywrightTool),
         Box::new(SourceCodeTool),
@@ -330,50 +331,60 @@ mod tests {
 
     #[tokio::test]
     async fn test_todo_add_and_list() {
-        task::todos().lock().unwrap().clear();
+        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_add_list__");
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
         let result = TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "add write tests"}"#)
+            .execute(&ws, r#"{"action": "add write tests"}"#)
             .await;
         assert!(!result.is_error);
-        assert!(result.content.contains("Added todo"));
+        assert!(result.content.contains("Added #1"));
 
         let result = TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "add fix bugs"}"#)
+            .execute(&ws, r#"{"action": "add fix bugs"}"#)
             .await;
         assert!(!result.is_error);
-        assert!(result.content.contains("Added todo"));
+        assert!(result.content.contains("Added #2"));
 
         let result = TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "list"}"#)
+            .execute(&ws, r#"{"action": "list"}"#)
             .await;
         assert!(!result.is_error);
         assert!(result.content.contains("write tests"));
         assert!(result.content.contains("fix bugs"));
+
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
     }
 
     #[tokio::test]
     async fn test_todo_done() {
-        task::todos().lock().unwrap().clear();
+        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_done__");
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
+
         TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "add task"}"#)
+            .execute(&ws, r#"{"action": "add task"}"#)
             .await;
 
         let result = TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "done 1"}"#)
+            .execute(&ws, r#"{"action": "done 1"}"#)
             .await;
         assert!(!result.is_error);
-        assert!(result.content.contains("Marked todo #1"));
+        assert!(result.content.contains("Done #1"));
+
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
     }
 
     #[tokio::test]
     async fn test_todo_done_invalid_index() {
-        task::todos().lock().unwrap().clear();
+        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_invalid__");
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
         let result = TodoList
-            .execute(&PathBuf::from("."), r#"{"action": "done 99"}"#)
+            .execute(&ws, r#"{"action": "done 99"}"#)
             .await;
         assert!(result.is_error);
+
+        let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
     }
 
     // ── GoalTool ──

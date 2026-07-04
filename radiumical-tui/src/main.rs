@@ -173,6 +173,7 @@ async fn main() -> Result<()> {
         mode: radiumical_core::types::AgentMode::Auto,
         max_context_tokens: file_cfg.max_context_tokens.unwrap_or(1_000_000),
         context_compress_ratio: file_cfg.context_compress_ratio.unwrap_or(0.8),
+        auto_continue: true,
     };
 
     let mut provider = create_provider(

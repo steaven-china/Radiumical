@@ -5,6 +5,7 @@ use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 pub struct SubAgentTool;
 pub struct SubAgentListTool;
+pub struct SubAgentWaitTool;
 pub struct MemoryTool;
 pub struct PlaywrightTool;
 
@@ -15,7 +16,7 @@ impl Tool for SubAgentTool {
             tool_type: "function".into(),
             function: FunctionDef {
                 name: "subagent".into(),
-                description: "Spawn a parallel sub-agent to work on an independent task. Specify an agent role (coder/architect/debugger/reviewer/tester) for specialized behavior. Returns immediately; check status with subagent_list.".into(),
+                description: "Spawn a parallel sub-agent to work on an independent task. Specify an agent role (coder/architect/debugger/reviewer/tester) for specialized behavior. Returns a handle ID; use subagent_wait to get the result when needed.".into(),
                 parameters: serde_json::json!({"type":"object","properties":{"id":{"type":"string","description":"Unique ID for this sub-agent"},"task":{"type":"string","description":"Task for the sub-agent to complete"},"agent":{"type":"string","description":"Agent role: coder, architect, debugger, reviewer, tester (default: coder)"}},"required":["id","task"]}),
             },
         }
@@ -44,17 +45,112 @@ impl Tool for SubAgentTool {
         }
 
         match crate::subagent::spawn_with_defaults(id.clone(), task.clone(), agent.clone()).await {
-            Ok(()) => {
+            Ok(_handle) => {
                 let role = agent.as_deref().unwrap_or("coder");
                 ToolResult {
                     tool_call_id: String::new(),
-                    content: format!("Sub-agent '{id}' ({role}) spawned: {task}"),
+                    content: format!(
+                        "Sub-agent '{id}' ({role}) spawned.\n\
+                         Task: {task}\n\
+                         Use subagent_wait(id=\"{id}\") to get the result when ready."
+                    ),
                     is_error: false,
                 }
             }
             Err(e) => ToolResult {
                 tool_call_id: String::new(),
                 content: format!("Failed to spawn sub-agent: {e}"),
+                is_error: true,
+            },
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for SubAgentWaitTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDef {
+                name: "subagent_wait".into(),
+                description: "Wait for a sub-agent to complete and return its output. Blocks until the sub-agent finishes. Use after spawning with subagent.".into(),
+                parameters: serde_json::json!({"type":"object","properties":{"id":{"type":"string","description":"Sub-agent ID to wait for"},"timeout_secs":{"type":"integer","description":"Max seconds to wait (default: 300)"}},"required":["id"]}),
+            },
+        }
+    }
+
+    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+        let args: serde_json::Value = match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!("Invalid JSON: {e}"),
+                    is_error: true,
+                }
+            }
+        };
+        let id = args["id"].as_str().unwrap_or("").to_string();
+        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(300);
+
+        if id.is_empty() {
+            return ToolResult {
+                tool_call_id: String::new(),
+                content: "No sub-agent ID provided.".into(),
+                is_error: true,
+            };
+        }
+
+        // Check if already done first (non-blocking).
+        if let Some(result) = crate::subagent::get_result(&id) {
+            if result.done {
+                let status = if result.success { "✓" } else { "❌" };
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!(
+                        "[{status}] Sub-agent '{id}' output:\n\n{}",
+                        result.output
+                    ),
+                    is_error: !result.success,
+                };
+            }
+        }
+
+        // Wait with timeout.
+        let wait_result = tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            crate::subagent::wait_for(&id),
+        )
+        .await;
+
+        match wait_result {
+            Ok(Ok(result)) => {
+                let status = if result.success { "✓" } else { "❌" };
+                let error_hint = result
+                    .error
+                    .as_deref()
+                    .map(|e| format!("\n[Error: {e}]"))
+                    .unwrap_or_default();
+                ToolResult {
+                    tool_call_id: String::new(),
+                    content: format!(
+                        "[{status}] Sub-agent '{id}' completed.\n\nOutput:\n{}{error_hint}",
+                        result.output
+                    ),
+                    is_error: !result.success,
+                }
+            }
+            Ok(Err(e)) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!("Failed to wait for sub-agent '{id}': {e}"),
+                is_error: true,
+            },
+            Err(_) => ToolResult {
+                tool_call_id: String::new(),
+                content: format!(
+                    "Sub-agent '{id}' timed out after {timeout_secs}s. \
+                     It may still be running — check with subagent_list."
+                ),
                 is_error: true,
             },
         }

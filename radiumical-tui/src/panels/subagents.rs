@@ -26,17 +26,17 @@ pub fn render(f: &mut Frame, slot: &PanelSlot) {
     } else {
         for agent in &agents {
             let (icon, status_color) = if agent.done {
-                if agent.error.is_some() {
-                    ("\u{274c}", Color::Red)
-                } else {
+                if agent.success {
                     ("\u{2713}", Color::Green)
+                } else {
+                    ("\u{274c}", Color::Red)
                 }
             } else {
                 ("\u{23f3}", Color::Yellow)
             };
             let role = agent.agent.as_deref().unwrap_or("coder");
             let status_text = if agent.done {
-                if agent.error.is_some() { "failed" } else { "done" }
+                if agent.success { "done" } else { "failed" }
             } else {
                 "running"
             };
