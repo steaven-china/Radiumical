@@ -77,6 +77,7 @@ impl App {
             _ if task.starts_with("/debug") => self.cmd_debug(task),
             "/outline" | "/lint" | "/diagnostics" => self.cmd_diagnostics(),
             "/timeline" => self.cmd_timeline(),
+            _ if task.starts_with("/image") => self.cmd_image(task),
 
             // ── utility ──
             "/end" | "/bottom" => self.cmd_end(),
@@ -110,13 +111,22 @@ impl App {
         self.input.history_filter_prefix = None;
         self.welcome = false;
         self.overlays.help = false;
-        if !task.is_empty() {
+        let has_images = !self.input.pending_images.is_empty();
+        if !task.is_empty() || has_images {
             self.input.history.push(task.to_string());
+            let mut display = task.to_string();
+            if has_images {
+                display.push_str("\n[attached images:\n");
+                for (_, placeholder) in &self.input.pending_images {
+                    display.push_str(&format!("  - {}\n", placeholder));
+                }
+                display.push(']');
+            }
             self.session_items
                 .push(radiumical_core::session::SessionItem::User {
-                    content: task.to_string(),
+                    content: display.clone(),
                 });
-            for line in task.lines() {
+            for line in display.lines() {
                 self.output.push(format!("> {line}"));
             }
             self.output.push(String::new());
@@ -124,14 +134,37 @@ impl App {
             self.thinking.full_reasoning.clear();
             self.thinking.show_full_reasoning = false;
             self.thinking.cancelled = false;
-            let final_task = if self.thinking.cod_enabled {
+
+            // Filter out deleted temp images and replace their placeholders.
+            let mut final_task = if self.thinking.cod_enabled && !task.is_empty() {
                 format!("{task}\n\n[Chain of Draft: think in <=5 word steps, be terse. Output reasoning as brief fragments, then final answer.]")
             } else {
                 task.to_string()
             };
-            let _ = self
-                .cmd_tx
-                .blocking_send(crate::tui::BackendCmd::RunTask(final_task));
+            let mut images = Vec::new();
+            let pending = std::mem::take(&mut self.input.pending_images);
+            for (path, placeholder) in pending {
+                if path.exists() {
+                    images.push(path);
+                } else {
+                    final_task = final_task.replace(
+                        &placeholder,
+                        "[this file has been deleted at the user's computer]",
+                    );
+                }
+            }
+
+            let cmd = if images.is_empty() {
+                crate::tui::BackendCmd::RunTask(final_task)
+            } else {
+                crate::tui::BackendCmd::RunTaskWithImages { task: final_task, images }
+            };
+            let _ = self.cmd_tx.blocking_send(cmd);
         }
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.input.hints.clear();
+        self.input.history_idx = None;
+        self.input.history_filter_prefix = None;
     }
 }

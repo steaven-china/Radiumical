@@ -1,6 +1,7 @@
 //! Value-type structs that hold discrete slices of [`App`](crate::tui::app::App) state,
 //! grouped by concern to keep `mod.rs` manageable.
 
+use std::path::PathBuf;
 use std::time::Instant;
 
 /// Visibility flags for every overlay / floating panel in the TUI.
@@ -50,6 +51,8 @@ pub struct InputState {
     pub history_idx: Option<usize>,
     pub(crate) history_draft: String,
     pub(crate) history_filter_prefix: Option<String>,
+    /// Pending image attachments: (path, placeholder like "[image_1]").
+    pub pending_images: Vec<(PathBuf, String)>,
 }
 
 /// Tracks the "thinking" animation state, reasoning-effort level, and
@@ -122,6 +125,7 @@ impl InputState {
             history_idx: None,
             history_draft: String::new(),
             history_filter_prefix: None,
+            pending_images: Vec::new(),
         }
     }
 }

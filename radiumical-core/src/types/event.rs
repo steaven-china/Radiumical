@@ -82,6 +82,10 @@ pub struct PlanTaskUpdate {
 #[allow(clippy::large_enum_variant)]
 pub enum BackendCmd {
     RunTask(String),
+    RunTaskWithImages {
+        task: String,
+        images: Vec<std::path::PathBuf>,
+    },
     Cancel,
     ChoiceResponse {
         id: String,

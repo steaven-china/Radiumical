@@ -111,6 +111,22 @@ impl Harness {
         extra_tools: &[Box<dyn Tool>],
         _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
+        cancel_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> anyhow::Result<()> {
+        self.run_with_images(task, Vec::new(), workspace, agent, extra_tools, _hb_cancel, ui_tx, cancel_rx)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_with_images(
+        &mut self,
+        task: String,
+        images: Vec<std::path::PathBuf>,
+        workspace: PathBuf,
+        agent: &Agent,
+        extra_tools: &[Box<dyn Tool>],
+        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let _flush_handle = self.conversation.spawn_flush_task();
@@ -119,8 +135,24 @@ impl Harness {
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
 
         let mut messages = self.conversation.build_context(&task, Some(&workspace));
-        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string())
-        {
+        if !images.is_empty() {
+            // Replace the text-only task message with a multipart text+image message.
+            if messages.last().map(|m| m.role == Role::User).unwrap_or(false) {
+                messages.pop();
+            }
+            let content = crate::image::build_multipart_content(&task, &images)
+                .unwrap_or_else(|e| MessageContent::Text(format!("{task}\n\n[image load error: {e}]")));
+            messages.push(Message {
+                role: Role::User,
+                content,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                reasoning_content: None,
+            });
+        }
+        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string(),
+        ) {
             messages.push(user_msg(&ctx));
         }
 

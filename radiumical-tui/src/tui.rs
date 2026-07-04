@@ -28,6 +28,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/skill <n>", "Activate/deactivate skill"),
     ("/diagnostics", "Run lint/diagnostics"),
     ("/timeline", "Checkpoint history / rollback"),
+    ("/image", "Attach image(s) to next message"),
     ("/memory", "Memory management panel"),
     ("/subagents", "Sub-agent status panel"),
     ("/mcp", "MCP server panel / toggle"),

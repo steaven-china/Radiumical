@@ -50,10 +50,26 @@ impl PipelineRunner {
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
+        self.run_with_images(task, Vec::new(), workspace, extra_tools, _hb_cancel, ui_tx, cancel_rx)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_with_images(
+        &mut self,
+        task: String,
+        images: Vec<std::path::PathBuf>,
+        workspace: PathBuf,
+        extra_tools: &[Box<dyn crate::tools::Tool>],
+        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
+        cancel_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> anyhow::Result<()> {
         let agent = Agent::default_coder();
         self.harness
-            .run(
+            .run_with_images(
                 task,
+                images,
                 workspace,
                 &agent,
                 extra_tools,

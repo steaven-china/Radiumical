@@ -1,6 +1,7 @@
 //! View and configuration slash commands (`/help`, `/settings`, `/provider`,
 //! `/model`, `/tools`, `/skills`, `/perf`, `/debug`, `/diagnostics`).
 
+use std::path::PathBuf;
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
 
@@ -245,7 +246,8 @@ impl App {
     pub(super) fn cmd_timeline(&mut self) -> bool {
         self.output.push("> /timeline".into());
         let workspace = PathBuf::from(&self.workspace);
-        match radiumical_core::checkpoint::list_checkpoints_sync(&workspace, &self.session_id,
+        match radiumical_core::checkpoint::list_checkpoints_sync(
+            &workspace, &self.session_id,
         ) {
             Ok(items) => {
                 self.overlays.timeline_items = items;
@@ -263,6 +265,56 @@ impl App {
         self.viewport.stick_to_bottom = true;
         true
     }
+
+    pub(super) fn cmd_image(&mut self, task: &str) -> bool {
+        let rest = task[6..].trim();
+        if rest == "clear" {
+            self.input.pending_images.clear();
+            self.output.push("> /image clear".into());
+            self.output.push("  Cleared pending image attachments.".into());
+            self.input.text.clear();
+            self.input.cursor = 0;
+            self.viewport.stick_to_bottom = true;
+            return true;
+        }
+        if rest.is_empty() {
+            self.output.push("> /image".into());
+            self.output.push("  Usage: /image <path>  |  /image clear".into());
+            self.input.text.clear();
+            self.input.cursor = 0;
+            self.viewport.stick_to_bottom = true;
+            return true;
+        }
+        let path = PathBuf::from(rest);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            PathBuf::from(&self.workspace).join(path)
+        };
+        self.output.push(format!("> /image {}", path.display()));
+        if !path.exists() {
+            self.output.push(format!("  File not found: {}", path.display()));
+        } else if let Ok(size) = radiumical_core::image::image_file_size(&path) {
+            let idx = self.input.pending_images.len() + 1;
+            let placeholder = format!("[image_{idx}]");
+            self.input.pending_images.push((path.clone(), placeholder.clone()));
+            self.output.push(format!(
+                "  Attached: {} ({}) placeholder {}",
+                path.display(),
+                radiumical_core::image::format_image_size(size),
+                placeholder,
+            ));
+            self.output.push(format!(
+                "  {} image(s) pending. Type your message and press Enter to send.",
+                self.input.pending_images.len()
+            ));
+        } else {
+            self.output.push(format!("  Cannot read file: {}", path.display()));
+        }
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
+        true
+    }
 }
 
-use std::path::PathBuf;

@@ -18,6 +18,7 @@ crossterm = { workspace = true }
 ratatui = { workspace = true }
 arboard = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-pulldown-cmark = { workspace = true }
-unicode-width = "0.1"
+    tracing-subscriber = { workspace = true }
+    pulldown-cmark = { workspace = true }
+    unicode-width = "0.1"
+    image = { workspace = true }

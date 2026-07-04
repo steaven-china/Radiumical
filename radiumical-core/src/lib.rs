@@ -16,6 +16,7 @@ pub mod config;
 pub mod conversation;
 pub mod dynamic;
 pub mod harness;
+pub mod image;
 pub mod highlight;
 pub mod hooks;
 pub mod llm_cache;
@@ -41,6 +42,7 @@ pub mod types;
 
 pub use agent::Agent;
 pub use checkpoint::{create_checkpoint, list_checkpoints, rollback, Checkpoint};
+pub use image::{build_multipart_content, format_image_size, image_file_size, load_image_part};
 pub use agent_pool::{AgentDef, AgentRoleMode};
 pub use cluster::{AgentCluster, ClusterEvent, WorkerSlot};
 pub use config::Config;

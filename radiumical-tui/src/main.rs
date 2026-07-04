@@ -393,6 +393,84 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    Some(BackendCmd::RunTaskWithImages { task, images }) => {
+                        if task.starts_with("\x01subagent:") {
+                            let rest = &task[11..];
+                            if let Some((id, subtask)) = rest.split_once(':') {
+                                let provider = Arc::clone(&provider);
+                                let cfg = config.clone();
+                                radiumical_core::subagent::spawn(
+                                    id.to_string(),
+                                    subtask.to_string(),
+                                    None,
+                                    cfg,
+                                    provider,
+                                    Some(ui_tx.clone()),
+                                )
+                                .await;
+                                let _ = ui_tx.send(UiEvent::LlmChunk(format!(
+                                    "Sub-agent '{id}' spawned.\n"
+                                ))).await;
+                                continue;
+                            }
+                        }
+                        let _ = cancel_tx.send(false);
+                        match cmd_pool.dispatch(&task, &mut config) {
+                            CommandOutcome::Exit => break,
+                            CommandOutcome::Continue => continue,
+                            CommandOutcome::Agent(task) => {
+                                let heartbeat_interval = config.heartbeat_interval_secs;
+                                let hb_cancel = if heartbeat_interval > 0 {
+                                    let (hb_tx, mut hb_rx) =
+                                        tokio::sync::mpsc::channel(1);
+                                    let ui_tx_hb = ui_tx.clone();
+                                    tokio::spawn(async move {
+                                        let mut interval = tokio::time::interval(
+                                            std::time::Duration::from_secs(heartbeat_interval),
+                                        );
+                                        loop {
+                                            tokio::select! {
+                                                _ = interval.tick() => {
+                                                    let _ = ui_tx_hb.send(UiEvent::ThinkingTick).await;
+                                                }
+                                                _ = hb_rx.recv() => break,
+                                            }
+                                        }
+                                    });
+                                    Some(hb_tx)
+                                } else {
+                                    None
+                                };
+
+                                let runner = Arc::clone(&runner);
+                                let ui_tx = ui_tx.clone();
+                                let cancel_rx = cancel_rx.clone();
+                                let workspace = workspace.clone();
+                                let mcp_tools: Vec<Box<dyn radiumical_core::tools::Tool>> = mcp_clients
+                                    .iter()
+                                    .filter(|(_, _, enabled)| *enabled)
+                                    .flat_map(|(client, tools, _)| {
+                                        tools.iter().map(move |info| {
+                                            Box::new(radiumical_core::tools::McpToolAdapter {
+                                                info: info.clone(),
+                                                client: Arc::clone(client),
+                                            }) as Box<dyn radiumical_core::tools::Tool>
+                                        })
+                                    })
+                                    .collect();
+                                tokio::spawn(async move {
+                                    let mut runner = runner.lock().await;
+                                    if let Err(e) = runner
+                                        .run_with_images(task, images, workspace, &mcp_tools, hb_cancel, ui_tx.clone(), cancel_rx)
+                                        .await
+                                    {
+                                        let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
+                                    }
+                                    let _ = ui_tx.send(UiEvent::ThinkingDone).await;
+                                });
+                            }
+                        }
+                    }
                     Some(BackendCmd::SetModel(model)) => {
                         config.model = model.clone();
                         provider = create_provider(

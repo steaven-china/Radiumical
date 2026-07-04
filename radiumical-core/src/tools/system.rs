@@ -46,7 +46,7 @@ impl Tool for LspDiagnostics {
         }
         let mut out = String::new();
         for lang in &langs {
-            match crate::lsp::run_diagnostics(workspace, lang) {
+            match crate::lsp::run_diagnostics(workspace, lang).await {
                 Ok(diag) => {
                     if !diag.trim().is_empty() {
                         out.push_str(&format!("[{lang}]\n{diag}\n"));

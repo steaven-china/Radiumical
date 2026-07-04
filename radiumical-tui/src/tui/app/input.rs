@@ -365,6 +365,9 @@ impl App {
                             self.input.text.drain(..self.input.cursor);
                             self.input.cursor = 0;
                         }
+                        'v' => {
+                            self.paste_from_clipboard();
+                        }
                         _ => {}
                     }
                 } else if self.session_tui.visible {
@@ -890,6 +893,83 @@ impl App {
             _ => {}
         }
     }
+
+    /// Paste from system clipboard.  If the clipboard contains an image, save it
+    /// to a temp file and insert a `[image_N]` placeholder.  Otherwise insert text.
+    fn paste_from_clipboard(&mut self) {
+        let mut clipboard = match arboard::Clipboard::new() {
+            Ok(c) => c,
+            Err(e) => {
+                self.toasts.push(crate::board::Toast::new(
+                    format!("Clipboard error: {e}"),
+                    crate::board::ToastLevel::Error,
+                    std::time::Duration::from_secs(3),
+                ));
+                return;
+            }
+        };
+
+        // Try image first.
+        if let Ok(img) = clipboard.get_image() {
+            let dir = radiumical_core::config::Config::dir().join("clipboard");
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                self.toasts.push(crate::board::Toast::new(
+                    format!("Cannot create clipboard dir: {e}"),
+                    crate::board::ToastLevel::Error,
+                    std::time::Duration::from_secs(3),
+                ));
+                return;
+            }
+            let idx = self.input.pending_images.len() + 1;
+            let placeholder = format!("[image_{idx}]");
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let path = dir.join(format!("paste_{ts}.png"));
+
+            match save_clipboard_image(&img, &path) {
+                Ok(()) => {
+                    self.input.pending_images.push((path, placeholder.clone()));
+                    self.input.text.insert_str(self.input.cursor, &placeholder);
+                    self.input.cursor += placeholder.len();
+                }
+                Err(e) => {
+                    self.toasts.push(crate::board::Toast::new(
+                        format!("Image paste failed: {e}"),
+                        crate::board::ToastLevel::Error,
+                        std::time::Duration::from_secs(3),
+                    ));
+                }
+            }
+            return;
+        }
+
+        // Fall back to text.
+        match clipboard.get_text() {
+            Ok(text) => {
+                self.input.text.insert_str(self.input.cursor, &text);
+                self.input.cursor += text.len();
+            }
+            Err(e) => {
+                self.toasts.push(crate::board::Toast::new(
+                    format!("Paste failed: {e}"),
+                    crate::board::ToastLevel::Error,
+                    std::time::Duration::from_secs(3),
+                ));
+            }
+        }
+    }
+}
+
+fn save_clipboard_image(img: &arboard::ImageData, path: &std::path::Path) -> anyhow::Result<()> {
+    use image::{ImageBuffer, Rgba};
+    let width = img.width as u32;
+    let height = img.height as u32;
+    let buf = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, img.bytes.as_ref())
+        .ok_or_else(|| anyhow::anyhow!("clipboard image dimensions do not match byte length"))?;
+    buf.save(path)?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,6 +1,10 @@
 //! Language detection + diagnostics via linters/LSP wrappers.
+//!
+//! All linter invocations use `tokio::process::Command` so they don't block
+//! the tokio runtime.  The harness wraps tool execution in `exec_with_timeout`
+//! which provides an additional outer timeout.
+
 use std::path::Path;
-use std::process::Command;
 
 /// Detect the primary language of a workspace.
 pub fn detect_language(workspace: &Path) -> Vec<&'static str> {
@@ -63,34 +67,40 @@ pub fn detect_language(workspace: &Path) -> Vec<&'static str> {
     langs
 }
 
-/// Run diagnostics for the detected language.
-pub fn run_diagnostics(workspace: &Path, lang: &str) -> Result<String, String> {
+/// Run diagnostics for the detected language (async, non-blocking).
+pub async fn run_diagnostics(workspace: &Path, lang: &str) -> Result<String, String> {
     match lang {
-        "rust" => run_cargo_check(workspace),
-        "python" => run_python_lint(workspace),
-        "javascript" | "typescript" => run_eslint(workspace),
-        "go" => run_go_vet(workspace),
-        "cpp" => run_clang_tidy(workspace),
+        "rust" => run_cargo_check(workspace).await,
+        "python" => run_python_lint(workspace).await,
+        "javascript" | "typescript" => run_eslint(workspace).await,
+        "go" => run_go_vet(workspace).await,
+        "cpp" => run_clang_tidy(workspace).await,
         _ => Err(format!("No diagnostics available for {lang}")),
     }
 }
 
-fn run_cargo_check(workspace: &Path) -> Result<String, String> {
-    let output = Command::new("cargo")
+async fn run_cargo_check(workspace: &Path) -> Result<String, String> {
+    let output = tokio::process::Command::new("cargo")
         .args(["check", "--message-format=short"])
         .current_dir(workspace)
         .output()
+        .await
         .map_err(|e| format!("cargo not found: {e}"))?;
-    Ok(String::from_utf8_lossy(&output.stderr).to_string())
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.trim().is_empty() && output.status.success() {
+        Ok(String::new())
+    } else {
+        Ok(stderr.to_string())
+    }
 }
 
-fn run_python_lint(workspace: &Path) -> Result<String, String> {
-    // Try ruff first, then pylint
+async fn run_python_lint(workspace: &Path) -> Result<String, String> {
     for cmd in &["ruff", "pylint", "flake8"] {
-        if let Ok(output) = Command::new(cmd)
+        if let Ok(output) = tokio::process::Command::new(cmd)
             .args(["."])
             .current_dir(workspace)
             .output()
+            .await
         {
             let out = String::from_utf8_lossy(&output.stdout);
             let err = String::from_utf8_lossy(&output.stderr);
@@ -103,30 +113,35 @@ fn run_python_lint(workspace: &Path) -> Result<String, String> {
     Err("No Python linter found (try: pip install ruff)".into())
 }
 
-fn run_eslint(workspace: &Path) -> Result<String, String> {
+async fn run_eslint(workspace: &Path) -> Result<String, String> {
     for cmd in &["npx eslint", "eslint"] {
         let parts: Vec<&str> = cmd.split_whitespace().collect();
-        if let Ok(output) = Command::new(parts[0])
+        if let Ok(output) = tokio::process::Command::new(parts[0])
             .args(&parts[1..])
             .arg(".")
             .current_dir(workspace)
             .output()
+            .await
         {
-            return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+            let out = String::from_utf8_lossy(&output.stdout);
+            if !out.trim().is_empty() {
+                return Ok(out.to_string());
+            }
         }
     }
     Err("eslint not found".into())
 }
 
-fn run_go_vet(workspace: &Path) -> Result<String, String> {
-    let output = Command::new("go")
+async fn run_go_vet(workspace: &Path) -> Result<String, String> {
+    let output = tokio::process::Command::new("go")
         .args(["vet", "./..."])
         .current_dir(workspace)
         .output()
+        .await
         .map_err(|e| format!("go not found: {e}"))?;
     Ok(String::from_utf8_lossy(&output.stderr).to_string())
 }
 
-fn run_clang_tidy(_workspace: &Path) -> Result<String, String> {
+async fn run_clang_tidy(_workspace: &Path) -> Result<String, String> {
     Err("clang-tidy integration not yet implemented".into())
 }

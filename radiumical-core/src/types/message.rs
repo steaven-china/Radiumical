@@ -54,15 +54,23 @@ impl MessageContent {
                     Cow::Borrowed(s.as_str())
                 }
             }
-            MessageContent::Parts(_) => Cow::Borrowed(""),
+            MessageContent::Parts(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    if let ContentPart::Text { text: t } = part {
+                        text.push_str(t);
+                    }
+                }
+                Cow::Owned(text)
+            }
         }
     }
 
     /// Get raw text without decompression (for callers that handle compression themselves).
-    pub fn raw_str(&self) -> &str {
+    pub fn raw_str(&self) -> String {
         match self {
-            MessageContent::Text(s) => s.as_str(),
-            MessageContent::Parts(_) => "",
+            MessageContent::Text(s) => s.clone(),
+            MessageContent::Parts(_) => String::new(),
         }
     }
 
@@ -77,16 +85,32 @@ impl MessageContent {
     }
 
     /// Return raw text without decompression (for serialization).
-    pub fn raw_text(&self) -> &str {
+    pub fn raw_text(&self) -> String {
         match self {
-            MessageContent::Text(s) => s.as_str(),
-            MessageContent::Parts(_) => "",
+            MessageContent::Text(s) => s.clone(),
+            MessageContent::Parts(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    if let ContentPart::Text { text: t } = part {
+                        text.push_str(t);
+                    }
+                }
+                text
+            }
         }
     }
 
     /// Return true if this content is lz4-compressed.
     pub fn is_compressed(&self) -> bool {
         matches!(self, MessageContent::Text(s) if s.starts_with(LZ4_PREFIX))
+    }
+
+    /// Return true if any part is an image.
+    pub fn has_image(&self) -> bool {
+        matches!(
+            self,
+            MessageContent::Parts(parts) if parts.iter().any(|p| matches!(p, ContentPart::ImageUrl { .. }))
+        )
     }
 }
 
@@ -96,6 +120,23 @@ impl MessageContent {
 pub enum ContentPart {
     #[serde(rename = "text")]
     Text { text: String },
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: ImageUrl },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageUrl {
+    pub url: String,
+}
+
+impl ContentPart {
+    pub fn image_from_base64(mime_type: &str, base64_data: &str) -> Self {
+        ContentPart::ImageUrl {
+            image_url: ImageUrl {
+                url: format!("data:{mime_type};base64,{base64_data}"),
+            },
+        }
+    }
 }
 
 /// A tool call requested by the LLM.
@@ -215,11 +256,11 @@ mod tests {
     }
 
     #[test]
-    fn text_parts_returns_empty() {
+    fn text_parts_returns_text_content() {
         let mc = MessageContent::Parts(vec![ContentPart::Text {
-            text: "ignored".into(),
+            text: "hello".into(),
         }]);
-        assert_eq!(mc.text(), "");
+        assert_eq!(mc.text(), "hello");
     }
 
     #[test]
