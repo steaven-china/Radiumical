@@ -25,10 +25,7 @@
 //! └─────────────────────────────────────────────────────────┘
 //! ```
 
-use crate::dynamic::{
-    DynamicOrchestrator, Event, HookAction,
-    TaskState, TickAction,
-};
+use crate::dynamic::{DynamicOrchestrator, Event, HookAction, TaskState, TickAction};
 use crate::provider::Provider;
 use crate::subagent;
 use crate::types::SessionConfig;
@@ -173,10 +170,8 @@ impl AgentCluster {
     // ── Worker management ──
 
     pub fn add_worker(&mut self, id: &str, role: &str) {
-        self.workers.insert(
-            id.to_string(),
-            WorkerSlot::new(id, role),
-        );
+        self.workers
+            .insert(id.to_string(), WorkerSlot::new(id, role));
         self.emit(ClusterEvent::WorkerSpawned {
             worker_id: id.to_string(),
         });
@@ -199,7 +194,10 @@ impl AgentCluster {
     }
 
     pub fn running_count(&self) -> usize {
-        self.workers.values().filter(|w| matches!(w.state, WorkerState::Running { .. })).count()
+        self.workers
+            .values()
+            .filter(|w| matches!(w.state, WorkerState::Running { .. }))
+            .count()
     }
 
     // ── Core loop ──
@@ -229,10 +227,10 @@ impl AgentCluster {
 
             // Feed result into orchestrator
             if result.success {
-                if let Err(e) = self.orchestrator.tagged_done(
-                    result.task_id,
-                    Some(result.output.clone()),
-                ) {
+                if let Err(e) = self
+                    .orchestrator
+                    .tagged_done(result.task_id, Some(result.output.clone()))
+                {
                     tracing::warn!(error = %e, task_id = result.task_id, "tagged_done failed in cluster");
                 }
                 self.orchestrator.event_bus.emit(Event {
@@ -243,10 +241,10 @@ impl AgentCluster {
                 });
             } else {
                 // Transition to Failed (which may trigger retry via tick)
-                if let Err(e) = self.orchestrator.transition(
-                    result.task_id,
-                    TaskState::Failed,
-                ) {
+                if let Err(e) = self
+                    .orchestrator
+                    .transition(result.task_id, TaskState::Failed)
+                {
                     tracing::warn!(error = %e, task_id = result.task_id, "state transition to Failed in cluster");
                 }
                 self.orchestrator.event_bus.emit(Event {
@@ -275,16 +273,16 @@ impl AgentCluster {
                     });
                 }
 
-                TickAction::NeedsAgent { task_id, agent_hint } => {
+                TickAction::NeedsAgent {
+                    task_id,
+                    agent_hint,
+                } => {
                     // Try to assign to an idle worker
                     let role_hint = agent_hint.as_deref();
                     if let Some(worker_id) = self.idle_worker_for_role(role_hint) {
                         let worker_id = worker_id.to_string();
                         self.assign_task(task_id, &worker_id).await;
-                        events.push(ClusterEvent::TaskAssigned {
-                            task_id,
-                            worker_id,
-                        });
+                        events.push(ClusterEvent::TaskAssigned { task_id, worker_id });
                     }
                     // else: no idle worker, task stays Ready — will retry next tick
                 }
@@ -344,7 +342,8 @@ impl AgentCluster {
                             self.orchestrator.metrics.insert(key.clone(), *value);
                         }
                         HookAction::SuspendTask(id) => {
-                            if let Err(e) = self.orchestrator.transition(*id, TaskState::Suspended) {
+                            if let Err(e) = self.orchestrator.transition(*id, TaskState::Suspended)
+                            {
                                 tracing::warn!(error = %e, task_id = *id, "state transition to Suspended in cluster hook");
                             }
                         }
@@ -508,9 +507,7 @@ impl AgentCluster {
         for worker in self.workers.values() {
             let (icon, status) = match &worker.state {
                 WorkerState::Idle => ("○", "idle".to_string()),
-                WorkerState::Running { task_id, .. } => {
-                    ("◉", format!("working on #{}", task_id))
-                }
+                WorkerState::Running { task_id, .. } => ("◉", format!("working on #{}", task_id)),
                 WorkerState::Draining => ("◐", "draining".to_string()),
             };
             out.push_str(&format!(
@@ -635,10 +632,9 @@ mod tests {
         let events = rt.block_on(cluster.tick());
 
         // Task 1 should have been assigned
-        assert!(events.iter().any(|e| matches!(
-            e,
-            ClusterEvent::TaskAssigned { task_id: 1, .. }
-        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ClusterEvent::TaskAssigned { task_id: 1, .. })));
 
         // Task 2 should still be Pending
         assert_eq!(cluster.orchestrator.tasks[&2].state, TaskState::Pending);
@@ -649,7 +645,9 @@ mod tests {
         let mut cluster = make_cluster();
         cluster.add_worker("w1", "coder");
         cluster.add_worker("w2", "reviewer");
-        cluster.orchestrator.add_task(DynamicTask::new(1, "test".into()));
+        cluster
+            .orchestrator
+            .add_task(DynamicTask::new(1, "test".into()));
 
         let status = cluster.format_status();
         assert!(status.contains("Workers:"));

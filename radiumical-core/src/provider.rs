@@ -128,9 +128,7 @@ impl Clone for OpenAICompatibleProvider {
             api_base: self.api_base.clone(),
             api_key: self.api_key.clone(),
             model: self.model.clone(),
-            reasoning_effort: std::sync::Mutex::new(
-                self.reasoning_effort.lock().unwrap().clone()
-            ),
+            reasoning_effort: std::sync::Mutex::new(self.reasoning_effort.lock().unwrap().clone()),
         }
     }
 }

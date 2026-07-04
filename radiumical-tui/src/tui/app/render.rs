@@ -17,22 +17,16 @@ impl App {
         }
         self.output.push("".into());
         self.output.push("  Keys:".into());
-        self.output
-            .push("  PgUp/PgDn    Scroll".into());
+        self.output.push("  PgUp/PgDn    Scroll".into());
         self.output
             .push("  Up/Down       History / Hint select".into());
-        self.output
-            .push("  Ctrl+W        Delete word".into());
+        self.output.push("  Ctrl+W        Delete word".into());
         self.output
             .push("  Ctrl+A/E      Jump to line start/end".into());
-        self.output
-            .push("  Ctrl+L        Clear screen".into());
-        self.output
-            .push("  Ctrl+O        Toggle reasoning".into());
-        self.output
-            .push("  Ctrl+C        Cancel / Quit".into());
-        self.output
-            .push("  Shift+Enter   Newline in input".into());
+        self.output.push("  Ctrl+L        Clear screen".into());
+        self.output.push("  Ctrl+O        Toggle reasoning".into());
+        self.output.push("  Ctrl+C        Cancel / Quit".into());
+        self.output.push("  Shift+Enter   Newline in input".into());
         self.output
             .push("  End           Jump to bottom (empty input)".into());
         self.output
@@ -73,8 +67,11 @@ impl App {
                 ));
             }
             "blocks" => {
-                let blocks =
-                    crate::layout::measure_blocks(&self.output, 80, self.thinking.show_full_reasoning);
+                let blocks = crate::layout::measure_blocks(
+                    &self.output,
+                    80,
+                    self.thinking.show_full_reasoning,
+                );
                 self.output.push(format!("  Blocks: {}", blocks.len()));
                 for (i, b) in blocks.iter().enumerate() {
                     self.output

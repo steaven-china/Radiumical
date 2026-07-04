@@ -12,6 +12,7 @@ use crate::agent::Agent;
 use crate::conversation::Conversation;
 use crate::hooks::crlf::CRLFNormalizer;
 use crate::memory::Memory;
+use crate::orchestrator;
 use crate::orchestrator::Orchestrator;
 use crate::plugins::source::{RegexLinter, SourcePluginRegistry};
 use crate::provider::Provider;
@@ -21,7 +22,6 @@ use crate::types::{
     AgentMode, Message, MessageContent, ProviderEvent, Role, SessionConfig, ToolCall,
     ToolDefinition, UiEvent,
 };
-use crate::orchestrator;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -33,7 +33,8 @@ use helpers::{assistant_msg, user_msg};
 /// to the LLM.
 #[async_trait::async_trait]
 pub trait ToolHook: Send + Sync {
-    fn after(&self,
+    fn after(
+        &self,
         _call: &ToolCall,
         _result: crate::types::ToolResult,
         _workspace: &Path,
@@ -118,14 +119,13 @@ impl Harness {
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
 
         let mut messages = self.conversation.build_context(&task, Some(&workspace));
-        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string()) {
+        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string())
+        {
             messages.push(user_msg(&ctx));
         }
 
         let mut insert_idx = 0;
-        if !agent.system_prompt.is_empty()
-            && agent.system_prompt != self.config.system_prompt
-        {
+        if !agent.system_prompt.is_empty() && agent.system_prompt != self.config.system_prompt {
             messages.insert(
                 0,
                 Message {
@@ -177,7 +177,10 @@ impl Harness {
         all_tool_defs.extend(extra_defs);
 
         let allowed_names: HashSet<String> = if agent.allowed_tools.is_empty() {
-            all_tool_defs.iter().map(|d| d.function.name.clone()).collect()
+            all_tool_defs
+                .iter()
+                .map(|d| d.function.name.clone())
+                .collect()
         } else {
             agent.allowed_tools.iter().cloned().collect()
         };
@@ -321,7 +324,8 @@ impl Harness {
             }
 
             // ── 3. Final response ──
-            self.conversation.push_assistant(&full_text, None, Some(&full_reasoning));
+            self.conversation
+                .push_assistant(&full_text, None, Some(&full_reasoning));
             messages.push(assistant_msg(&full_text, None, &full_reasoning));
 
             // ── 4. Session-level orchestration: auto-continue if plan has ready tasks ──
@@ -333,10 +337,13 @@ impl Harness {
                     let next_id = next.id;
                     let next_title = next.title.clone();
                     let next_agent = next.agent.clone();
-                    if let Err(e) = ui_tx.send(UiEvent::LlmChunk(format!(
-                        "\n\n▶ Auto-continuing plan: #{} {}\n\n",
-                        next_id, next_title
-                    ))).await {
+                    if let Err(e) = ui_tx
+                        .send(UiEvent::LlmChunk(format!(
+                            "\n\n▶ Auto-continuing plan: #{} {}\n\n",
+                            next_id, next_title
+                        )))
+                        .await
+                    {
                         tracing::warn!(error = %e, "failed to send auto-continue notice to UI");
                     }
                     let agent_hint = next_agent
@@ -437,9 +444,7 @@ fn rebuild_messages(
     }
 
     let mut idx = 0;
-    if !agent.system_prompt.is_empty()
-        && agent.system_prompt != config_system_prompt
-    {
+    if !agent.system_prompt.is_empty() && agent.system_prompt != config_system_prompt {
         messages.insert(
             0,
             Message {

@@ -3,8 +3,8 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::skill;
-use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use crate::tools::Tool;
+use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 fn skill_tool_defs() -> Vec<ToolDefinition> {
     vec![
@@ -115,10 +115,8 @@ impl Tool for LoadSkillTool {
                 is_error: false,
             },
             None => {
-                let available: Vec<String> = skill::discover()
-                    .iter()
-                    .map(|m| m.name.clone())
-                    .collect();
+                let available: Vec<String> =
+                    skill::discover().iter().map(|m| m.name.clone()).collect();
                 ToolResult {
                     tool_call_id: String::new(),
                     content: format!(

@@ -90,7 +90,10 @@ pub fn load_or_generate(workspace: &Path) -> Result<WorkspaceOutline> {
         .iter()
         .filter_map(|p| {
             let modified = fs::metadata(p).ok()?.modified().ok()?;
-            let secs = modified.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs();
+            let secs = modified
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .ok()?
+                .as_secs();
             Some((p.clone(), secs))
         })
         .collect();
@@ -162,8 +165,8 @@ fn collect_source_files(workspace: &Path) -> Result<Vec<PathBuf>> {
         if files.len() >= MAX_FILES_OUTLINED {
             break;
         }
-        let entries = fs::read_dir(&dir)
-            .with_context(|| format!("read directory {}", dir.display()))?;
+        let entries =
+            fs::read_dir(&dir).with_context(|| format!("read directory {}", dir.display()))?;
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -178,7 +181,7 @@ fn collect_source_files(workspace: &Path) -> Result<Vec<PathBuf>> {
                 }
                 stack.push(path);
             } else if path.is_file() && is_source_file(&path) {
-                    files.push(path);
+                files.push(path);
             }
         }
     }
@@ -241,7 +244,11 @@ fn parse_rust(text: &str) -> Vec<OutlineItem> {
 
         // mod declaration
         if let Some(m) = line.trim().strip_prefix("mod ") {
-            let name = m.trim_end_matches(';').split_whitespace().next().unwrap_or("");
+            let name = m
+                .trim_end_matches(';')
+                .split_whitespace()
+                .next()
+                .unwrap_or("");
             if !name.is_empty() && !name.starts_with('{') {
                 items.push(OutlineItem {
                     kind: "mod".into(),
@@ -367,7 +374,8 @@ fn parse_js_ts(text: &str) -> Vec<OutlineItem> {
                         signature: None,
                     });
                 }
-            } else if let Some(rest) = inner.strip_prefix("const ")
+            } else if let Some(rest) = inner
+                .strip_prefix("const ")
                 .or_else(|| inner.strip_prefix("let "))
                 .or_else(|| inner.strip_prefix("var "))
             {
@@ -424,10 +432,21 @@ fn parse_java(text: &str) -> Vec<OutlineItem> {
     for raw in text.lines() {
         let line = strip_line_comment(raw, "//");
         let trimmed = line.trim_start();
-        if trimmed.starts_with("public ") || trimmed.starts_with("private ") || trimmed.starts_with("protected ") {
-            let rest = trimmed.split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
+        if trimmed.starts_with("public ")
+            || trimmed.starts_with("private ")
+            || trimmed.starts_with("protected ")
+        {
+            let rest = trimmed
+                .split_whitespace()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join(" ");
             if rest.contains('(') {
-                if let Some(name) = rest.split('(').next().and_then(|s| s.split_whitespace().last()) {
+                if let Some(name) = rest
+                    .split('(')
+                    .next()
+                    .and_then(|s| s.split_whitespace().last())
+                {
                     items.push(OutlineItem {
                         kind: "method".into(),
                         name: name.into(),
@@ -435,7 +454,11 @@ fn parse_java(text: &str) -> Vec<OutlineItem> {
                     });
                 }
             } else if rest.starts_with("class ") || rest.starts_with("interface ") {
-                let kind = if rest.starts_with("class ") { "class" } else { "interface" };
+                let kind = if rest.starts_with("class ") {
+                    "class"
+                } else {
+                    "interface"
+                };
                 if let Some(name) = rest[kind.len() + 1..].split_whitespace().next() {
                     items.push(OutlineItem {
                         kind: kind.into(),
@@ -482,7 +505,11 @@ fn parse_c_family(text: &str) -> Vec<OutlineItem> {
                 });
             }
         } else if trimmed.contains('(') && !trimmed.starts_with("#") {
-            if let Some(name) = trimmed.split('(').next().and_then(|s| s.split_whitespace().last()) {
+            if let Some(name) = trimmed
+                .split('(')
+                .next()
+                .and_then(|s| s.split_whitespace().last())
+            {
                 items.push(OutlineItem {
                     kind: "function".into(),
                     name: name.into(),

@@ -41,6 +41,12 @@ impl EventBus {
     }
 
     pub fn events_since(&self, ts: u64) -> Vec<Event> {
-        self.log.lock().unwrap().iter().filter(|e| e.timestamp > ts).cloned().collect()
+        self.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.timestamp > ts)
+            .cloned()
+            .collect()
     }
 }

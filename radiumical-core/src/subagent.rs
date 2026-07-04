@@ -203,10 +203,13 @@ pub async fn spawn(
             }
         }
         if let Some(tx) = notify {
-            if let Err(e) = tx.send(UiEvent::SubAgentDone {
-                id: id_for_task.clone(),
-                success,
-            }).await {
+            if let Err(e) = tx
+                .send(UiEvent::SubAgentDone {
+                    id: id_for_task.clone(),
+                    success,
+                })
+                .await
+            {
                 tracing::warn!(error = %e, subagent_id = %id_for_task, "failed to send SubAgentDone");
             }
         }
@@ -258,7 +261,11 @@ pub fn list() -> String {
     for (id, entry) in reg.iter() {
         let r = &entry.result;
         let status = if r.done {
-            if r.success { "✓" } else { "❌" }
+            if r.success {
+                "✓"
+            } else {
+                "❌"
+            }
         } else {
             "⏳"
         };

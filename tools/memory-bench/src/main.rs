@@ -4,10 +4,14 @@ fn main() {
     // ── 1. Binary size ──
     let exe = std::env::current_exe().unwrap();
     let meta = std::fs::metadata(&exe).unwrap();
-    println!("Binary: {} ({:.1} MB)\n", exe.display(), meta.len() as f64 / 1_048_576.0);
+    println!(
+        "Binary: {} ({:.1} MB)\n",
+        exe.display(),
+        meta.len() as f64 / 1_048_576.0
+    );
 
     // ── 2. Simulate session load ──
-    use radiumical_core::types::{Message, MessageContent, Role, FunctionCall, ToolCall};
+    use radiumical_core::types::{FunctionCall, Message, MessageContent, Role, ToolCall};
     use std::time::Instant;
 
     let t0 = Instant::now();
@@ -125,8 +129,14 @@ fn main() {
 
     // ── 3. Measure sizes ──
     let total_raw: usize = messages.iter().map(|m| m.content.raw_str().len()).sum();
-    let total_json: usize = messages.iter().map(|m| serde_json::to_string(m).unwrap().len()).sum();
-    let compressed_count = messages.iter().filter(|m| m.content.is_compressed()).count();
+    let total_json: usize = messages
+        .iter()
+        .map(|m| serde_json::to_string(m).unwrap().len())
+        .sum();
+    let compressed_count = messages
+        .iter()
+        .filter(|m| m.content.is_compressed())
+        .count();
 
     // zstd of the full conversation
     let mut jsonl_buf = Vec::new();
@@ -138,12 +148,21 @@ fn main() {
     let zst_buf = zstd::encode_all(jsonl_buf.as_slice(), 3).unwrap();
 
     println!("=== Simulated Session: {} messages ===", messages.len());
-    println!("  Build time:       {:.1}ms", build_time.as_secs_f64() * 1000.0);
+    println!(
+        "  Build time:       {:.1}ms",
+        build_time.as_secs_f64() * 1000.0
+    );
     println!();
-    println!("  lz4 compressed:   {compressed_count} / {} messages", messages.len());
+    println!(
+        "  lz4 compressed:   {compressed_count} / {} messages",
+        messages.len()
+    );
     println!("  Raw text total:   {:.1} KB", total_raw as f64 / 1024.0);
     println!("  JSON serialized:  {:.1} KB", total_json as f64 / 1024.0);
-    println!("  zstd JSONL:       {:.1} KB", zst_buf.len() as f64 / 1024.0);
+    println!(
+        "  zstd JSONL:       {:.1} KB",
+        zst_buf.len() as f64 / 1024.0
+    );
     println!(
         "  zstd ratio:       {:.1}x smaller than plain JSONL",
         jsonl_buf.len() as f64 / zst_buf.len() as f64
@@ -180,32 +199,67 @@ fn main() {
             counters.cb = mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
             if GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) != 0 {
                 println!("=== Process Memory (Windows) ===");
-                println!("  Working set:      {:.1} MB", counters.working_set_size as f64 / 1_048_576.0);
-                println!("  Peak working set: {:.1} MB", counters.peak_working_set_size as f64 / 1_048_576.0);
-                println!("  Pagefile usage:   {:.1} MB", counters.pagefile_usage as f64 / 1_048_576.0);
+                println!(
+                    "  Working set:      {:.1} MB",
+                    counters.working_set_size as f64 / 1_048_576.0
+                );
+                println!(
+                    "  Peak working set: {:.1} MB",
+                    counters.peak_working_set_size as f64 / 1_048_576.0
+                );
+                println!(
+                    "  Pagefile usage:   {:.1} MB",
+                    counters.pagefile_usage as f64 / 1_048_576.0
+                );
             }
         }
     }
 
     // ── 5. Estimate Vec<Message> heap ──
     let vec_cap = messages.capacity() * std::mem::size_of::<Message>();
-    let msg_heap: usize = messages.iter().map(|m| {
-        let content_heap = m.content.raw_str().len();
-        let reasoning_heap = m.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0);
-        let tool_calls_heap = m.tool_calls.as_ref().map(|calls| {
-            calls.iter().map(|c| c.id.len() + c.call_type.len() + c.function.name.len() + c.function.arguments.len()).sum::<usize>()
-        }).unwrap_or(0);
-        let id_heap = m.tool_call_id.as_ref().map(|s| s.len()).unwrap_or(0);
-        let name_heap = m.name.as_ref().map(|s| s.len()).unwrap_or(0);
-        content_heap + reasoning_heap + tool_calls_heap + id_heap + name_heap
-    }).sum::<usize>();
+    let msg_heap: usize = messages
+        .iter()
+        .map(|m| {
+            let content_heap = m.content.raw_str().len();
+            let reasoning_heap = m.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0);
+            let tool_calls_heap = m
+                .tool_calls
+                .as_ref()
+                .map(|calls| {
+                    calls
+                        .iter()
+                        .map(|c| {
+                            c.id.len()
+                                + c.call_type.len()
+                                + c.function.name.len()
+                                + c.function.arguments.len()
+                        })
+                        .sum::<usize>()
+                })
+                .unwrap_or(0);
+            let id_heap = m.tool_call_id.as_ref().map(|s| s.len()).unwrap_or(0);
+            let name_heap = m.name.as_ref().map(|s| s.len()).unwrap_or(0);
+            content_heap + reasoning_heap + tool_calls_heap + id_heap + name_heap
+        })
+        .sum::<usize>();
 
     println!();
     println!("=== Vec<Message> Heap Estimate ===");
-    println!("  Vec overhead:     {:.1} KB ({} slots × {}B)", vec_cap as f64 / 1024.0, messages.capacity(), std::mem::size_of::<Message>());
+    println!(
+        "  Vec overhead:     {:.1} KB ({} slots × {}B)",
+        vec_cap as f64 / 1024.0,
+        messages.capacity(),
+        std::mem::size_of::<Message>()
+    );
     println!("  String data:      {:.1} KB", msg_heap as f64 / 1024.0);
-    println!("  Total estimate:   {:.1} KB", (vec_cap + msg_heap) as f64 / 1024.0);
+    println!(
+        "  Total estimate:   {:.1} KB",
+        (vec_cap + msg_heap) as f64 / 1024.0
+    );
     println!();
     println!("  Note: lz4 compression reduces String heap by ~90% for >1KB texts.");
-    println!("  Effective heap (with lz4): ~{:.1} KB", (vec_cap + msg_heap / 10) as f64 / 1024.0);
+    println!(
+        "  Effective heap (with lz4): ~{:.1} KB",
+        (vec_cap + msg_heap / 10) as f64 / 1024.0
+    );
 }

@@ -1,8 +1,8 @@
 use crate::session_tui::SessionAction;
 use crate::tui::app::App;
-use crate::tui::BackendCmd;
-use crate::tui::matching_hints;
 use crate::tui::complete_slash;
+use crate::tui::matching_hints;
+use crate::tui::BackendCmd;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
 impl App {
@@ -35,8 +35,7 @@ impl App {
         if self.overlays.mcp && !self.mcp_servers.is_empty() {
             match (key.code, key.modifiers) {
                 (KeyCode::Up, _) => {
-                    self.overlays.mcp_selected =
-                        self.overlays.mcp_selected.saturating_sub(1);
+                    self.overlays.mcp_selected = self.overlays.mcp_selected.saturating_sub(1);
                     return;
                 }
                 (KeyCode::Down, _) => {
@@ -50,9 +49,9 @@ impl App {
                         server.enabled = !server.enabled;
                         let name = server.name.clone();
                         let enabled = server.enabled;
-                        let _ = self.cmd_tx.blocking_send(
-                            BackendCmd::ToggleMcpServer { name: name.clone() },
-                        );
+                        let _ = self
+                            .cmd_tx
+                            .blocking_send(BackendCmd::ToggleMcpServer { name: name.clone() });
                         self.toasts.push(crate::board::Toast::new(
                             format!(
                                 "MCP '{}' {}",
@@ -135,8 +134,13 @@ impl App {
                 }
                 if self.input.text.starts_with('/') && self.input.hint_selected.is_some() {
                     let max = self.input.hints.len().saturating_sub(1);
-                    self.input.hint_selected =
-                        Some(self.input.hint_selected.unwrap_or(0).saturating_sub(1).min(max));
+                    self.input.hint_selected = Some(
+                        self.input
+                            .hint_selected
+                            .unwrap_or(0)
+                            .saturating_sub(1)
+                            .min(max),
+                    );
                     self.sync_hint_page();
                 } else if self.input.text.starts_with('/') && !self.input.hints.is_empty() {
                     self.input.hint_selected = Some(self.input.hints.len() - 1);
@@ -154,7 +158,8 @@ impl App {
                         self.input.history_draft = self.input.text.clone();
                     }
                     let from = self
-                        .input.history_idx
+                        .input
+                        .history_idx
                         .map_or(self.input.history.len() - 1, |i| i.saturating_sub(1));
                     if let Some(i) = self.find_prev_history_match(&prefix, from) {
                         self.input.history_idx = Some(i);
@@ -225,7 +230,8 @@ impl App {
                             // Auto-save session before exit
                             if !self.session_items.is_empty() {
                                 let desc = self.input.history.first().cloned();
-                                let mode: radiumical_core::session::SessionMode = self.mode.clone().into();
+                                let mode: radiumical_core::session::SessionMode =
+                                    self.mode.clone().into();
                                 let ts = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
@@ -366,12 +372,8 @@ impl App {
                     match self.session_tui.focus {
                         crate::session_tui::SessionFocus::List => self.session_tui.focus_right(),
                         crate::session_tui::SessionFocus::Actions => self.session_tui.focus_name(),
-                        crate::session_tui::SessionFocus::NameEdit => {
-                            self.session_tui.focus_desc()
-                        }
-                        crate::session_tui::SessionFocus::DescEdit => {
-                            self.session_tui.focus_left()
-                        }
+                        crate::session_tui::SessionFocus::NameEdit => self.session_tui.focus_desc(),
+                        crate::session_tui::SessionFocus::DescEdit => self.session_tui.focus_left(),
                         _ => {}
                     }
                     return;
@@ -396,15 +398,14 @@ impl App {
                         crate::session_tui::SessionFocus::NameEdit => {
                             self.session_tui.focus_right()
                         }
-                        crate::session_tui::SessionFocus::DescEdit => {
-                            self.session_tui.focus_name()
-                        }
+                        crate::session_tui::SessionFocus::DescEdit => self.session_tui.focus_name(),
                         _ => {}
                     }
                     return;
                 }
                 if self.input.hint_selected.is_some() {
-                    self.input.hint_selected = Some(self.input.hint_selected.unwrap_or(0).saturating_sub(1));
+                    self.input.hint_selected =
+                        Some(self.input.hint_selected.unwrap_or(0).saturating_sub(1));
                 }
             }
             (KeyCode::Esc, _) => {
@@ -530,7 +531,9 @@ impl App {
                 None
             };
         }
-        (0..=from).rev().find(|&i| self.input.history[i].starts_with(prefix))
+        (0..=from)
+            .rev()
+            .find(|&i| self.input.history[i].starts_with(prefix))
     }
 
     pub(crate) fn find_next_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
@@ -588,8 +591,7 @@ impl App {
         }
     }
 
-    fn handle_session_tui_enter(&mut self,
-    ) {
+    fn handle_session_tui_enter(&mut self) {
         use crate::session_tui::{SessionAction, SessionFocus};
         match self.session_tui.focus {
             SessionFocus::List => {
@@ -613,9 +615,7 @@ impl App {
         }
     }
 
-    fn dispatch_session_action(&mut self,
-        action: SessionAction,
-    ) {
+    fn dispatch_session_action(&mut self, action: SessionAction) {
         use crate::session_tui::SessionFocus;
         use radiumical_core::session::SessionMode;
 
@@ -658,7 +658,8 @@ impl App {
                         ));
                     }
                     Ok(None) => {
-                        self.session_tui.set_message(format!("Session not found: {name}"));
+                        self.session_tui
+                            .set_message(format!("Session not found: {name}"));
                     }
                     Err(e) => {
                         self.session_tui.set_message(format!("Load failed: {e}"));
@@ -672,7 +673,11 @@ impl App {
                     return;
                 }
                 let desc = self.session_tui.desc_buffer.trim();
-                let desc = if desc.is_empty() { None } else { Some(desc.to_string()) };
+                let desc = if desc.is_empty() {
+                    None
+                } else {
+                    Some(desc.to_string())
+                };
                 let mode: SessionMode = self.mode.clone().into();
                 match self.session_pool.save(
                     &name,
@@ -696,13 +701,13 @@ impl App {
             SessionAction::Delete => {
                 let name = self.session_tui.name_buffer.trim().to_string();
                 if name.is_empty() {
-                    self.session_tui.set_message("No session selected to delete");
+                    self.session_tui
+                        .set_message("No session selected to delete");
                     return;
                 }
                 if self.session_tui.focus != SessionFocus::ConfirmDelete {
-                    self.session_tui.set_message(format!(
-                        "Press Enter again to confirm deleting '{name}'"
-                    ));
+                    self.session_tui
+                        .set_message(format!("Press Enter again to confirm deleting '{name}'"));
                     self.session_tui.focus = SessionFocus::ConfirmDelete;
                     return;
                 }
@@ -728,8 +733,7 @@ impl App {
         }
     }
 
-    fn refresh_session_tui_list(&mut self,
-    ) {
+    fn refresh_session_tui_list(&mut self) {
         if let Ok(sessions) = self.session_pool.list() {
             let selected_name = self.session_tui.name_buffer.clone();
             self.session_tui.sessions = sessions;
@@ -764,10 +768,12 @@ impl App {
                 let response = self.choice_panel.get_response();
                 let id = self.choice_panel.id.clone();
                 self.choice_panel.close();
-                let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::ChoiceResponse {
-                    id,
-                    value: response,
-                });
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(crate::tui::BackendCmd::ChoiceResponse {
+                        id,
+                        value: response,
+                    });
             }
             KeyCode::Char(ch) => match self.choice_panel.mode {
                 ChoiceMode::Input => {

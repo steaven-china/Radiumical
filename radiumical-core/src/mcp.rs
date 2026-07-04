@@ -133,7 +133,11 @@ impl McpClient {
     }
 
     /// Send a JSON-RPC request and read the response with timeout.
-    async fn call(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    async fn call(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
         let id = self.next_id();
         let req = Request {
             jsonrpc: "2.0",

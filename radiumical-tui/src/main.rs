@@ -142,19 +142,20 @@ async fn main() -> Result<()> {
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
-    let file_cfg = radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
-        model: None,
-        provider: None,
-        api_key: None,
-        api_base: None,
-        heartbeat_secs: None,
-        llm_timeout_secs: None,
-        max_iterations: None,
-        reasoning_effort: None,
-        mode: None,
-        max_context_tokens: None,
-        context_compress_ratio: None,
-    });
+    let file_cfg =
+        radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
+            model: None,
+            provider: None,
+            api_key: None,
+            api_base: None,
+            heartbeat_secs: None,
+            llm_timeout_secs: None,
+            max_iterations: None,
+            reasoning_effort: None,
+            mode: None,
+            max_context_tokens: None,
+            context_compress_ratio: None,
+        });
 
     let mut config = SessionConfig {
         provider: provider_kind,
@@ -194,7 +195,9 @@ async fn main() -> Result<()> {
     if let Some(task) = cli.task {
         let mut runner = PipelineRunner::new(config.clone(), provider);
         let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        runner.run(task, workspace, &[], None, ui_tx, cancel_rx).await?;
+        runner
+            .run(task, workspace, &[], None, ui_tx, cancel_rx)
+            .await?;
         return Ok(());
     }
 
@@ -229,33 +232,39 @@ async fn main() -> Result<()> {
     let mcp_config = radiumical_core::mcp::load_config();
     let mcp_timeout = std::time::Duration::from_secs(config.tool_timeout_secs);
     // (client, cached_tools, enabled) — tools discovered at startup, reused per task.
-    let mut mcp_clients: Vec<(Arc<radiumical_core::mcp::McpClient>, Vec<radiumical_core::mcp::McpToolInfo>, bool)> = Vec::new();
+    let mut mcp_clients: Vec<(
+        Arc<radiumical_core::mcp::McpClient>,
+        Vec<radiumical_core::mcp::McpToolInfo>,
+        bool,
+    )> = Vec::new();
     for (name, server_cfg) in &mcp_config.servers {
         match radiumical_core::mcp::McpClient::spawn(name, server_cfg, mcp_timeout).await {
-            Ok(client) => {
-                match client.list_tools().await {
-                    Ok(tools) => {
-                        eprintln!("MCP '{name}': {} tools loaded", tools.len());
-                        let tool_count = tools.len();
-                        mcp_clients.push((Arc::new(client), tools, true));
-                        let _ = ui_tx.send(UiEvent::McpStatus {
+            Ok(client) => match client.list_tools().await {
+                Ok(tools) => {
+                    eprintln!("MCP '{name}': {} tools loaded", tools.len());
+                    let tool_count = tools.len();
+                    mcp_clients.push((Arc::new(client), tools, true));
+                    let _ = ui_tx
+                        .send(UiEvent::McpStatus {
                             name: name.clone(),
                             alive: true,
                             tool_count,
-                        }).await;
-                    }
-                    Err(e) => {
-                        eprintln!("MCP '{name}': tools/list failed: {e}");
-                    }
+                        })
+                        .await;
                 }
-            }
+                Err(e) => {
+                    eprintln!("MCP '{name}': tools/list failed: {e}");
+                }
+            },
             Err(e) => {
                 eprintln!("MCP '{name}': spawn failed: {e}");
-                let _ = ui_tx.send(UiEvent::McpStatus {
-                    name: name.clone(),
-                    alive: false,
-                    tool_count: 0,
-                }).await;
+                let _ = ui_tx
+                    .send(UiEvent::McpStatus {
+                        name: name.clone(),
+                        alive: false,
+                        tool_count: 0,
+                    })
+                    .await;
             }
         }
     }

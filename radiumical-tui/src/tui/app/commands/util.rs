@@ -98,7 +98,8 @@ impl App {
                 "  Invalid tier: '{tier}'. Use core, mino, or short."
             ));
         } else if content.is_empty() {
-            self.output.push("  Usage: /remember <tier> <content> [--tag t1]".into());
+            self.output
+                .push("  Usage: /remember <tier> <content> [--tag t1]".into());
         } else {
             match self.memory.add(tier, content, &tags) {
                 Ok(()) => {
@@ -169,9 +170,9 @@ impl App {
             if let Some(server) = self.mcp_servers.iter_mut().find(|s| s.name == name) {
                 server.enabled = !server.enabled;
                 let enabled = server.enabled;
-                let _ = self.cmd_tx.blocking_send(
-                    BackendCmd::ToggleMcpServer { name: name.clone() },
-                );
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(BackendCmd::ToggleMcpServer { name: name.clone() });
                 self.toasts.push(crate::board::Toast::new(
                     format!(
                         "MCP '{}' {}",
@@ -181,10 +182,7 @@ impl App {
                     crate::board::ToastLevel::Info,
                     std::time::Duration::from_secs(3),
                 ));
-                self.output.push(format!(
-                    "> /mcp toggle {}",
-                    name
-                ));
+                self.output.push(format!("> /mcp toggle {}", name));
                 self.output.push(format!(
                     "  MCP '{}' {}",
                     name,
@@ -226,8 +224,7 @@ impl App {
                     if let Some((k, v)) = kv.split_once('=') {
                         match radiumical_core::secure_env::set(k.trim(), v.trim()) {
                             Ok(()) => {
-                                self.output
-                                    .push(format!("  Set: {}", k.trim()));
+                                self.output.push(format!("  Set: {}", k.trim()));
                                 std::env::set_var(k.trim(), v.trim());
                             }
                             Err(e) => self.output.push(format!("  Error: {e}")),
@@ -274,8 +271,9 @@ impl App {
                         }
                     }
                 }
-                self.output
-                    .push(format!("  Copied {copied} key(s) from environment to secure store"));
+                self.output.push(format!(
+                    "  Copied {copied} key(s) from environment to secure store"
+                ));
             }
             _ => {
                 self.output
@@ -319,16 +317,32 @@ impl App {
             radiumical_core::types::AgentMode::Exec => "Exec",
         };
         self.output.push(format!("  Model:      {}", self.model));
-        self.output.push(format!("  Provider:   {}", self.provider_name));
+        self.output
+            .push(format!("  Provider:   {}", self.provider_name));
         self.output.push(format!("  Mode:       {}", mode));
-        self.output.push(format!("  Effort:     {}", self.thinking.effort));
-        self.output.push(format!("  CoD:        {}", if self.thinking.cod_enabled { "on" } else { "off" }));
-        self.output.push(format!("  Messages:   {}", self.session_items.len()));
-        self.output.push(format!("  History:    {}", self.input.history.len()));
-        self.output.push(format!("  Agent role: {}", self.agent_role));
+        self.output
+            .push(format!("  Effort:     {}", self.thinking.effort));
+        self.output.push(format!(
+            "  CoD:        {}",
+            if self.thinking.cod_enabled {
+                "on"
+            } else {
+                "off"
+            }
+        ));
+        self.output
+            .push(format!("  Messages:   {}", self.session_items.len()));
+        self.output
+            .push(format!("  History:    {}", self.input.history.len()));
+        self.output
+            .push(format!("  Agent role: {}", self.agent_role));
         if !self.mcp_servers.is_empty() {
             let alive = self.mcp_servers.iter().filter(|s| s.alive).count();
-            self.output.push(format!("  MCP:        {}/{} servers alive", alive, self.mcp_servers.len()));
+            self.output.push(format!(
+                "  MCP:        {}/{} servers alive",
+                alive,
+                self.mcp_servers.len()
+            ));
         }
         self.output.push(String::new());
         self.input.text.clear();
@@ -367,7 +381,11 @@ impl App {
     pub(super) fn cmd_copy(&mut self) -> bool {
         if let Some(last) = self.session_items.iter().rev().find_map(|item| {
             if let radiumical_core::session::SessionItem::Assistant { content } = item {
-                if !content.is_empty() { Some(content.clone()) } else { None }
+                if !content.is_empty() {
+                    Some(content.clone())
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -397,7 +415,8 @@ impl App {
         let enabled = self.tip_state.toggle();
         self.output.push("> /tips".into());
         if enabled {
-            self.output.push("  Tips enabled — shown in status bar".into());
+            self.output
+                .push("  Tips enabled — shown in status bar".into());
         } else {
             self.output.push("  Tips disabled".into());
         }

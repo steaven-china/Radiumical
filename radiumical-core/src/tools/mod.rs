@@ -186,7 +186,7 @@ pub(crate) fn crlf_to_lf(s: &str) -> String {
 mod tests {
     use std::fs::File;
     use std::io::Write;
-use std::path::{Path, PathBuf};
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
@@ -343,15 +343,11 @@ use std::path::{Path, PathBuf};
         assert!(!result.is_error);
         assert!(result.content.contains("Added #1"));
 
-        let result = TodoList
-            .execute(&ws, r#"{"action": "add fix bugs"}"#)
-            .await;
+        let result = TodoList.execute(&ws, r#"{"action": "add fix bugs"}"#).await;
         assert!(!result.is_error);
         assert!(result.content.contains("Added #2"));
 
-        let result = TodoList
-            .execute(&ws, r#"{"action": "list"}"#)
-            .await;
+        let result = TodoList.execute(&ws, r#"{"action": "list"}"#).await;
         assert!(!result.is_error);
         assert!(result.content.contains("write tests"));
         assert!(result.content.contains("fix bugs"));
@@ -364,13 +360,9 @@ use std::path::{Path, PathBuf};
         let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_done__");
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
-        TodoList
-            .execute(&ws, r#"{"action": "add task"}"#)
-            .await;
+        TodoList.execute(&ws, r#"{"action": "add task"}"#).await;
 
-        let result = TodoList
-            .execute(&ws, r#"{"action": "done 1"}"#)
-            .await;
+        let result = TodoList.execute(&ws, r#"{"action": "done 1"}"#).await;
         assert!(!result.is_error);
         assert!(result.content.contains("Done #1"));
 
@@ -382,9 +374,7 @@ use std::path::{Path, PathBuf};
         let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_invalid__");
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
-        let result = TodoList
-            .execute(&ws, r#"{"action": "done 99"}"#)
-            .await;
+        let result = TodoList.execute(&ws, r#"{"action": "done 99"}"#).await;
         assert!(result.is_error);
 
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));

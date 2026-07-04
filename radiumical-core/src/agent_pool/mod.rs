@@ -205,7 +205,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_mode_plan() {
-        let (dir, path) = make_temp_file("rad_test_mode_plan", "---\nname: planner\ndescription: Planner agent\nmode: plan\n---\n\nPlan mode prompt.");
+        let (dir, path) = make_temp_file(
+            "rad_test_mode_plan",
+            "---\nname: planner\ndescription: Planner agent\nmode: plan\n---\n\nPlan mode prompt.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.mode, AgentRoleMode::Plan);
         cleanup(dir);
@@ -221,7 +224,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_mode_unknown_defaults_to_auto() {
-        let (dir, path) = make_temp_file("rad_test_mode_unknown", "---\nname: unknown\ndescription: Unknown mode\nmode: invalid_mode\n---\n\nPrompt.");
+        let (dir, path) = make_temp_file(
+            "rad_test_mode_unknown",
+            "---\nname: unknown\ndescription: Unknown mode\nmode: invalid_mode\n---\n\nPrompt.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.mode, AgentRoleMode::Auto);
         cleanup(dir);
@@ -229,7 +235,8 @@ mod tests {
 
     #[test]
     fn test_parse_agent_no_frontmatter() {
-        let (dir, path) = make_temp_file("rad_test_no_fm", "Just a plain prompt with no frontmatter.");
+        let (dir, path) =
+            make_temp_file("rad_test_no_fm", "Just a plain prompt with no frontmatter.");
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.name, "test_agent"); // derived from filename
         assert!(agent.description.is_empty());
@@ -241,7 +248,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_name_from_filename() {
-        let (dir, path) = make_temp_file("rad_test_name_fallback", "---\ndescription: No name field in frontmatter\n---\n\nBody here.");
+        let (dir, path) = make_temp_file(
+            "rad_test_name_fallback",
+            "---\ndescription: No name field in frontmatter\n---\n\nBody here.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.name, "test_agent"); // derived from test_agent.md
         assert_eq!(agent.description, "No name field in frontmatter");
@@ -250,7 +260,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_defaults_missing_mode_and_tools() {
-        let (dir, path) = make_temp_file("rad_test_defaults", "---\nname: minimal\ndescription: Minimal agent\n---\n\nMinimal prompt.");
+        let (dir, path) = make_temp_file(
+            "rad_test_defaults",
+            "---\nname: minimal\ndescription: Minimal agent\n---\n\nMinimal prompt.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.name, "minimal");
         assert_eq!(agent.description, "Minimal agent");
@@ -295,7 +308,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_frontmatter_empty_lines() {
-        let (dir, path) = make_temp_file("rad_test_fm_empty", "---\n\n\nname: spaced\n\n\ndescription: With spaces\n\n---\n\nPrompt.");
+        let (dir, path) = make_temp_file(
+            "rad_test_fm_empty",
+            "---\n\n\nname: spaced\n\n\ndescription: With spaces\n\n---\n\nPrompt.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.name, "spaced");
         assert_eq!(agent.description, "With spaces");
@@ -304,7 +320,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_multiline_prompt() {
-        let (dir, path) = make_temp_file("rad_test_multiline", "---\nname: multi\ndescription: Multi line\n---\n\nLine 1.\nLine 2.\n\nLine 3.");
+        let (dir, path) = make_temp_file(
+            "rad_test_multiline",
+            "---\nname: multi\ndescription: Multi line\n---\n\nLine 1.\nLine 2.\n\nLine 3.",
+        );
         let agent = parse_agent_file(&path).unwrap();
         assert_eq!(agent.prompt, "Line 1.\nLine 2.\n\nLine 3.");
         cleanup(dir);
@@ -316,17 +335,26 @@ mod tests {
 
     #[test]
     fn test_agent_role_mode_to_agent_mode_auto() {
-        assert_eq!(AgentRoleMode::Auto.to_agent_mode(), crate::types::AgentMode::Auto);
+        assert_eq!(
+            AgentRoleMode::Auto.to_agent_mode(),
+            crate::types::AgentMode::Auto
+        );
     }
 
     #[test]
     fn test_agent_role_mode_to_agent_mode_plan() {
-        assert_eq!(AgentRoleMode::Plan.to_agent_mode(), crate::types::AgentMode::Plan);
+        assert_eq!(
+            AgentRoleMode::Plan.to_agent_mode(),
+            crate::types::AgentMode::Plan
+        );
     }
 
     #[test]
     fn test_agent_role_mode_to_agent_mode_exec() {
-        assert_eq!(AgentRoleMode::Exec.to_agent_mode(), crate::types::AgentMode::Exec);
+        assert_eq!(
+            AgentRoleMode::Exec.to_agent_mode(),
+            crate::types::AgentMode::Exec
+        );
     }
 
     #[test]

@@ -36,7 +36,11 @@ pub fn render(f: &mut Frame, slot: &PanelSlot) {
             };
             let role = agent.agent.as_deref().unwrap_or("coder");
             let status_text = if agent.done {
-                if agent.success { "done" } else { "failed" }
+                if agent.success {
+                    "done"
+                } else {
+                    "failed"
+                }
             } else {
                 "running"
             };
@@ -53,15 +57,16 @@ pub fn render(f: &mut Frame, slot: &PanelSlot) {
                     format!("{:<10}", status_text),
                     Style::default().fg(status_color),
                 ),
-                Span::styled(
-                    format!("({role})"),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!("({role})"), Style::default().fg(Color::DarkGray)),
             ]);
             lines.push(line);
 
             // Show task description (truncated)
-            let task_display: String = agent.task.chars().take(slot.rect.width as usize - 6).collect();
+            let task_display: String = agent
+                .task
+                .chars()
+                .take(slot.rect.width as usize - 6)
+                .collect();
             let task_suffix = if agent.task.chars().count() > slot.rect.width as usize - 6 {
                 "…"
             } else {

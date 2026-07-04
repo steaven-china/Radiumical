@@ -10,6 +10,7 @@ pub mod highlight;
 pub mod hooks;
 pub mod llm_cache;
 pub mod lsp;
+pub mod mcp;
 pub mod memory;
 pub mod orchestrator;
 pub mod outline;
@@ -18,10 +19,9 @@ pub mod pipeline;
 pub mod plugins;
 pub mod provider;
 pub mod providers;
+pub mod secure_env;
 pub mod session;
 pub mod skill;
-pub mod mcp;
-pub mod secure_env;
 pub mod subagent;
 pub mod systools;
 pub mod tools;
@@ -33,11 +33,14 @@ pub use agent::Agent;
 pub use agent_pool::{AgentDef, AgentRoleMode};
 pub use cluster::{AgentCluster, ClusterEvent, WorkerSlot};
 pub use config::Config;
-pub use dynamic::{DynamicOrchestrator, DynamicTask, EventBus, Guard, Hook, HookAction, HookTrigger, TaskState as DynTaskState};
+pub use dynamic::{
+    DynamicOrchestrator, DynamicTask, EventBus, Guard, Hook, HookAction, HookTrigger,
+    TaskState as DynTaskState,
+};
 pub use harness::{Harness, ToolHook};
 pub use pipeline::PipelineRunner;
 pub use provider::{create_provider, Provider};
 pub use providers::{ProviderRegistry, ProviderSource};
-pub use types::{AgentMode, BackendCmd, Message, SessionConfig, UiEvent};
 pub use skill::{Skill, SkillMeta, SkillRegistry};
 pub use subagent::{SubAgentHandle, SubAgentResult};
+pub use types::{AgentMode, BackendCmd, Message, SessionConfig, UiEvent};

@@ -52,7 +52,15 @@ impl PipelineRunner {
     ) -> anyhow::Result<()> {
         let agent = Agent::default_coder();
         self.harness
-            .run(task, workspace, &agent, extra_tools, _hb_cancel, ui_tx, cancel_rx)
+            .run(
+                task,
+                workspace,
+                &agent,
+                extra_tools,
+                _hb_cancel,
+                ui_tx,
+                cancel_rx,
+            )
             .await
     }
 }

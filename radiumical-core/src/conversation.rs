@@ -115,7 +115,12 @@ impl Conversation {
         });
     }
 
-    pub fn push_tool_result(&mut self, call: &ToolCall, result: &ToolResult, _workspace: Option<&Path>) {
+    pub fn push_tool_result(
+        &mut self,
+        call: &ToolCall,
+        result: &ToolResult,
+        _workspace: Option<&Path>,
+    ) {
         // Warn if files the model read earlier were modified.
         let mut extra = String::new();
         if let Some(ws) = _workspace {
@@ -442,10 +447,8 @@ impl Conversation {
                     let zst_path = zst_path(path);
                     let data = lines.join("\n") + "\n";
                     if let Ok(compressed) = zstd::encode_all(data.as_bytes(), 3) {
-                        if let Ok(mut f) = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(&zst_path)
+                        if let Ok(mut f) =
+                            OpenOptions::new().create(true).append(true).open(&zst_path)
                         {
                             if let Err(e) = f.write_all(&compressed) {
                                 tracing::error!(error = %e, "failed to write conversation JSONL (append)");
@@ -694,8 +697,14 @@ mod tests {
     fn test_build_context_with_preview() {
         let mut conv = Conversation::new("system prompt".to_string(), None);
         for i in 0..20 {
-            conv.push_user(&format!("user message {i} with some extra padding to increase length"));
-            conv.push_assistant(&format!("assistant reply {i} with some extra padding too"), None, None);
+            conv.push_user(&format!(
+                "user message {i} with some extra padding to increase length"
+            ));
+            conv.push_assistant(
+                &format!("assistant reply {i} with some extra padding too"),
+                None,
+                None,
+            );
         }
         let ctx = conv.build_context_with_preview("task", None, 200);
         // Should be truncated since total chars far exceed 200
@@ -744,7 +753,11 @@ mod tests {
     #[test]
     fn test_estimate_tokens_with_reasoning() {
         let mut conv = Conversation::new("sys".to_string(), None);
-        conv.push_assistant("answer", None, Some("this is my chain of thought reasoning"));
+        conv.push_assistant(
+            "answer",
+            None,
+            Some("this is my chain of thought reasoning"),
+        );
         let tokens = conv.estimate_tokens();
         // "answer" = 6 chars, reasoning = 39 chars, total = 45 / 4 = 11
         assert!(tokens > 0, "tokens should include reasoning content");

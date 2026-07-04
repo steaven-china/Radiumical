@@ -97,19 +97,21 @@ impl App {
             should_quit: false,
             welcome: true,
             settings_board: crate::settings::SettingsBoard::from_config(
-                &radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
-                    model: None,
-                    provider: None,
-                    api_key: None,
-                    api_base: None,
-                    heartbeat_secs: None,
-                    llm_timeout_secs: None,
-                    max_iterations: None,
-                    reasoning_effort: None,
-                    mode: None,
-                    max_context_tokens: None,
-                    context_compress_ratio: None,
-                }),
+                &radiumical_core::config::Config::load().unwrap_or(
+                    radiumical_core::config::Config {
+                        model: None,
+                        provider: None,
+                        api_key: None,
+                        api_base: None,
+                        heartbeat_secs: None,
+                        llm_timeout_secs: None,
+                        max_iterations: None,
+                        reasoning_effort: None,
+                        mode: None,
+                        max_context_tokens: None,
+                        context_compress_ratio: None,
+                    },
+                ),
                 &config.mode,
             ),
             help_board: crate::board::BoardState::new(
@@ -195,7 +197,10 @@ impl App {
 
     pub fn scroll_up(&mut self, lines: f32) {
         let lines = lines.max(0.0);
-        let max = self.viewport.rendered_total.saturating_sub(self.viewport.visible_lines.max(1)) as f32;
+        let max = self
+            .viewport
+            .rendered_total
+            .saturating_sub(self.viewport.visible_lines.max(1)) as f32;
         if self.viewport.stick_to_bottom {
             self.viewport.stick_to_bottom = false;
             // scroll is already at max, just unset stick — next scroll will move
@@ -208,7 +213,10 @@ impl App {
 
     pub fn scroll_down(&mut self, lines: f32) {
         let lines = lines.max(0.0);
-        let max = self.viewport.rendered_total.saturating_sub(self.viewport.visible_lines.max(1)) as f32;
+        let max = self
+            .viewport
+            .rendered_total
+            .saturating_sub(self.viewport.visible_lines.max(1)) as f32;
         if self.viewport.stick_to_bottom {
             self.viewport.stick_to_bottom = false;
         }

@@ -44,13 +44,17 @@ pub async fn compress_context(
         .join("\n");
 
     if range_text.trim().is_empty() {
-        conversation.compress_range(split_at, "[Context compressed: empty messages dropped]".into());
+        conversation.compress_range(
+            split_at,
+            "[Context compressed: empty messages dropped]".into(),
+        );
         return split_at - 1;
     }
 
-    if let Err(e) = ui_tx.send(UiEvent::LlmChunk(
-        "\n[Compressing context…]\n".into(),
-    )).await {
+    if let Err(e) = ui_tx
+        .send(UiEvent::LlmChunk("\n[Compressing context…]\n".into()))
+        .await
+    {
         tracing::warn!(error = %e, "failed to send context compression notice to UI");
     }
 
@@ -65,7 +69,8 @@ pub async fn compress_context(
                  3. Current task state and next steps.\n\
                  4. Any errors encountered and how they were resolved.\n\
                  5. Important decisions or constraints.\n\
-                 Output ONLY the summary, no preamble.".into(),
+                 Output ONLY the summary, no preamble."
+                    .into(),
             ),
             tool_calls: None,
             tool_call_id: None,
@@ -84,8 +89,7 @@ pub async fn compress_context(
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
     let prov = Arc::clone(provider);
-    let handle =
-        tokio::spawn(async move { prov.chat(&compress_messages, &[], tx).await });
+    let handle = tokio::spawn(async move { prov.chat(&compress_messages, &[], tx).await });
 
     let mut summary = String::new();
     while let Some(event) = rx.recv().await {
@@ -105,14 +109,15 @@ pub async fn compress_context(
     let compressed_count = split_at - 1;
     conversation.compress_range(
         split_at,
-        format!(
-            "[Context compressed: {compressed_count} older messages summarised]\n\n{summary}"
-        ),
+        format!("[Context compressed: {compressed_count} older messages summarised]\n\n{summary}"),
     );
 
-    if let Err(e) = ui_tx.send(UiEvent::LlmChunk(format!(
-        "[Context compressed: {compressed_count} messages → summary]\n"
-    ))).await {
+    if let Err(e) = ui_tx
+        .send(UiEvent::LlmChunk(format!(
+            "[Context compressed: {compressed_count} messages → summary]\n"
+        )))
+        .await
+    {
         tracing::warn!(error = %e, "failed to send compression result to UI");
     }
 

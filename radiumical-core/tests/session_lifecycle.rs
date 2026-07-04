@@ -1,6 +1,6 @@
 //! Integration tests for the session lifecycle.
 
-use radiumical_core::session::{SessionItem, SessionPool, SessionMode};
+use radiumical_core::session::{SessionItem, SessionMode, SessionPool};
 
 #[test]
 fn save_load_session_roundtrip() {

@@ -124,7 +124,8 @@ mod tests {
 
     #[test]
     fn compress_decompress_cjk() {
-        let input = "日本語テスト文字列です。这是中文测试文本。한국어 테스트 문자열입니다.".repeat(80);
+        let input =
+            "日本語テスト文字列です。这是中文测试文本。한국어 테스트 문자열입니다.".repeat(80);
         assert!(input.len() > 1024);
         let compressed = compress_text(&input).unwrap();
         let decompressed = decompress_text(&compressed).unwrap();

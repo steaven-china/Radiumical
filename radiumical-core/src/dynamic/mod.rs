@@ -115,7 +115,8 @@ impl DynamicOrchestrator {
     pub fn create_task(&mut self, title: &str) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
-        self.tasks.insert(id, DynamicTask::new(id, title.to_string()));
+        self.tasks
+            .insert(id, DynamicTask::new(id, title.to_string()));
         self.save();
         id
     }
@@ -147,10 +148,7 @@ impl DynamicOrchestrator {
             self.save();
             Ok(msg)
         } else {
-            Err(format!(
-                "Invalid transition: {:?} → {:?}",
-                task.state, next
-            ))
+            Err(format!("Invalid transition: {:?} → {:?}", task.state, next))
         }
     }
 
@@ -386,7 +384,11 @@ impl DynamicOrchestrator {
                 .as_deref()
                 .map(|a| format!(" @{a}"))
                 .unwrap_or_default();
-            let guard = if task.guard.is_some() { " [guarded]" } else { "" };
+            let guard = if task.guard.is_some() {
+                " [guarded]"
+            } else {
+                ""
+            };
             let retry = if task.max_retries > 0 {
                 format!(" (retry {}/{})", task.retry_count, task.max_retries)
             } else {

@@ -17,7 +17,10 @@ pub enum TaskState {
 
 impl TaskState {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, TaskState::Done | TaskState::Failed | TaskState::Skipped)
+        matches!(
+            self,
+            TaskState::Done | TaskState::Failed | TaskState::Skipped
+        )
     }
 
     pub fn can_transition_to(&self, next: &TaskState) -> bool {

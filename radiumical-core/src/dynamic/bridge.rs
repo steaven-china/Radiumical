@@ -1,5 +1,5 @@
-use super::DynamicOrchestrator;
 use super::task::{DynamicTask, TaskState};
+use super::DynamicOrchestrator;
 use crate::orchestrator::{Orchestrator, Plan, Task, TaskStatus};
 
 impl TaskState {
@@ -30,8 +30,7 @@ impl TaskState {
 impl DynamicOrchestrator {
     pub fn import_plan(&mut self, plan: &Plan) {
         for t in &plan.tasks {
-            let mut dt = DynamicTask::new(t.id, t.title.clone())
-                .with_deps(t.deps.clone());
+            let mut dt = DynamicTask::new(t.id, t.title.clone()).with_deps(t.deps.clone());
             dt.state = TaskState::from_task_status(&t.status);
             dt.order = t.order;
             dt.agent = t.agent.clone();

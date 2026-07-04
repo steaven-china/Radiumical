@@ -711,7 +711,9 @@ mod tests {
         assert_eq!(meta.description, "desc");
         assert_eq!(loaded_items.len(), 2);
         assert!(matches!(&loaded_items[0], SessionItem::User { content } if content == "hello"));
-        assert!(matches!(&loaded_items[1], SessionItem::Assistant { content } if content == "world"));
+        assert!(
+            matches!(&loaded_items[1], SessionItem::Assistant { content } if content == "world")
+        );
 
         let deleted = pool.delete("my-session").unwrap();
         assert!(deleted);

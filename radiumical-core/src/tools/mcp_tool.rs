@@ -4,8 +4,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::mcp::{McpClient, McpToolInfo};
-use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use crate::tools::Tool;
+use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 pub struct McpToolAdapter {
     pub info: McpToolInfo,

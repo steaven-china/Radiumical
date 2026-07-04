@@ -89,18 +89,11 @@ pub enum Layout {
         cells: Vec<String>,
     },
     /// Horizontal split: widths as percentages (sum to 100).
-    Split {
-        widths: Vec<u8>,
-        panes: Vec<String>,
-    },
+    Split { widths: Vec<u8>, panes: Vec<String> },
     /// Vertical stack of blocks separated by `---`.
-    Rows {
-        blocks: Vec<String>,
-    },
+    Rows { blocks: Vec<String> },
     /// Side-by-side columns separated by `|||`.
-    Cols {
-        columns: Vec<String>,
-    },
+    Cols { columns: Vec<String> },
     /// Bordered box with optional title.
     Box {
         title: Option<String>,
@@ -175,7 +168,10 @@ fn parse_split(input: &str) -> Result<Layout, String> {
     let dims = first.strip_prefix("split").unwrap().trim();
     let widths: Vec<u8> = dims
         .split_whitespace()
-        .map(|s| s.parse::<u8>().map_err(|e| format!("invalid width '{s}': {e}")))
+        .map(|s| {
+            s.parse::<u8>()
+                .map_err(|e| format!("invalid width '{s}': {e}"))
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     let sum: u8 = widths.iter().sum();
@@ -183,15 +179,8 @@ fn parse_split(input: &str) -> Result<Layout, String> {
         return Err(format!("split widths must sum to 100, got {sum}"));
     }
 
-    let body = input
-        .lines()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let panes: Vec<String> = body
-        .split("|||")
-        .map(|s| s.trim().to_string())
-        .collect();
+    let body = input.lines().skip(1).collect::<Vec<_>>().join("\n");
+    let panes: Vec<String> = body.split("|||").map(|s| s.trim().to_string()).collect();
 
     if panes.len() != widths.len() {
         return Err(format!(
@@ -233,19 +222,15 @@ fn parse_cols(input: &str) -> Result<Layout, String> {
             .map_err(|e| format!("invalid col count '{n_str}': {e}"))?
     };
 
-    let body = input
-        .lines()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let columns: Vec<String> = body
-        .split("|||")
-        .map(|s| s.trim().to_string())
-        .collect();
+    let body = input.lines().skip(1).collect::<Vec<_>>().join("\n");
+    let columns: Vec<String> = body.split("|||").map(|s| s.trim().to_string()).collect();
 
     let n = if n == 0 { columns.len() } else { n };
     if columns.len() != n {
-        return Err(format!("cols {n} needs {n} columns (|||-separated), got {}", columns.len()));
+        return Err(format!(
+            "cols {n} needs {n} columns (|||-separated), got {}",
+            columns.len()
+        ));
     }
 
     Ok(Layout::Cols { columns })
@@ -289,11 +274,7 @@ fn parse_table(input: &str) -> Result<Layout, String> {
 
     let rows: Vec<Vec<String>> = data_lines[1..]
         .iter()
-        .map(|line| {
-            line.split('|')
-                .map(|s| s.trim().to_string())
-                .collect()
-        })
+        .map(|line| line.split('|').map(|s| s.trim().to_string()).collect())
         .collect();
 
     Ok(Layout::Table { headers, rows })

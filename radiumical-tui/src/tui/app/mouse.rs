@@ -32,14 +32,16 @@ impl App {
         match kind {
             // ── Scroll ──
             MouseEventKind::ScrollDown => {
-                let bi = self.hovered_block
+                let bi = self
+                    .hovered_block
                     .or_else(|| self.block_at_row(row, output_top, output_h));
                 if !self.scroll_tool_result(bi, 1) {
                     self.scroll_up(1.0);
                 }
             }
             MouseEventKind::ScrollUp => {
-                let bi = self.hovered_block
+                let bi = self
+                    .hovered_block
                     .or_else(|| self.block_at_row(row, output_top, output_h));
                 if !self.scroll_tool_result(bi, -1) {
                     self.scroll_down(1.0);

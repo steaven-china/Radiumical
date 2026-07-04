@@ -591,7 +591,10 @@ impl SettingsBoard {
             .border_type(BorderType::Rounded)
             .title(" Settings ")
             .border_style(Style::default().fg(Color::Rgb(100, 160, 220)));
-        let _inner = r.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 });
+        let _inner = r.inner(ratatui::layout::Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
         let max_label = label_w as usize;
         let lines: Vec<Line> = self
             .items
@@ -601,18 +604,34 @@ impl SettingsBoard {
                 let selected = i == self.selected;
                 let mut spans = Vec::new();
                 let marker = if selected { "> " } else { "  " };
-                spans.push(Span::styled(marker, Style::default().fg(Color::Rgb(100, 160, 220))));
+                spans.push(Span::styled(
+                    marker,
+                    Style::default().fg(Color::Rgb(100, 160, 220)),
+                ));
                 let label_style = if selected {
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::Rgb(180, 180, 190))
                 };
-                spans.push(Span::styled(format!("{:<width$}", item.label, width = max_label), label_style));
+                spans.push(Span::styled(
+                    format!("{:<width$}", item.label, width = max_label),
+                    label_style,
+                ));
                 spans.push(Span::raw("  "));
                 let is_editing = self.editing == Some(i);
-                let value = if is_editing { self.edit_buffer.clone() } else { item.display_value() };
+                let value = if is_editing {
+                    self.edit_buffer.clone()
+                } else {
+                    item.display_value()
+                };
                 let truncated = if value.chars().count() > max_value {
-                    value.chars().take(max_value.saturating_sub(1)).collect::<String>() + "…"
+                    value
+                        .chars()
+                        .take(max_value.saturating_sub(1))
+                        .collect::<String>()
+                        + "…"
                 } else {
                     value
                 };
@@ -627,10 +646,20 @@ impl SettingsBoard {
                 Line::from(spans)
             })
             .collect();
-        let help = if self.is_editing() { "Enter: save  Esc: cancel" } else { "↑↓ ←→ Enter:edit Esc:close" };
+        let help = if self.is_editing() {
+            "Enter: save  Esc: cancel"
+        } else {
+            "↑↓ ←→ Enter:edit Esc:close"
+        };
         let mut text = Text::from(lines);
         text.lines.push(Line::from(""));
-        text.lines.push(Line::from(Span::styled(help, Style::default().fg(Color::Rgb(120, 120, 130)))));
-        f.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: false }), r);
+        text.lines.push(Line::from(Span::styled(
+            help,
+            Style::default().fg(Color::Rgb(120, 120, 130)),
+        )));
+        f.render_widget(
+            Paragraph::new(text).block(block).wrap(Wrap { trim: false }),
+            r,
+        );
     }
 }

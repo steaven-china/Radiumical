@@ -3,8 +3,8 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::tools::layout_page;
-use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use crate::tools::Tool;
+use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 pub struct LayoutPageTool;
 
@@ -109,10 +109,7 @@ mod tests {
     async fn test_layout_box() {
         let tool = LayoutPageTool;
         let result = tool
-            .execute(
-                &PathBuf::from("."),
-                r#"{"spec":"box Test\nHello world"}"#,
-            )
+            .execute(&PathBuf::from("."), r#"{"spec":"box Test\nHello world"}"#)
             .await;
         assert!(!result.is_error);
         assert!(result.content.contains("Test"));

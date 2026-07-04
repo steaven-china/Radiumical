@@ -220,7 +220,8 @@ mod tests {
     #[test]
     fn test_add_with_tags() {
         let mut m = temp_memory();
-        m.add("core", "user prefers Rust", &["preference", "lang"]).unwrap();
+        m.add("core", "user prefers Rust", &["preference", "lang"])
+            .unwrap();
         assert_eq!(m.core.len(), 1);
         assert_eq!(m.core[0].tags, vec!["preference", "lang"]);
     }

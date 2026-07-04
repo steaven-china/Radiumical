@@ -225,7 +225,12 @@ impl Tool for WriteFile {
                 };
                 ToolResult {
                     tool_call_id: String::new(),
-                    content: format!("Wrote {} bytes to {}\n{}", content.len(), path_str, diff_out),
+                    content: format!(
+                        "Wrote {} bytes to {}\n{}",
+                        content.len(),
+                        path_str,
+                        diff_out
+                    ),
                     is_error: false,
                 }
             }

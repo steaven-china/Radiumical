@@ -34,10 +34,7 @@ pub fn render_agents_panel(
     let title_style = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
-    lines.push(Line::from(vec![Span::styled(
-        "  Agent Roles",
-        title_style,
-    )]));
+    lines.push(Line::from(vec![Span::styled("  Agent Roles", title_style)]));
     lines.push(Line::from(""));
 
     for agent in agents {

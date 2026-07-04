@@ -197,17 +197,18 @@ impl PanelManager {
 
     /// Update drag position. Call on mouse move while dragging.
     pub fn drag_move(&mut self, mouse_x: u16, mouse_y: u16) {
-        if let (Some((sx, sy)), Some((px, py)), Some(panel)) = (
-            self.drag.start_mouse,
-            self.drag.start_pos,
-            self.drag.panel,
-        ) {
+        if let (Some((sx, sy)), Some((px, py)), Some(panel)) =
+            (self.drag.start_mouse, self.drag.start_pos, self.drag.panel)
+        {
             let dx = mouse_x as i32 - sx as i32;
             let dy = mouse_y as i32 - sy as i32;
-            self.positions.insert(panel, PanelPos {
-                x: px + dx,
-                y: py + dy,
-            });
+            self.positions.insert(
+                panel,
+                PanelPos {
+                    x: px + dx,
+                    y: py + dy,
+                },
+            );
         }
     }
 
@@ -223,7 +224,12 @@ impl PanelManager {
 
     /// Check if a mouse position is on a close button of any panel.
     /// Returns the PanelId if clicked.
-    pub fn hit_close_button(&self, mouse_x: u16, mouse_y: u16, slots: &[PanelSlot]) -> Option<PanelId> {
+    pub fn hit_close_button(
+        &self,
+        mouse_x: u16,
+        mouse_y: u16,
+        slots: &[PanelSlot],
+    ) -> Option<PanelId> {
         for slot in slots {
             let r = slot.rect;
             // Close button is at top-right: " × " = 3 chars, inside border
@@ -238,7 +244,12 @@ impl PanelManager {
 
     /// Check if a mouse position is on a title bar of any panel.
     /// Returns the PanelId if on the title bar row (for drag initiation).
-    pub fn hit_title_bar(&self, mouse_x: u16, mouse_y: u16, slots: &[PanelSlot]) -> Option<PanelId> {
+    pub fn hit_title_bar(
+        &self,
+        mouse_x: u16,
+        mouse_y: u16,
+        slots: &[PanelSlot],
+    ) -> Option<PanelId> {
         for slot in slots {
             let r = slot.rect;
             // Title bar is the top border row
@@ -303,9 +314,13 @@ impl PanelManager {
                 let default_y = area.y + area.height.saturating_sub(panel_h) / 2;
 
                 let (x, y) = if let Some(pos) = self.positions.get(id) {
-                    let cx = pos.x.max(area.x as i32)
+                    let cx = pos
+                        .x
+                        .max(area.x as i32)
                         .min((area.x + area.width).saturating_sub(panel_w) as i32);
-                    let cy = pos.y.max(area.y as i32)
+                    let cy = pos
+                        .y
+                        .max(area.y as i32)
                         .min((area.y + area.height).saturating_sub(panel_h) as i32);
                     (cx as u16, cy as u16)
                 } else {
@@ -417,7 +432,11 @@ impl PanelManager {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(title_line)
-            .title_style(Style::default().fg(Color::Rgb(180, 180, 190)).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Rgb(180, 180, 190))
+                    .add_modifier(Modifier::BOLD),
+            )
             .border_style(Style::default().fg(border_color))
             .style(Style::default().bg(bg_color));
         f.render_widget(block, r);
@@ -452,7 +471,12 @@ mod tests {
     use super::*;
 
     fn area() -> Rect {
-        Rect { x: 0, y: 0, width: 100, height: 40 }
+        Rect {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 40,
+        }
     }
 
     #[test]

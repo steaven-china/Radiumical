@@ -1,7 +1,7 @@
-use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
-use super::compress::{COMPRESS_THRESHOLD, LZ4_PREFIX, compress_text, decompress_text};
+use super::compress::{compress_text, decompress_text, COMPRESS_THRESHOLD, LZ4_PREFIX};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -271,7 +271,10 @@ mod tests {
     #[test]
     fn is_compressed_threshold_boundary() {
         let mc_below = MessageContent::from_text("x".repeat(COMPRESS_THRESHOLD));
-        assert!(!mc_below.is_compressed(), "at threshold should not compress");
+        assert!(
+            !mc_below.is_compressed(),
+            "at threshold should not compress"
+        );
 
         let mc_above = MessageContent::from_text("x".repeat(COMPRESS_THRESHOLD + 1));
         assert!(mc_above.is_compressed(), "above threshold should compress");

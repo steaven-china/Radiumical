@@ -15,12 +15,7 @@ pub struct PlanTask {
     pub status: TaskStatus,
 }
 
-pub fn render_plan_panel(
-    f: &mut Frame,
-    slot: &PanelSlot,
-    title: &str,
-    tasks: &[PlanTask],
-) {
+pub fn render_plan_panel(f: &mut Frame, slot: &PanelSlot, title: &str, tasks: &[PlanTask]) {
     let inner = Rect {
         x: slot.rect.x + 1,
         y: slot.rect.y + 1,
@@ -37,7 +32,10 @@ pub fn render_plan_panel(
     }
 
     let total = tasks.len();
-    let done = tasks.iter().filter(|t| t.status == TaskStatus::Done).count();
+    let done = tasks
+        .iter()
+        .filter(|t| t.status == TaskStatus::Done)
+        .count();
     let pct = if total > 0 { (done * 100) / total } else { 0 };
 
     let mut lines: Vec<Line> = Vec::new();

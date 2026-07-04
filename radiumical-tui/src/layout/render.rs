@@ -286,10 +286,7 @@ impl Block {
                     return lines;
                 }
 
-                lines.push(Line::from(Span::styled(
-                    box_sep("├── result ", box_w),
-                    st,
-                )));
+                lines.push(Line::from(Span::styled(box_sep("├── result ", box_w), st)));
                 lines.extend(render_tool_result_lines(
                     &result_text,
                     box_w,
@@ -447,10 +444,7 @@ fn render_tool_result_lines(
         .iter()
         .enumerate()
         .map(|(i, (line_type, line))| {
-            let right = if has_overflow
-                && i >= sb_thumb_y
-                && i < sb_thumb_y + sb_thumb_h
-            {
+            let right = if has_overflow && i >= sb_thumb_y && i < sb_thumb_y + sb_thumb_h {
                 Some('█')
             } else {
                 None

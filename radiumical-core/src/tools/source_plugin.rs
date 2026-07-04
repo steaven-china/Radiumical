@@ -32,11 +32,7 @@ impl Tool for SourceCodeTool {
         }
     }
 
-    async fn execute(
-        &self,
-        workspace: &Path,
-        arguments: &str,
-    ) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         self.execute_with_context(workspace, arguments, &crate::tools::ToolContext::default())
             .await
     }
@@ -97,10 +93,7 @@ impl Tool for SourceCodeTool {
                         crate::plugins::source::Severity::Warning => "WARN",
                         crate::plugins::source::Severity::Error => "ERROR",
                     };
-                    lines.push(format!(
-                        "{}:{}:{}: {}",
-                        sev, f.line, f.column, f.message
-                    ));
+                    lines.push(format!("{}:{}:{}: {}", sev, f.line, f.column, f.message));
                     if let Some(code) = &f.code {
                         lines.push(format!("    {code}"));
                     }

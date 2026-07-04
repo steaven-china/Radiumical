@@ -605,10 +605,7 @@ mod tests {
         let mut orch = make_orch();
         orch.create(
             "P",
-            vec![
-                ("A".to_string(), vec![]),
-                ("B".to_string(), vec![]),
-            ],
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![])],
         );
         orch.start(1).unwrap();
         orch.start(2).unwrap();
@@ -643,10 +640,7 @@ mod tests {
         let mut orch = make_orch();
         orch.create(
             "P",
-            vec![
-                ("A".to_string(), vec![]),
-                ("B".to_string(), vec![1]),
-            ],
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![1])],
         );
         orch.start(1).unwrap();
 
@@ -661,10 +655,7 @@ mod tests {
         let mut orch = make_orch();
         orch.create(
             "P",
-            vec![
-                ("A".to_string(), vec![]),
-                ("B".to_string(), vec![1]),
-            ],
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![1])],
         );
         orch.start(1).unwrap();
 
@@ -784,10 +775,7 @@ mod tests {
         let mut orch = make_orch();
         orch.create(
             "P",
-            vec![
-                ("A".to_string(), vec![]),
-                ("B".to_string(), vec![2]),
-            ],
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![2])],
         );
         let ready_ids: Vec<u32> = orch.get_ready_tasks().iter().map(|t| t.id).collect();
         assert!(ready_ids.contains(&1));
@@ -821,10 +809,7 @@ mod tests {
         let mut orch = make_orch();
         orch.create(
             "P",
-            vec![
-                ("A".to_string(), vec![]),
-                ("B".to_string(), vec![1]),
-            ],
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![1])],
         );
         orch.skip(1).unwrap(); // Skipped ≠ Done
 
@@ -974,10 +959,7 @@ mod tests {
             let mut orch = Orchestrator::new(Some(session));
             orch.create(
                 "Persistent",
-                vec![
-                    ("Alpha".to_string(), vec![]),
-                    ("Beta".to_string(), vec![1]),
-                ],
+                vec![("Alpha".to_string(), vec![]), ("Beta".to_string(), vec![1])],
             );
             orch.start(1).unwrap();
             orch.done(1).unwrap();
@@ -1092,7 +1074,10 @@ mod tests {
         orch.create("First", vec![("X".to_string(), vec![])]);
         assert_eq!(orch.plan().tasks.len(), 1);
 
-        orch.create("Second", vec![("A".to_string(), vec![]), ("B".to_string(), vec![])]);
+        orch.create(
+            "Second",
+            vec![("A".to_string(), vec![]), ("B".to_string(), vec![])],
+        );
         assert_eq!(orch.plan().tasks.len(), 2);
         assert_eq!(orch.plan().title, "Second");
         assert_eq!(orch.plan().next_id, 3);

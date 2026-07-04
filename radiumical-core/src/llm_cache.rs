@@ -126,7 +126,11 @@ impl CachedProvider {
     }
 
     pub fn with_cache(model: String, inner: Arc<dyn Provider>, cache: Arc<LlmCache>) -> Self {
-        Self { model, inner, cache }
+        Self {
+            model,
+            inner,
+            cache,
+        }
     }
 }
 
@@ -156,7 +160,9 @@ impl Provider for CachedProvider {
         let tools_for_key: Vec<ToolDefinition> = tools.to_vec();
 
         let inner_handle = tokio::spawn(async move {
-            inner.chat(&messages_for_key, &tools_for_key, capture_tx).await
+            inner
+                .chat(&messages_for_key, &tools_for_key, capture_tx)
+                .await
         });
 
         let mut captured = Vec::new();
@@ -168,13 +174,7 @@ impl Provider for CachedProvider {
         }
 
         let result = inner_handle.await?;
-        cache.put(
-            &model,
-            messages,
-            tools,
-            None,
-            captured,
-        );
+        cache.put(&model, messages, tools, None, captured);
         result
     }
 
@@ -255,11 +255,17 @@ mod tests {
         let tools = [];
 
         cache.put(
-            "gpt-4", &msgs_a, &tools, None,
+            "gpt-4",
+            &msgs_a,
+            &tools,
+            None,
             vec![ProviderEvent::Text("alpha".into()), ProviderEvent::Done],
         );
         cache.put(
-            "gpt-4", &msgs_b, &tools, None,
+            "gpt-4",
+            &msgs_b,
+            &tools,
+            None,
             vec![ProviderEvent::Text("beta".into()), ProviderEvent::Done],
         );
 
@@ -277,11 +283,17 @@ mod tests {
         let tools = [];
 
         cache.put(
-            "gpt-4", &msgs, &tools, None,
+            "gpt-4",
+            &msgs,
+            &tools,
+            None,
             vec![ProviderEvent::Text("gpt4".into()), ProviderEvent::Done],
         );
         cache.put(
-            "gpt-4o", &msgs, &tools, None,
+            "gpt-4o",
+            &msgs,
+            &tools,
+            None,
             vec![ProviderEvent::Text("gpt4o".into()), ProviderEvent::Done],
         );
 
@@ -300,11 +312,17 @@ mod tests {
         let tools_b = [make_tool("tool_b")];
 
         cache.put(
-            "gpt-4", &msgs, &tools_a, None,
+            "gpt-4",
+            &msgs,
+            &tools_a,
+            None,
             vec![ProviderEvent::Text("a".into()), ProviderEvent::Done],
         );
         cache.put(
-            "gpt-4", &msgs, &tools_b, None,
+            "gpt-4",
+            &msgs,
+            &tools_b,
+            None,
             vec![ProviderEvent::Text("b".into()), ProviderEvent::Done],
         );
 
@@ -322,11 +340,17 @@ mod tests {
         let tools = [];
 
         cache.put(
-            "gpt-4", &msgs, &tools, Some("high"),
+            "gpt-4",
+            &msgs,
+            &tools,
+            Some("high"),
             vec![ProviderEvent::Text("high".into()), ProviderEvent::Done],
         );
         cache.put(
-            "gpt-4", &msgs, &tools, Some("low"),
+            "gpt-4",
+            &msgs,
+            &tools,
+            Some("low"),
             vec![ProviderEvent::Text("low".into()), ProviderEvent::Done],
         );
 
@@ -346,14 +370,20 @@ mod tests {
 
         let first_msgs = [make_message("first")];
         cache.put(
-            "gpt-4", &first_msgs, &tools, None,
+            "gpt-4",
+            &first_msgs,
+            &tools,
+            None,
             vec![ProviderEvent::Text("first".into()), ProviderEvent::Done],
         );
 
         for i in 0..MAX_CACHE_ENTRIES {
             let msgs = [make_message(&format!("msg_{i}"))];
             cache.put(
-                "gpt-4", &msgs, &tools, None,
+                "gpt-4",
+                &msgs,
+                &tools,
+                None,
                 vec![ProviderEvent::Text(format!("{i}")), ProviderEvent::Done],
             );
         }
@@ -382,7 +412,10 @@ mod tests {
         let tools = [];
 
         cache.put(
-            "gpt-4", &msgs, &tools, None,
+            "gpt-4",
+            &msgs,
+            &tools,
+            None,
             vec![ProviderEvent::Error("fail".into()), ProviderEvent::Done],
         );
         assert!(cache.get("gpt-4", &msgs, &tools, None).is_none());

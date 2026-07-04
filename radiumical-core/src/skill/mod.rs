@@ -118,8 +118,7 @@ pub fn match_by_input(input: &str) -> Vec<SkillMeta> {
             let desc_lower = m.description.to_lowercase();
             let name_lower = m.name.to_lowercase();
             // Match if skill name appears in input, or input contains keywords from description
-            input_lower.contains(&name_lower)
-                || words.iter().any(|w| desc_lower.contains(w))
+            input_lower.contains(&name_lower) || words.iter().any(|w| desc_lower.contains(w))
         })
         .collect()
 }

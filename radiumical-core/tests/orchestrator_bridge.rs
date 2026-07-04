@@ -26,8 +26,7 @@ fn roundtrip_simple_plan_through_dynamic() {
     assert_eq!(dyn_orch.tasks[&3].state, TaskState::Pending);
 
     // Add a guard on task 3
-    dyn_orch.tasks.get_mut(&3).unwrap().guard =
-        Some(Guard::EventEmitted("tests.pass".into()));
+    dyn_orch.tasks.get_mut(&3).unwrap().guard = Some(Guard::EventEmitted("tests.pass".into()));
 
     // Export back to simple plan
     let plan = dyn_orch.export_plan("Deploy");
@@ -46,15 +45,21 @@ fn dynamic_tick_advances_tasks_with_met_deps() {
 
     // Tick 1: task 1 should become Ready
     let actions = orch.tick();
-    assert!(actions.iter().any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(1))));
-    assert!(!actions.iter().any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
+    assert!(actions
+        .iter()
+        .any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(1))));
+    assert!(!actions
+        .iter()
+        .any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
 
     // Complete task 1
     orch.tagged_done(1, Some("done".into())).unwrap();
 
     // Tick 2: task 2 should become Ready
     let actions = orch.tick();
-    assert!(actions.iter().any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
+    assert!(actions
+        .iter()
+        .any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
 }
 
 #[test]
@@ -71,7 +76,9 @@ fn dynamic_guard_blocks_until_event() {
 
     // Tick: task 2 deps met but guard blocks
     let actions = orch.tick();
-    assert!(!actions.iter().any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
+    assert!(!actions
+        .iter()
+        .any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
 
     // Emit the event
     orch.event_bus.emit(radiumical_core::dynamic::Event {
@@ -83,7 +90,9 @@ fn dynamic_guard_blocks_until_event() {
 
     // Now the guard should pass
     let actions = orch.tick();
-    assert!(actions.iter().any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
+    assert!(actions
+        .iter()
+        .any(|a| matches!(a, radiumical_core::dynamic::TickAction::TaskReady(2))));
 }
 
 #[test]

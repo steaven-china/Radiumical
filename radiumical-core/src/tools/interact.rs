@@ -125,11 +125,15 @@ impl Tool for ChoiceTool {
             );
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
             set_choice_tx(tx);
-            if let Err(e) = ctx.ui_tx.send(UiEvent::Choice {
-                id: id.clone(),
-                mode: "input".into(),
-                options: vec![options_str.into()],
-            }).await {
+            if let Err(e) = ctx
+                .ui_tx
+                .send(UiEvent::Choice {
+                    id: id.clone(),
+                    mode: "input".into(),
+                    options: vec![options_str.into()],
+                })
+                .await
+            {
                 tracing::warn!(error = %e, "failed to send Choice UI event (input mode)");
             }
             return match rx.await {
@@ -168,11 +172,15 @@ impl Tool for ChoiceTool {
         );
         let (tx, rx) = tokio::sync::oneshot::channel::<String>();
         set_choice_tx(tx);
-        if let Err(e) = ctx.ui_tx.send(UiEvent::Choice {
-            id: id.clone(),
-            mode: mode.into(),
-            options: opts.clone(),
-        }).await {
+        if let Err(e) = ctx
+            .ui_tx
+            .send(UiEvent::Choice {
+                id: id.clone(),
+                mode: mode.into(),
+                options: opts.clone(),
+            })
+            .await
+        {
             tracing::warn!(error = %e, "failed to send Choice UI event");
         }
 

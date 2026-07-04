@@ -68,7 +68,8 @@ impl App {
                 }
             }
             DashAction::Diagnostics => {
-                self.output.push("  Diagnostics is not yet implemented.".into());
+                self.output
+                    .push("  Diagnostics is not yet implemented.".into());
                 self.output.push(String::new());
                 self.viewport.stick_to_bottom = true;
             }

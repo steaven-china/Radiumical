@@ -438,10 +438,7 @@ impl ProviderPicker {
         self.focus_providers = !self.focus_providers;
     }
 
-    pub fn toggle(
-        &mut self,
-        cmd_tx: &tokio::sync::mpsc::Sender<crate::tui::BackendCmd>,
-    ) -> bool {
+    pub fn toggle(&mut self, cmd_tx: &tokio::sync::mpsc::Sender<crate::tui::BackendCmd>) -> bool {
         self.visible = !self.visible;
         if self.visible {
             let _ = cmd_tx.blocking_send(crate::tui::BackendCmd::FetchProviders);
@@ -574,20 +571,29 @@ impl ProviderPicker {
                     let key_ok = source.api_key().is_some();
                     let key_mark = if key_ok { "✓" } else { "✗" };
                     let style = if selected {
-                        Style::default().bg(Color::Rgb(50, 50, 60)).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .bg(Color::Rgb(50, 50, 60))
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
                     Line::from(Span::styled(
-                        format!("{prefix}{} ({}) [{}]", source.name, source.api_type, key_mark),
+                        format!(
+                            "{prefix}{} ({}) [{}]",
+                            source.name, source.api_type, key_mark
+                        ),
                         style,
                     ))
                 })
                 .collect()
         };
-        let left_block = Block::default().borders(Borders::RIGHT).title(" Providers ");
+        let left_block = Block::default()
+            .borders(Borders::RIGHT)
+            .title(" Providers ");
         f.render_widget(
-            Paragraph::new(Text::from(left_lines)).block(left_block).wrap(Wrap { trim: false }),
+            Paragraph::new(Text::from(left_lines))
+                .block(left_block)
+                .wrap(Wrap { trim: false }),
             chunks[0],
         );
 
@@ -601,7 +607,9 @@ impl ProviderPicker {
                     let selected = !self.focus_providers && i == self.model_selected;
                     let prefix = if selected { "* " } else { "  " };
                     let style = if selected {
-                        Style::default().bg(Color::Rgb(50, 50, 60)).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .bg(Color::Rgb(50, 50, 60))
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
@@ -611,7 +619,9 @@ impl ProviderPicker {
         };
         let right_block = Block::default().title(" Models ");
         f.render_widget(
-            Paragraph::new(Text::from(right_lines)).block(right_block).wrap(Wrap { trim: false }),
+            Paragraph::new(Text::from(right_lines))
+                .block(right_block)
+                .wrap(Wrap { trim: false }),
             chunks[1],
         );
     }

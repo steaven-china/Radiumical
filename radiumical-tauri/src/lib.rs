@@ -82,9 +82,7 @@ async fn run_task(
                 radiumical_core::types::UiEvent::Error(e) => {
                     let _ = handle.emit("llm-error", e);
                 }
-                radiumical_core::types::UiEvent::Toast {
-                    message, level, ..
-                } => {
+                radiumical_core::types::UiEvent::Toast { message, level, .. } => {
                     let _ = handle.emit(
                         "toast",
                         serde_json::json!({ "message": message, "level": level }),
@@ -99,7 +97,9 @@ async fn run_task(
     });
 
     let mut runner = state.runner.lock().await;
-    let result = runner.run(task, workspace, &[], None, ui_tx, cancel_rx).await;
+    let result = runner
+        .run(task, workspace, &[], None, ui_tx, cancel_rx)
+        .await;
     drop(runner);
     result.map_err(|e| e.to_string())?;
     Ok("Done.".into())

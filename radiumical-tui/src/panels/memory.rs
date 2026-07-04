@@ -65,7 +65,10 @@ pub fn render_memory_panel(
     state: &MemoryPanelState,
 ) {
     let tiers = [
-        ("Core", &memory.core as &[radiumical_core::memory::MemoryEntry]),
+        (
+            "Core",
+            &memory.core as &[radiumical_core::memory::MemoryEntry],
+        ),
         ("Mino", &memory.mino),
         ("Short", &memory.short),
     ];

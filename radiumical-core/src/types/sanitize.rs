@@ -60,8 +60,8 @@ pub fn sanitize_tool_messages(messages: &mut Vec<Message>) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::message::{FunctionCall, MessageContent};
     use super::*;
-    use super::super::message::{MessageContent, FunctionCall};
 
     fn assistant_with_calls(ids: &[&str]) -> Message {
         Message {
@@ -209,7 +209,9 @@ mod tests {
             assistant_with_calls(&["call_1"]),
             Message {
                 role: Role::System,
-                content: MessageContent::Text("[Context compressed: 2 older messages summarised]".into()),
+                content: MessageContent::Text(
+                    "[Context compressed: 2 older messages summarised]".into(),
+                ),
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
@@ -226,13 +228,20 @@ mod tests {
                 && matches!(&m.content, MessageContent::Text(s) if s.is_empty())
                 && m.tool_calls.as_ref().map_or(true, |c| c.is_empty())
         });
-        assert!(orphan_asst.is_some(), "orphan assistant should have tool_calls cleared");
+        assert!(
+            orphan_asst.is_some(),
+            "orphan assistant should have tool_calls cleared"
+        );
         let paired_asst = msgs.iter().find(|m| {
             m.role == Role::Assistant
-                && m.tool_calls.as_ref().map_or(false, |c| c.iter().any(|tc| tc.id == "call_2"))
+                && m.tool_calls
+                    .as_ref()
+                    .map_or(false, |c| c.iter().any(|tc| tc.id == "call_2"))
         });
         assert!(paired_asst.is_some(), "call_2 should still be paired");
-        assert!(!msgs.iter().any(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some("call_1")));
+        assert!(!msgs
+            .iter()
+            .any(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some("call_1")));
     }
 
     #[test]

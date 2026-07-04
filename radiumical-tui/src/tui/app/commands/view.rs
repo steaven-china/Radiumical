@@ -168,20 +168,16 @@ impl App {
         } else {
             let name = rest.to_string();
             if self.skill_registry.activate(&name).is_some() {
-                self.output
-                    .push(format!("  Activated skill: {name}"));
+                self.output.push(format!("  Activated skill: {name}"));
             } else {
                 let matched = radiumical_core::skill::match_by_input(&name);
                 if matched.is_empty() {
-                    self.output
-                        .push(format!("  Skill not found: {name}"));
+                    self.output.push(format!("  Skill not found: {name}"));
                 } else {
                     let m = &matched[0];
                     if self.skill_registry.activate(&m.name).is_some() {
-                        self.output.push(format!(
-                            "  Auto-matched and activated: {}",
-                            m.name
-                        ));
+                        self.output
+                            .push(format!("  Auto-matched and activated: {}", m.name));
                     }
                 }
             }
@@ -232,7 +228,8 @@ impl App {
     pub(super) fn cmd_diagnostics(&mut self) -> bool {
         self.output.push("> /diagnostics".into());
         let _ = self.cmd_tx.blocking_send(BackendCmd::RunTask(
-            "Run LSP diagnostics and lint checks on the workspace. Report findings concisely.".into(),
+            "Run LSP diagnostics and lint checks on the workspace. Report findings concisely."
+                .into(),
         ));
         self.output.push("  Running diagnostics…".into());
         self.input.text.clear();

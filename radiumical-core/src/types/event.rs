@@ -75,7 +75,10 @@ pub struct PlanTaskUpdate {
 pub enum BackendCmd {
     RunTask(String),
     Cancel,
-    ChoiceResponse { id: String, value: String },
+    ChoiceResponse {
+        id: String,
+        value: String,
+    },
     SetModel(String),
     SetMode(AgentMode),
     SetThinkingEffort(String),
@@ -87,5 +90,7 @@ pub enum BackendCmd {
     /// Load a saved session into the backend conversation.
     LoadSession(Vec<SessionItem>),
     /// Toggle an MCP server on/off by name.
-    ToggleMcpServer { name: String },
+    ToggleMcpServer {
+        name: String,
+    },
 }

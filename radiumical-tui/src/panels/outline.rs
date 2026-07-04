@@ -35,10 +35,7 @@ pub fn render_outline_panel(
                 .unwrap_or_default();
             lines.push(Line::from(vec![
                 Span::raw("    "),
-                Span::styled(
-                    format!("{:<8}", item.kind),
-                    Style::default().fg(kind_style),
-                ),
+                Span::styled(format!("{:<8}", item.kind), Style::default().fg(kind_style)),
                 Span::styled(
                     format!("{}{}", item.name, sig),
                     Style::default().fg(Color::Rgb(180, 180, 190)),

@@ -107,10 +107,7 @@ impl Tool for SubAgentWaitTool {
                 let status = if result.success { "✓" } else { "❌" };
                 return ToolResult {
                     tool_call_id: String::new(),
-                    content: format!(
-                        "[{status}] Sub-agent '{id}' output:\n\n{}",
-                        result.output
-                    ),
+                    content: format!("[{status}] Sub-agent '{id}' output:\n\n{}", result.output),
                     is_error: !result.success,
                 };
             }

@@ -67,7 +67,8 @@ impl SessionTui {
         }
     }
 
-    pub fn open(&mut self,
+    pub fn open(
+        &mut self,
         sessions: Vec<SessionMeta>,
         current_name: Option<&str>,
         current_desc: Option<&str>,
@@ -133,14 +134,18 @@ impl SessionTui {
 
     pub fn focus_left(&mut self) {
         self.focus = match self.focus {
-            SessionFocus::Actions | SessionFocus::NameEdit | SessionFocus::DescEdit => SessionFocus::List,
+            SessionFocus::Actions | SessionFocus::NameEdit | SessionFocus::DescEdit => {
+                SessionFocus::List
+            }
             other => other,
         };
     }
 
     pub fn focus_right(&mut self) {
         self.focus = match self.focus {
-            SessionFocus::List | SessionFocus::NameEdit | SessionFocus::DescEdit => SessionFocus::Actions,
+            SessionFocus::List | SessionFocus::NameEdit | SessionFocus::DescEdit => {
+                SessionFocus::Actions
+            }
             other => other,
         };
     }
@@ -170,7 +175,8 @@ impl SessionTui {
         self.desc_buffer = desc;
     }
 
-    pub fn render(&self,
+    pub fn render(
+        &self,
         f: &mut Frame,
         area: Rect,
         current_model: &str,
@@ -205,7 +211,10 @@ impl SessionTui {
         let right_width = inner.width.saturating_sub(list_width).saturating_sub(1);
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(list_width), Constraint::Length(right_width)])
+            .constraints([
+                Constraint::Length(list_width),
+                Constraint::Length(right_width),
+            ])
             .split(inner);
 
         // Left: session list
@@ -232,7 +241,12 @@ impl SessionTui {
                     let name = if s.name.len() > (list_width as usize).saturating_sub(6) {
                         format!(
                             "{}…",
-                            &s.name[..s.name.char_indices().nth(list_width as usize - 7).map(|(i, _)| i).unwrap_or(s.name.len())]
+                            &s.name[..s
+                                .name
+                                .char_indices()
+                                .nth(list_width as usize - 7)
+                                .map(|(i, _)| i)
+                                .unwrap_or(s.name.len())]
                         )
                     } else {
                         s.name.clone()
@@ -292,7 +306,11 @@ impl SessionTui {
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("Description: ", Style::default().fg(Color::DarkGray)),
-                    Span::raw(if s.description.is_empty() { "(none)" } else { &s.description }),
+                    Span::raw(if s.description.is_empty() {
+                        "(none)"
+                    } else {
+                        &s.description
+                    }),
                 ]),
             ]
         } else {
@@ -302,9 +320,7 @@ impl SessionTui {
             ))]
         };
 
-        let detail_block = Block::default()
-            .borders(Borders::NONE)
-            .title(" Details ");
+        let detail_block = Block::default().borders(Borders::NONE).title(" Details ");
 
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -324,8 +340,7 @@ impl SessionTui {
         // Action buttons + name/desc fields
         let action_lines = self.render_action_lines();
         f.render_widget(
-            Paragraph::new(Text::from(action_lines))
-                .wrap(Wrap { trim: false }),
+            Paragraph::new(Text::from(action_lines)).wrap(Wrap { trim: false }),
             right_chunks[1],
         );
 
@@ -352,10 +367,7 @@ impl SessionTui {
         }
 
         // Current session hint below title
-        let hint = format!(
-            "  current: {} @ {:?}",
-            current_model, current_mode
-        );
+        let hint = format!("  current: {} @ {:?}", current_model, current_mode);
         let hint_r = Rect {
             x: r.x + 1,
             y: r.y + 1,
@@ -402,9 +414,7 @@ impl SessionTui {
         )));
         let name_selected = self.focus == SessionFocus::NameEdit;
         let name_style = if name_selected {
-            Style::default()
-                .bg(Color::Rgb(40, 40, 50))
-                .fg(Color::White)
+            Style::default().bg(Color::Rgb(40, 40, 50)).fg(Color::White)
         } else {
             Style::default().fg(Color::Rgb(200, 200, 210))
         };
@@ -420,9 +430,7 @@ impl SessionTui {
         )));
         let desc_selected = self.focus == SessionFocus::DescEdit;
         let desc_style = if desc_selected {
-            Style::default()
-                .bg(Color::Rgb(40, 40, 50))
-                .fg(Color::White)
+            Style::default().bg(Color::Rgb(40, 40, 50)).fg(Color::White)
         } else {
             Style::default().fg(Color::Rgb(200, 200, 210))
         };

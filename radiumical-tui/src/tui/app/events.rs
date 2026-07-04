@@ -160,16 +160,13 @@ impl App {
                 } else {
                     name.clone()
                 };
-                let id = format!(
-                    "tc_{}_{}",
-                    self.next_tool_id,
-                    self.session_items.len()
-                );
+                let id = format!("tc_{}_{}", self.next_tool_id, self.session_items.len());
                 self.next_tool_id += 1;
                 let width = box_width(header.len(), args.chars().count(), None);
                 // Embed id at the end of the box top line so measure_blocks still
                 // sees a normal ┌─ header while mouse hit-testing can recover it.
-                self.output.push(format!("{}\x02{}", box_top(&header, width), id));
+                self.output
+                    .push(format!("{}\x02{}", box_top(&header, width), id));
                 self.output.push(box_args_line(&args, width));
 
                 self.session_items.push(SessionItem::Tool {
@@ -298,14 +295,13 @@ impl App {
                     s.alive = alive;
                     s.tool_count = tool_count;
                 } else {
-                    self.mcp_servers.push(
-                        crate::panels::mcp_status::McpServerStatus {
+                    self.mcp_servers
+                        .push(crate::panels::mcp_status::McpServerStatus {
                             name,
                             alive,
                             tool_count,
                             enabled: true,
-                        },
-                    );
+                        });
                 }
             }
             UiEvent::PlanUpdated { title, tasks } => {

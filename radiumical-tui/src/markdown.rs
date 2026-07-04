@@ -295,10 +295,7 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
 
 /// Apply an ANSI SGR sequence to a base style.
 fn apply_sgr(mut style: Style, seq: &str) -> Style {
-    let codes: Vec<u8> = seq
-        .split(';')
-        .filter_map(|p| p.parse().ok())
-        .collect();
+    let codes: Vec<u8> = seq.split(';').filter_map(|p| p.parse().ok()).collect();
     let mut i = 0;
     while i < codes.len() {
         match codes[i] {

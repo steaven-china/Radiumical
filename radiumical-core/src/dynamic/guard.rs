@@ -62,12 +62,7 @@ impl Guard {
             Guard::And(guards) => guards.iter().all(|g| g.evaluate(ctx)),
             Guard::Or(guards) => guards.iter().any(|g| g.evaluate(ctx)),
             Guard::Not(inner) => !inner.evaluate(ctx),
-            Guard::Custom(expr) => {
-                ctx.custom_guards
-                    .get(expr)
-                    .map(|f| f())
-                    .unwrap_or(false)
-            }
+            Guard::Custom(expr) => ctx.custom_guards.get(expr).map(|f| f()).unwrap_or(false),
         }
     }
 }

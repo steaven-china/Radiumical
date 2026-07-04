@@ -40,12 +40,19 @@ impl App {
         } else {
             self.output.push(format!("# {}", self.overlays.plan_title));
             let total = self.overlays.plan_tasks.len();
-            let done = self.overlays.plan_tasks.iter().filter(|t| t.status == radiumical_core::orchestrator::TaskStatus::Done).count();
-            self.output.push(format!("  progress: {}/{} done", done, total));
+            let done = self
+                .overlays
+                .plan_tasks
+                .iter()
+                .filter(|t| t.status == radiumical_core::orchestrator::TaskStatus::Done)
+                .count();
+            self.output
+                .push(format!("  progress: {}/{} done", done, total));
             self.output.push(String::new());
             for task in &self.overlays.plan_tasks {
                 let icon = task.status.icon();
-                self.output.push(format!("  {} #{} {}", icon, task.id, task.title));
+                self.output
+                    .push(format!("  {} #{} {}", icon, task.id, task.title));
             }
         }
         self.output.push(String::new());
@@ -88,13 +95,15 @@ impl App {
                     std::time::Duration::from_secs(3),
                 ));
                 self.output.push(format!("> /agents {}", name));
-                self.output.push(format!("  Role: {} ({})", agent.name, agent.description));
+                self.output
+                    .push(format!("  Role: {} ({})", agent.name, agent.description));
             }
             None => {
                 self.output.push(format!("  Agent not found: {name}"));
                 let available = radiumical_core::agent_pool::load_agents();
                 let names: Vec<&str> = available.iter().map(|a| a.name.as_str()).collect();
-                self.output.push(format!("  Available: {}", names.join(", ")));
+                self.output
+                    .push(format!("  Available: {}", names.join(", ")));
             }
         }
         self.output.push(String::new());
@@ -186,8 +195,10 @@ impl App {
     pub(super) fn cmd_think(&mut self, task: &str) -> bool {
         if task == "/think" {
             self.output.push("> /think".into());
-            self.output.push(format!("  Current effort: {}", self.thinking.effort));
-            self.output.push("  Options: /think low | /think high | /think max".into());
+            self.output
+                .push(format!("  Current effort: {}", self.thinking.effort));
+            self.output
+                .push("  Options: /think low | /think high | /think max".into());
         } else {
             self.thinking.effort = "low".into();
             let _ = self

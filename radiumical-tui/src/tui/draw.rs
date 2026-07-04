@@ -13,7 +13,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let hint_page_start = app.input.hint_page * 8;
     let hint_page_end = (hint_page_start + 8).min(app.input.hints.len());
-    let visible_hints: Vec<(String, String)> = app.input.hints[hint_page_start..hint_page_end].to_vec();
+    let visible_hints: Vec<(String, String)> =
+        app.input.hints[hint_page_start..hint_page_end].to_vec();
     let hint_count = visible_hints.len();
     let input_lines = app.input.text.split('\n').count().clamp(1, 5);
     let input_h = (input_lines + 2) as u16;
@@ -72,7 +73,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             }
             crate::panel::PanelId::Mcp => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
-                crate::panels::mcp_status::render(f, slot, &app.mcp_servers, app.overlays.mcp_selected);
+                crate::panels::mcp_status::render(
+                    f,
+                    slot,
+                    &app.mcp_servers,
+                    app.overlays.mcp_selected,
+                );
             }
             crate::panel::PanelId::Outline => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
@@ -122,7 +128,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             id: crate::panel::PanelId::Help,
             rect: help_r,
         };
-        crate::panel::PanelManager::render_panel_frame(f, &help_slot, " Help ", Color::DarkGray, Color::Rgb(20, 20, 25));
+        crate::panel::PanelManager::render_panel_frame(
+            f,
+            &help_slot,
+            " Help ",
+            Color::DarkGray,
+            Color::Rgb(20, 20, 25),
+        );
         let inner = Rect {
             x: help_r.x + 1,
             y: help_r.y + 1,
@@ -137,7 +149,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // ── Modal overlays (always on top of everything) ──
     if app.session_tui.visible {
-        app.session_tui.render(f, chunks[0], &app.model, app.mode.clone());
+        app.session_tui
+            .render(f, chunks[0], &app.model, app.mode.clone());
     }
     app.choice_panel.render(f, area);
 
@@ -155,7 +168,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_input(f, bottom[0], app);
 
     // Toasts at top-center, offset below any top-occupied panels
-    let top_offset = app.panels.top_occupied_bottom(chunks[0]).saturating_sub(chunks[0].y);
+    let top_offset = app
+        .panels
+        .top_occupied_bottom(chunks[0])
+        .saturating_sub(chunks[0].y);
     let mut toast_y = top_offset;
     for toast in &app.toasts {
         if !toast.is_expired() {
@@ -241,7 +257,11 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
     app.viewport.width = text_area.width as usize;
     f.render_widget(Clear, area);
 
-    app.blocks = measure_blocks(&app.output, text_area.width, app.thinking.show_full_reasoning);
+    app.blocks = measure_blocks(
+        &app.output,
+        text_area.width,
+        app.thinking.show_full_reasoning,
+    );
     for block in &mut app.blocks {
         if let crate::layout::BlockKind::ToolCall {
             name,
@@ -501,56 +521,121 @@ fn draw_hint_row(f: &mut Frame, area: Rect, name: &str, desc: &str, selected: bo
 fn draw_help_overlay_lines() -> Vec<Line<'static>> {
     vec![
         Line::from(vec![
-            Span::styled(" //", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " //",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("  Dashboard"),
         ]),
         Line::from(vec![
-            Span::styled(" /help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " /help",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" All commands"),
         ]),
         Line::from(vec![
-            Span::styled(" /provider", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " /provider",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Switch model"),
         ]),
         Line::from(vec![
-            Span::styled(" /sessions", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " /sessions",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Session mgr"),
         ]),
         Line::from(vec![
-            Span::styled(" /retry", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " /retry",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Retry last"),
         ]),
         Line::from(vec![
-            Span::styled(" /status", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " /status",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Session info"),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled(" Ctrl+C", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Ctrl+C",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Cancel/Quit"),
         ]),
         Line::from(vec![
-            Span::styled(" Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Esc",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Close overlay"),
         ]),
         Line::from(vec![
-            Span::styled(" ↑↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " ↑↓",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" History/hints"),
         ]),
         Line::from(vec![
-            Span::styled(" Tab", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Tab",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Autocomplete"),
         ]),
         Line::from(vec![
-            Span::styled(" PgUp/Dn", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " PgUp/Dn",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Scroll"),
         ]),
         Line::from(vec![
-            Span::styled(" Ctrl+L", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Ctrl+L",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Clear screen"),
         ]),
         Line::from(vec![
-            Span::styled(" Ctrl+A/E", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Ctrl+A/E",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" Line start/end"),
         ]),
         Line::from(""),
@@ -621,10 +706,7 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
         if app.tip_state.enabled {
             Line::from(vec![
                 Span::styled(" Ready", style),
-                Span::styled(
-                    format!("  {} ", app.tip_state.text()),
-                    tip_style,
-                ),
+                Span::styled(format!("  {} ", app.tip_state.text()), tip_style),
             ])
         } else {
             Line::from(vec![

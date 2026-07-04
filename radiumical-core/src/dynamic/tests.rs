@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use super::DynamicOrchestrator;
-use super::TickAction;
 use super::guard::{CompareOp, Guard, GuardContext};
 use super::hook::{Hook, HookAction, HookTrigger};
 use super::task::{DynamicTask, TaskState};
+use super::DynamicOrchestrator;
+use super::TickAction;
 
 fn make_dyn() -> DynamicOrchestrator {
     DynamicOrchestrator::new(None)
@@ -140,7 +140,9 @@ fn test_dynamic_orchestrator_tick() {
     orch.add_task(t3);
 
     let actions = orch.tick();
-    assert!(actions.iter().any(|a| matches!(a, TickAction::TaskReady(1))));
+    assert!(actions
+        .iter()
+        .any(|a| matches!(a, TickAction::TaskReady(1))));
 
     assert_eq!(orch.tasks[&1].state, TaskState::Ready);
     assert_eq!(orch.tasks[&2].state, TaskState::Pending);
@@ -184,7 +186,9 @@ fn test_retry_on_failure() {
     orch.transition(1, TaskState::Failed).unwrap();
 
     let actions = orch.tick();
-    assert!(actions.iter().any(|a| matches!(a, TickAction::TaskRetry(1))));
+    assert!(actions
+        .iter()
+        .any(|a| matches!(a, TickAction::TaskRetry(1))));
     assert_eq!(orch.tasks[&1].state, TaskState::Ready);
     assert_eq!(orch.tasks[&1].retry_count, 1);
 }
@@ -241,7 +245,11 @@ fn test_import_plan_roundtrip() {
 
     let mut orch = make_dyn();
     orch.add_task(DynamicTask::new(1, "A".into()));
-    orch.add_task(DynamicTask::new(2, "B".into()).with_deps(vec![1]).with_agent("coder"));
+    orch.add_task(
+        DynamicTask::new(2, "B".into())
+            .with_deps(vec![1])
+            .with_agent("coder"),
+    );
     orch.tasks.get_mut(&1).unwrap().state = TaskState::Done;
 
     let plan = orch.export_plan("test");
@@ -260,10 +268,10 @@ fn test_import_plan_roundtrip() {
 #[test]
 fn test_orchestrator_to_dynamic() {
     let mut simple = crate::orchestrator::Orchestrator::new(None);
-    simple.create("Test", vec![
-        ("Step 1".into(), vec![]),
-        ("Step 2".into(), vec![1]),
-    ]);
+    simple.create(
+        "Test",
+        vec![("Step 1".into(), vec![]), ("Step 2".into(), vec![1])],
+    );
     simple.start(1).unwrap();
     simple.done(1).unwrap();
 

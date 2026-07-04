@@ -33,8 +33,8 @@ pub struct ChoicePanel {
     pub mode: ChoiceMode,
     pub options: Vec<String>,
     pub selected: usize,
-    pub checked: Vec<bool>,  // for multi mode
-    pub input_buffer: String,  // for input mode
+    pub checked: Vec<bool>,   // for multi mode
+    pub input_buffer: String, // for input mode
     pub input_cursor: usize,
 }
 
@@ -91,11 +91,10 @@ impl ChoicePanel {
     /// Get the final response value.
     pub fn get_response(&self) -> String {
         match self.mode {
-            ChoiceMode::Single => {
-                (self.selected + 1).to_string()
-            }
+            ChoiceMode::Single => (self.selected + 1).to_string(),
             ChoiceMode::Multi => {
-                let selected: Vec<String> = self.checked
+                let selected: Vec<String> = self
+                    .checked
                     .iter()
                     .enumerate()
                     .filter(|(_, &c)| c)
@@ -107,9 +106,7 @@ impl ChoicePanel {
                     selected.join(",")
                 }
             }
-            ChoiceMode::Input => {
-                self.input_buffer.clone()
-            }
+            ChoiceMode::Input => self.input_buffer.clone(),
         }
     }
 
@@ -124,7 +121,8 @@ impl ChoicePanel {
             _ => 3,
         };
         let h = (n + prompt_h + 2).min(area.height.saturating_sub(4)).max(6);
-        let w = self.options
+        let w = self
+            .options
             .iter()
             .map(|o| o.len())
             .max()
@@ -134,7 +132,12 @@ impl ChoicePanel {
             .max(30) as u16;
         let x = area.x + (area.width.saturating_sub(w)) / 2;
         let y = area.y + (area.height.saturating_sub(h)) / 2;
-        let r = Rect { x, y, width: w, height: h };
+        let r = Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        };
 
         f.render_widget(Clear, r);
 
@@ -212,7 +215,10 @@ impl ChoicePanel {
                 }
                 lines.push(Line::from(""));
                 let cursor_ch = if self.input_cursor < self.input_buffer.len() {
-                    self.input_buffer[self.input_cursor..].chars().next().unwrap_or(' ')
+                    self.input_buffer[self.input_cursor..]
+                        .chars()
+                        .next()
+                        .unwrap_or(' ')
                 } else {
                     ' '
                 };
@@ -239,9 +245,6 @@ impl ChoicePanel {
             }
         }
 
-        f.render_widget(
-            Paragraph::new(lines).wrap(Wrap { trim: false }),
-            inner,
-        );
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
 }

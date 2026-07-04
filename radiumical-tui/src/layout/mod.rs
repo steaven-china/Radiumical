@@ -166,11 +166,7 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
             let start = i;
             let raw_first = &output[start];
             // Strip invisible id marker if present at the end.
-            let display_first = raw_first
-                .split('\x02')
-                .next()
-                .unwrap_or(raw_first)
-                .trim();
+            let display_first = raw_first.split('\x02').next().unwrap_or(raw_first).trim();
             let name = display_first
                 .trim_start_matches('┌')
                 .trim_start_matches('─')

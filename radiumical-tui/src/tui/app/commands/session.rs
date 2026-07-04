@@ -52,13 +52,15 @@ impl App {
         self.output.push(String::new());
         self.output.push("  lean CLI coding agent".into());
         self.output.push(String::new());
-        self.output.push("  Type a task to get started, or use:".into());
+        self.output
+            .push("  Type a task to get started, or use:".into());
         self.output.push("    //        — open dashboard".into());
         self.output.push("    /help     — show all commands".into());
         self.output.push("    /provider — switch model".into());
         self.output.push("    /sessions — manage sessions".into());
         self.output.push(String::new());
-        self.output.push("  Ctrl+C cancel  |  Esc close overlay  |  ↑↓ history".into());
+        self.output
+            .push("  Ctrl+C cancel  |  Esc close overlay  |  ↑↓ history".into());
         self.output.push(String::new());
         true
     }
@@ -144,9 +146,9 @@ impl App {
                         let _ = self
                             .cmd_tx
                             .blocking_send(BackendCmd::SetModel(self.model.clone()));
-                        let _ = self.cmd_tx.blocking_send(
-                            BackendCmd::SetThinkingEffort(self.thinking.effort.clone()),
-                        );
+                        let _ = self.cmd_tx.blocking_send(BackendCmd::SetThinkingEffort(
+                            self.thinking.effort.clone(),
+                        ));
                         let _ = self
                             .cmd_tx
                             .blocking_send(BackendCmd::LoadSession(self.session_items.clone()));

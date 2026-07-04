@@ -121,7 +121,9 @@ impl App {
             } else {
                 task.to_string()
             };
-            let _ = self.cmd_tx.blocking_send(crate::tui::BackendCmd::RunTask(final_task));
+            let _ = self
+                .cmd_tx
+                .blocking_send(crate::tui::BackendCmd::RunTask(final_task));
         }
     }
 }

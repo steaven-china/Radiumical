@@ -20,7 +20,11 @@ pub enum HookAction {
     MarkDone(u32),
     SuspendTask(u32),
     ResumeTask(u32),
-    SpawnAgent { id: String, task: String, agent: Option<String> },
+    SpawnAgent {
+        id: String,
+        task: String,
+        agent: Option<String>,
+    },
     Custom(String),
     Sequence(Vec<HookAction>),
 }

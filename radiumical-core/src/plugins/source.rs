@@ -46,11 +46,7 @@ pub trait SourcePlugin: Plugin {
 
     /// Analyze a single file. `workspace` is the absolute project root;
     /// `relative_path` is the file path relative to that root.
-    fn analyze(
-        &self,
-        workspace: &Path,
-        relative_path: &Path,
-    ) -> anyhow::Result<SourceSummary>;
+    fn analyze(&self, workspace: &Path, relative_path: &Path) -> anyhow::Result<SourceSummary>;
 }
 
 impl PluginRegistry {
@@ -79,11 +75,7 @@ impl SourcePluginRegistry {
     }
 
     /// Analyze a file with every plugin that can handle it.
-    pub fn analyze(
-        &self,
-        workspace: &Path,
-        relative_path: &Path,
-    ) -> anyhow::Result<SourceSummary> {
+    pub fn analyze(&self, workspace: &Path, relative_path: &Path) -> anyhow::Result<SourceSummary> {
         let mut merged = SourceSummary {
             language: language_for(relative_path_str(relative_path)),
             ..Default::default()
@@ -100,10 +92,7 @@ impl SourcePluginRegistry {
                     merged.notes.extend(summary.notes);
                 }
                 Err(e) => {
-                    merged.notes.push(format!(
-                        "{} failed: {e}",
-                        plugin.name()
-                    ));
+                    merged.notes.push(format!("{} failed: {e}", plugin.name()));
                 }
             }
         }
@@ -159,11 +148,7 @@ impl SourcePlugin for RegexLinter {
         language_for(relative_path.to_str().unwrap_or("")).is_some()
     }
 
-    fn analyze(
-        &self,
-        workspace: &Path,
-        relative_path: &Path,
-    ) -> anyhow::Result<SourceSummary> {
+    fn analyze(&self, workspace: &Path, relative_path: &Path) -> anyhow::Result<SourceSummary> {
         let full = workspace.join(relative_path);
         let text = std::fs::read_to_string(&full)?;
         let mut findings = Vec::new();
@@ -239,10 +224,7 @@ mod tests {
             .unwrap();
 
         assert!(summary.language.as_deref() == Some("rust"));
-        let todo = summary
-            .findings
-            .iter()
-            .any(|f| f.message.contains("TODO"));
+        let todo = summary.findings.iter().any(|f| f.message.contains("TODO"));
         let trailing = summary
             .findings
             .iter()
@@ -261,9 +243,7 @@ mod tests {
 
         let mut reg = SourcePluginRegistry::new();
         reg.register(Box::new(RegexLinter));
-        let summary = reg
-            .analyze(&dir, std::path::Path::new("lib.rs"))
-            .unwrap();
+        let summary = reg.analyze(&dir, std::path::Path::new("lib.rs")).unwrap();
 
         assert!(summary.findings.iter().any(|f| f.message.contains("FIXME")));
         cleanup(&dir);

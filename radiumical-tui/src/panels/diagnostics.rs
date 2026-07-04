@@ -81,7 +81,11 @@ pub fn render_diagnostics_panel(
             .count();
         lines.push(Line::from(Span::styled(
             format!("  {} errors, {} warnings", errors, warnings),
-            Style::default().fg(if errors > 0 { Color::Red } else { Color::Yellow }),
+            Style::default().fg(if errors > 0 {
+                Color::Red
+            } else {
+                Color::Yellow
+            }),
         )));
         lines.push(Line::from(""));
 
@@ -102,7 +106,10 @@ pub fn render_diagnostics_panel(
                 Span::raw(" "),
                 Span::styled(loc, Style::default().fg(Color::Rgb(120, 120, 140))),
                 Span::raw(" "),
-                Span::styled(&item.message, Style::default().fg(Color::Rgb(180, 180, 190))),
+                Span::styled(
+                    &item.message,
+                    Style::default().fg(Color::Rgb(180, 180, 190)),
+                ),
             ]));
         }
     }

@@ -37,8 +37,16 @@ pub fn render(f: &mut Frame, slot: &PanelSlot, servers: &[McpServerStatus], sele
     } else {
         for (i, server) in servers.iter().enumerate() {
             let is_sel = i == selected;
-            let toggle_icon = if server.enabled { "\u{25cf}" } else { "\u{25cb}" };
-            let toggle_color = if server.enabled { Color::Green } else { Color::DarkGray };
+            let toggle_icon = if server.enabled {
+                "\u{25cf}"
+            } else {
+                "\u{25cb}"
+            };
+            let toggle_color = if server.enabled {
+                Color::Green
+            } else {
+                Color::DarkGray
+            };
 
             let name_style = if !server.enabled {
                 Style::default()
@@ -75,10 +83,7 @@ pub fn render(f: &mut Frame, slot: &PanelSlot, servers: &[McpServerStatus], sele
                     format!("{} tools  ", server.tool_count),
                     Style::default().fg(Color::Rgb(130, 130, 140)),
                 ));
-                spans.push(Span::styled(
-                    status_icon,
-                    Style::default().fg(status_color),
-                ));
+                spans.push(Span::styled(status_icon, Style::default().fg(status_color)));
                 spans.push(Span::styled(
                     format!(" {status_text}"),
                     Style::default().fg(status_color),

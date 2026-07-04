@@ -3,8 +3,8 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::agent_pool;
-use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 use crate::tools::Tool;
+use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
 pub struct ListAgentsTool;
 

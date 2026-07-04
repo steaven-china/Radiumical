@@ -134,20 +134,36 @@ impl Tool for TodoList {
             let total = store.items.len();
             let done = store.items.iter().filter(|t| t.done).count();
             let pending = total - done;
-            let high = store.items.iter().filter(|t| !t.done && t.priority == TodoPriority::High).count();
-            let med = store.items.iter().filter(|t| !t.done && t.priority == TodoPriority::Medium).count();
-            let low = store.items.iter().filter(|t| !t.done && t.priority == TodoPriority::Low).count();
+            let high = store
+                .items
+                .iter()
+                .filter(|t| !t.done && t.priority == TodoPriority::High)
+                .count();
+            let med = store
+                .items
+                .iter()
+                .filter(|t| !t.done && t.priority == TodoPriority::Medium)
+                .count();
+            let low = store
+                .items
+                .iter()
+                .filter(|t| !t.done && t.priority == TodoPriority::Low)
+                .count();
             let cats: Vec<String> = {
                 let mut set: std::collections::HashSet<String> = std::collections::HashSet::new();
                 for t in &store.items {
-                    if let Some(c) = &t.category { set.insert(c.clone()); }
+                    if let Some(c) = &t.category {
+                        set.insert(c.clone());
+                    }
                 }
                 let mut v: Vec<String> = set.into_iter().collect();
                 v.sort();
                 v
             };
             let mut out = format!("Todo stats: {total} total, {done} done, {pending} pending\n");
-            out.push_str(&format!("  Priority: {high} high, {med} medium, {low} low\n"));
+            out.push_str(&format!(
+                "  Priority: {high} high, {med} medium, {low} low\n"
+            ));
             if !cats.is_empty() {
                 out.push_str(&format!("  Categories: {}\n", cats.join(", ")));
             }
@@ -184,7 +200,11 @@ impl Tool for TodoList {
             let idx = store.items.len();
             let item = store.items.last().unwrap();
             let pri = item.priority.icon();
-            let cat = item.category.as_deref().map(|c| format!(" [{c}]")).unwrap_or_default();
+            let cat = item
+                .category
+                .as_deref()
+                .map(|c| format!(" [{c}]"))
+                .unwrap_or_default();
             return ToolResult {
                 tool_call_id: String::new(),
                 content: format!("Added #{idx}: {pri} {}{cat}", item.text),
@@ -243,7 +263,10 @@ impl Tool for TodoList {
                         store.save(workspace);
                         return ToolResult {
                             tool_call_id: String::new(),
-                            content: format!("Edited #{idx}: '{old}' → '{}'", store.items[idx - 1].text),
+                            content: format!(
+                                "Edited #{idx}: '{old}' → '{}'",
+                                store.items[idx - 1].text
+                            ),
                             is_error: false,
                         };
                     }
@@ -290,7 +313,10 @@ impl Tool for TodoList {
                         let p = store.items[idx - 1].priority.icon();
                         return ToolResult {
                             tool_call_id: String::new(),
-                            content: format!("Priority #{idx} → {p} {:?}", store.items[idx - 1].priority),
+                            content: format!(
+                                "Priority #{idx} → {p} {:?}",
+                                store.items[idx - 1].priority
+                            ),
                             is_error: false,
                         };
                     }
@@ -427,9 +453,20 @@ fn render_list(items: &[TodoItem], filter: Option<&str>) -> ToolResult {
         let idx = i + 1;
         let check = if item.done { "x" } else { " " };
         let pri = item.priority.icon();
-        let cat = item.category.as_deref().map(|c| format!(" [{c}]")).unwrap_or_default();
-        let note = item.note.as_deref().map(|n| format!("\n      note: {n}")).unwrap_or_default();
-        out.push_str(&format!("  [{check}] {idx}. {pri} {}{cat}{note}\n", item.text));
+        let cat = item
+            .category
+            .as_deref()
+            .map(|c| format!(" [{c}]"))
+            .unwrap_or_default();
+        let note = item
+            .note
+            .as_deref()
+            .map(|n| format!("\n      note: {n}"))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "  [{check}] {idx}. {pri} {}{cat}{note}\n",
+            item.text
+        ));
     }
 
     let pending = items.iter().filter(|t| !t.done).count();
@@ -544,10 +581,7 @@ impl Tool for OrchestrateTool {
                     if has_agents {
                         Ok(orch.create_with_agents(title, tasks))
                     } else {
-                        Ok(orch.create(
-                            title,
-                            tasks.into_iter().map(|(t, d, _)| (t, d)).collect(),
-                        ))
+                        Ok(orch.create(title, tasks.into_iter().map(|(t, d, _)| (t, d)).collect()))
                     }
                 }
             }

@@ -735,7 +735,10 @@ fn parse_hook(v: &serde_json::Value) -> Option<Hook> {
         _ => return None,
     };
     let action = parse_hook_action(v.get("action")?)?;
-    let guard = v.get("guard").filter(|g| g.get("type").is_some()).and_then(parse_guard);
+    let guard = v
+        .get("guard")
+        .filter(|g| g.get("type").is_some())
+        .and_then(parse_guard);
     let max_fires = v["max_fires"].as_u64().map(|n| n as u32);
 
     Some(Hook {
