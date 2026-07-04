@@ -950,7 +950,7 @@ pub fn default_system_prompt() -> String {
 - Explain your reasoning concisely before making changes.
 - If you're uncertain, inspect the code first. Never guess.
 - Report what you changed and why when done.
-"#.into()
+"#
 }
 #[derive(Debug)]
 pub enum UiEvent {

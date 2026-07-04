@@ -1,6 +1,6 @@
 //! Source-code tool — queries registered source plugins for a file.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use async_trait::async_trait;
 
@@ -34,7 +34,7 @@ impl Tool for SourceCodeTool {
 
     async fn execute(
         &self,
-        workspace: &PathBuf,
+        workspace: &Path,
         arguments: &str,
     ) -> ToolResult {
         self.execute_with_context(workspace, arguments, &crate::tools::ToolContext::default())
@@ -43,7 +43,7 @@ impl Tool for SourceCodeTool {
 
     async fn execute_with_context(
         &self,
-        workspace: &PathBuf,
+        workspace: &Path,
         arguments: &str,
         ctx: &crate::tools::ToolContext,
     ) -> ToolResult {

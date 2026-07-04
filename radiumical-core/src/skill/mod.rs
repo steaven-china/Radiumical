@@ -243,10 +243,10 @@ fn parse_full(path: &Path) -> Option<Skill> {
 }
 
 fn split_frontmatter(content: &str) -> (&str, &str) {
-    if content.starts_with("---") {
-        if let Some(end) = content[3..].find("---") {
-            let fm = content[3..3 + end].trim();
-            let body = content[3 + end + 3..].trim();
+    if let Some(stripped) = content.strip_prefix("---") {
+        if let Some(end) = stripped.find("---") {
+            let fm = stripped[..end].trim();
+            let body = stripped[end + 3..].trim();
             (fm, body)
         } else {
             ("", content.trim())

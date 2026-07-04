@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
@@ -27,7 +27,7 @@ impl Tool for LspDiagnostics {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, _arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, _arguments: &str) -> ToolResult {
         let langs = crate::lsp::detect_language(workspace);
         if langs.is_empty() {
             return ToolResult {
@@ -74,7 +74,7 @@ impl Tool for SysInfo {
         }
     }
 
-    async fn execute(&self, _ws: &PathBuf, _args: &str) -> ToolResult {
+    async fn execute(&self, _ws: &Path, _args: &str) -> ToolResult {
         ToolResult {
             tool_call_id: String::new(),
             content: crate::systools::sysinfo(),
@@ -96,7 +96,7 @@ impl Tool for TimeNow {
         }
     }
 
-    async fn execute(&self, _ws: &PathBuf, _args: &str) -> ToolResult {
+    async fn execute(&self, _ws: &Path, _args: &str) -> ToolResult {
         ToolResult {
             tool_call_id: String::new(),
             content: crate::systools::time_now(),
@@ -118,7 +118,7 @@ impl Tool for CronTab {
         }
     }
 
-    async fn execute(&self, _ws: &PathBuf, _args: &str) -> ToolResult {
+    async fn execute(&self, _ws: &Path, _args: &str) -> ToolResult {
         ToolResult {
             tool_call_id: String::new(),
             content: crate::systools::cron_info(),
@@ -140,11 +140,11 @@ impl Tool for ListDir {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
         let p = args["path"].as_str().unwrap_or("");
         let dir = if p.is_empty() {
-            workspace.clone()
+            workspace.to_path_buf()
         } else {
             workspace.join(p)
         };
@@ -169,11 +169,11 @@ impl Tool for TreeDir {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
         let p = args["path"].as_str().unwrap_or("");
         let dir = if p.is_empty() {
-            workspace.clone()
+            workspace.to_path_buf()
         } else {
             workspace.join(p)
         };

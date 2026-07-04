@@ -332,6 +332,12 @@ pub struct EventBus {
     emitted_keys: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
+impl Default for EventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventBus {
     pub fn new() -> Self {
         Self {
@@ -393,6 +399,12 @@ pub struct AgentResult {
 
 pub struct PersistentAgentPool {
     agents: HashMap<String, PersistentAgent>,
+}
+
+impl Default for PersistentAgentPool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PersistentAgentPool {
@@ -843,6 +855,91 @@ fn now_secs() -> u64 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Bidirectional conversion: Orchestrator (simple) ↔ DynamicOrchestrator
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::orchestrator::{Plan, Task, TaskStatus};
+
+impl TaskState {
+    /// Map from the simple orchestrator's TaskStatus.
+    pub fn from_task_status(s: &TaskStatus) -> Self {
+        match s {
+            TaskStatus::Pending => TaskState::Pending,
+            TaskStatus::Active => TaskState::Running,
+            TaskStatus::Done => TaskState::Done,
+            TaskStatus::Blocked => TaskState::Suspended,
+            TaskStatus::Skipped => TaskState::Skipped,
+        }
+    }
+
+    /// Map to the simple orchestrator's TaskStatus (lossy — Persistent/Failed/Ready collapse).
+    pub fn to_task_status(&self) -> TaskStatus {
+        match self {
+            TaskState::Pending => TaskStatus::Pending,
+            TaskState::Ready => TaskStatus::Pending,
+            TaskState::Running => TaskStatus::Active,
+            TaskState::Suspended => TaskStatus::Blocked,
+            TaskState::Done => TaskStatus::Done,
+            TaskState::Failed => TaskStatus::Blocked,
+            TaskState::Skipped => TaskStatus::Skipped,
+            TaskState::Persistent => TaskStatus::Active,
+        }
+    }
+}
+
+impl DynamicOrchestrator {
+    /// Import a simple Plan into this dynamic orchestrator.
+    /// Preserves task IDs, titles, deps, agent assignments, and status.
+    pub fn import_plan(&mut self, plan: &Plan) {
+        for t in &plan.tasks {
+            let mut dt = DynamicTask::new(t.id, t.title.clone())
+                .with_deps(t.deps.clone());
+            dt.state = TaskState::from_task_status(&t.status);
+            dt.order = t.order;
+            dt.agent = t.agent.clone();
+            self.tasks.insert(t.id, dt);
+        }
+        if plan.next_id > self.next_id {
+            self.next_id = plan.next_id;
+        }
+    }
+
+    /// Export to a simple Plan (lossy — hooks, guards, events are dropped).
+    pub fn export_plan(&self, title: &str) -> Plan {
+        let mut tasks: Vec<Task> = self
+            .tasks
+            .values()
+            .map(|dt| Task {
+                id: dt.id,
+                title: dt.title.clone(),
+                status: dt.state.to_task_status(),
+                deps: dt.deps.clone(),
+                order: dt.order,
+                agent: dt.agent.clone(),
+            })
+            .collect();
+        tasks.sort_by_key(|t| t.order);
+        Plan {
+            title: title.to_string(),
+            tasks,
+            next_id: self.next_id,
+        }
+    }
+}
+
+use crate::orchestrator::Orchestrator;
+
+impl Orchestrator {
+    /// Upgrade to a DynamicOrchestrator, preserving all plan state.
+    /// The returned DynamicOrchestrator has no hooks/guards — add them after.
+    pub fn to_dynamic(&self) -> DynamicOrchestrator {
+        let mut dyn_orch = DynamicOrchestrator::new(None);
+        dyn_orch.import_plan(self.plan());
+        dyn_orch
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Tests
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1084,5 +1181,43 @@ mod tests {
         assert!(status.contains("○"));
         assert!(status.contains("@coder"));
         assert!(status.contains("[guarded]"));
+    }
+
+    #[test]
+    fn test_import_plan_roundtrip() {
+        let mut orch = make_dyn();
+        orch.add_task(DynamicTask::new(1, "A".into()));
+        orch.add_task(DynamicTask::new(2, "B".into()).with_deps(vec![1]).with_agent("coder"));
+        orch.tasks.get_mut(&1).unwrap().state = TaskState::Done;
+
+        let plan = orch.export_plan("test");
+        assert_eq!(plan.title, "test");
+        assert_eq!(plan.tasks.len(), 2);
+        assert_eq!(plan.tasks[0].status, TaskStatus::Done);
+        assert_eq!(plan.tasks[1].agent.as_deref(), Some("coder"));
+
+        // Re-import into a fresh orchestrator
+        let mut orch2 = make_dyn();
+        orch2.import_plan(&plan);
+        assert_eq!(orch2.tasks.len(), 2);
+        assert_eq!(orch2.tasks[&1].state, TaskState::Done);
+        assert_eq!(orch2.tasks[&2].agent.as_deref(), Some("coder"));
+    }
+
+    #[test]
+    fn test_orchestrator_to_dynamic() {
+        let mut simple = crate::orchestrator::Orchestrator::new(None);
+        simple.create("Test", vec![
+            ("Step 1".into(), vec![]),
+            ("Step 2".into(), vec![1]),
+        ]);
+        simple.start(1).unwrap();
+        simple.done(1).unwrap();
+
+        let dyn_orch = simple.to_dynamic();
+        assert_eq!(dyn_orch.tasks.len(), 2);
+        assert_eq!(dyn_orch.tasks[&1].state, TaskState::Done);
+        // After done(1), old orchestrator auto-starts task 2 as Active → Running
+        assert_eq!(dyn_orch.tasks[&2].state, TaskState::Running);
     }
 }

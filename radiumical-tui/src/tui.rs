@@ -148,7 +148,7 @@ pub fn run(
             let hint_page_start = app.hint_page * 8;
             let hint_page_end = (hint_page_start + 8).min(app.hints.len());
             let hint_count = hint_page_end.saturating_sub(hint_page_start);
-            let input_lines = app.input.split('\n').count().max(1).min(5);
+            let input_lines = app.input.split('\n').count().clamp(1, 5);
             let bottom_h = ((input_lines + 2) + hint_count + 1)
                 .min(term_size.height.saturating_sub(1) as usize) as u16;
             let out_h = term_size.height.saturating_sub(bottom_h).max(1) as usize;

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::tools::interact::get_annotations;
 use crate::tools::{crlf_to_lf, lf_to_crlf, Tool};
@@ -81,7 +81,7 @@ impl Tool for ReadFile {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -186,7 +186,7 @@ impl Tool for WriteFile {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -268,7 +268,7 @@ impl Tool for EditFile {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {

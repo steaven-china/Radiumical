@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Command;
 
 use crate::tools::Tool;
@@ -28,7 +28,7 @@ impl Tool for RunCommand {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -52,7 +52,7 @@ impl Tool for RunCommand {
         #[cfg(target_os = "windows")]
         let cmd_str = format!("chcp 65001 > nul && {}", cmd_str);
 
-        let ws_clone = workspace.clone();
+        let ws_clone = workspace.to_path_buf();
         let cmd = cmd_str.clone();
         let output = match tokio::task::spawn_blocking(move || {
             Command::new(&shell)

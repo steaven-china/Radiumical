@@ -18,7 +18,7 @@ use crate::types::{
     ToolDefinition, ToolResult, UiEvent,
 };
 use crate::{orchestrator};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,7 +29,7 @@ pub trait ToolHook: Send + Sync {
     fn after(&self,
         _call: &ToolCall,
         _result: ToolResult,
-        _workspace: &PathBuf,
+        _workspace: &Path,
     ) -> ToolResult {
         _result
     }
@@ -224,6 +224,7 @@ impl Harness {
     }
 
     /// Run one agent task to completion.
+    #[allow(clippy::too_many_arguments)]
     pub async fn run(
         &mut self,
         task: String,
@@ -691,13 +692,13 @@ fn tool_result_msg(tc: &ToolCall, result: ToolResult) -> Message {
 
 async fn exec_with_timeout(
     tool: &dyn Tool,
-    workspace: &PathBuf,
+    workspace: &Path,
     arguments: &str,
     timeout: Duration,
     ctx: &ToolContext,
 ) -> ToolResult {
     let name = tool.definition().function.name.clone();
-    let ws = workspace.clone();
+    let ws = workspace.to_path_buf();
     let args = arguments.to_string();
     match tokio::time::timeout(timeout, tool.execute_with_context(&ws, &args, ctx)).await {
         Ok(r) => r,

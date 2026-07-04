@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::cluster::AgentCluster;
@@ -183,7 +183,7 @@ impl Tool for ClusterTool {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -266,7 +266,7 @@ impl Tool for ClusterTool {
                     }
                 };
                 let max_concurrency = args["max_concurrency"].as_u64().unwrap_or(4) as usize;
-                let mut cluster = AgentCluster::new(orch, config, provider, workspace.clone());
+                let mut cluster = AgentCluster::new(orch, config, provider, workspace.to_path_buf());
                 cluster.max_concurrency = max_concurrency;
 
                 // Add workers
@@ -484,7 +484,7 @@ impl Tool for ClusterTool {
                 let rt = tokio::runtime::Handle::current();
                 let events = rt.block_on(cluster.tick());
 
-                let mut out = format!("Tick complete:\n");
+                let mut out = "Tick complete:\n".to_string();
                 for ev in &events {
                     match ev {
                         crate::cluster::ClusterEvent::TaskAssigned { task_id, worker_id } => {

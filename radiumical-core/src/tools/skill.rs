@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use async_trait::async_trait;
 
@@ -53,7 +53,7 @@ impl Tool for ListSkillsTool {
         skill_tool_defs().into_iter().next().unwrap()
     }
 
-    async fn execute(&self, _workspace: &PathBuf, _arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, _arguments: &str) -> ToolResult {
         let metas = skill::discover();
         if metas.is_empty() {
             return ToolResult {
@@ -84,7 +84,7 @@ impl Tool for LoadSkillTool {
         skill_tool_defs().into_iter().nth(1).unwrap()
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -136,6 +136,7 @@ impl Tool for LoadSkillTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_list_skills() {

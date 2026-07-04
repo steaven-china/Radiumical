@@ -177,10 +177,8 @@ fn collect_source_files(workspace: &Path) -> Result<Vec<PathBuf>> {
                     continue;
                 }
                 stack.push(path);
-            } else if path.is_file() {
-                if is_source_file(&path) {
+            } else if path.is_file() && is_source_file(&path) {
                     files.push(path);
-                }
             }
         }
     }
@@ -219,7 +217,7 @@ fn language_for(path: &str) -> String {
 
 fn extract_items(path: &Path, language: &str) -> Result<Vec<OutlineItem>> {
     let text = fs::read_to_string(path)?;
-    let lang: &str = &language;
+    let lang: &str = language;
     Ok(match lang {
         "rust" => parse_rust(&text),
         "python" => parse_python(&text),
@@ -278,8 +276,8 @@ fn parse_rust(text: &str) -> Vec<OutlineItem> {
 
         // pub / fn / struct / enum / trait / type / const / static
         let trimmed = line.trim_start();
-        let (_visibility, rest) = if trimmed.starts_with("pub ") {
-            ("pub", trimmed[4..].trim_start())
+        let (_visibility, rest) = if let Some(stripped) = trimmed.strip_prefix("pub ") {
+            ("pub", stripped.trim_start())
         } else {
             ("", trimmed)
         };
@@ -350,9 +348,9 @@ fn parse_js_ts(text: &str) -> Vec<OutlineItem> {
                     signature: None,
                 });
             }
-        } else if trimmed.starts_with("export ") {
+        } else if let Some(inner) = trimmed.strip_prefix("export ") {
             // export function/class/const/let
-            let inner = trimmed[7..].trim_start();
+            let inner = inner.trim_start();
             if let Some(rest) = inner.strip_prefix("function ") {
                 if let Some(name) = rest.split('(').next() {
                     items.push(OutlineItem {
@@ -456,8 +454,8 @@ fn parse_c_family(text: &str) -> Vec<OutlineItem> {
     for raw in text.lines() {
         let line = strip_line_comment(raw, "//");
         let trimmed = line.trim_start();
-        if trimmed.starts_with("typedef ") {
-            let rest = trimmed[8..].trim_start();
+        if let Some(rest) = trimmed.strip_prefix("typedef ") {
+            let rest = rest.trim_start();
             if rest.starts_with("struct ") || rest.starts_with("enum ") {
                 if let Some(name) = rest.split_whitespace().nth(1) {
                     items.push(OutlineItem {
@@ -467,16 +465,16 @@ fn parse_c_family(text: &str) -> Vec<OutlineItem> {
                     });
                 }
             }
-        } else if trimmed.starts_with("struct ") {
-            if let Some(name) = trimmed[7..].split_whitespace().next() {
+        } else if let Some(stripped) = trimmed.strip_prefix("struct ") {
+            if let Some(name) = stripped.split_whitespace().next() {
                 items.push(OutlineItem {
                     kind: "struct".into(),
                     name: name.trim_end_matches('{').into(),
                     signature: None,
                 });
             }
-        } else if trimmed.starts_with("enum ") {
-            if let Some(name) = trimmed[5..].split_whitespace().next() {
+        } else if let Some(stripped) = trimmed.strip_prefix("enum ") {
+            if let Some(name) = stripped.split_whitespace().next() {
                 items.push(OutlineItem {
                     kind: "enum".into(),
                     name: name.trim_end_matches('{').into(),

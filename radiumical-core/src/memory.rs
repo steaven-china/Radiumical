@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::session::workspace_hash;
 
@@ -49,7 +49,7 @@ impl Memory {
         Ok(mem)
     }
 
-    fn load_from_dir(dir: &PathBuf) -> Result<Self> {
+    fn load_from_dir(dir: &Path) -> Result<Self> {
         let path = dir.join("memory.json");
         if path.exists() {
             Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
@@ -59,7 +59,7 @@ impl Memory {
     }
 
     pub fn save(&self) -> Result<()> {
-        let dir = self.dir.clone().unwrap_or_else(|| Self::dir());
+        let dir = self.dir.clone().unwrap_or_else(Self::dir);
         fs::create_dir_all(&dir)?;
         fs::write(dir.join("memory.json"), serde_json::to_string_pretty(self)?)?;
         Ok(())

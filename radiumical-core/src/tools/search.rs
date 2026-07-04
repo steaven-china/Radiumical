@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use regex::Regex;
 
@@ -38,7 +38,7 @@ impl Tool for SearchCode {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -159,7 +159,7 @@ impl Tool for FindFiles {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {

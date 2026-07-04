@@ -13,12 +13,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let hint_page_start = app.hint_page * 8;
     let hint_page_end = (hint_page_start + 8).min(app.hints.len());
-    let visible_hints: Vec<(String, String)> = app.hints[hint_page_start..hint_page_end]
-        .iter()
-        .cloned()
-        .collect();
+    let visible_hints: Vec<(String, String)> = app.hints[hint_page_start..hint_page_end].to_vec();
     let hint_count = visible_hints.len();
-    let input_lines = app.input.split('\n').count().max(1).min(5);
+    let input_lines = app.input.split('\n').count().clamp(1, 5);
     let input_h = (input_lines + 2) as u16;
     let status_h = 1u16;
     let bottom_h = (input_h as usize + hint_count + status_h as usize)
@@ -150,7 +147,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints(
             [Constraint::Length(input_h)]
                 .into_iter()
-                .chain(std::iter::repeat(Constraint::Length(1)).take(hint_count))
+                .chain(std::iter::repeat_n(Constraint::Length(1), hint_count))
                 .chain(std::iter::once(Constraint::Length(1)))
                 .collect::<Vec<_>>(),
         )
@@ -356,7 +353,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
         let thumb_y = if app.stick_to_bottom {
             sb_h.saturating_sub(thumb_h)
         } else {
-            let progress = (app.scroll as f32 / (total - vis).max(1) as f32).clamp(0.0, 1.0);
+            let progress = (app.scroll / (total - vis).max(1) as f32).clamp(0.0, 1.0);
             ((progress * sb_h.saturating_sub(thumb_h) as f32) as usize).min(sb_h.saturating_sub(1))
         };
         let mut bar = String::with_capacity(sb_h * 4);

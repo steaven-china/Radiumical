@@ -21,6 +21,7 @@ pub enum PanelId {
     ProviderPicker,
     Settings,
     Help,
+    #[allow(dead_code)]
     SessionList,
     SubAgents,
     Mcp,

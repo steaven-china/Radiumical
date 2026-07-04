@@ -52,11 +52,9 @@ fn main() {
                 ]),
                 tool_call_id: None,
                 name: None,
-                reasoning_content: Some(format!(
-                    "The user wants to fix a bug. Let me analyze the code. \
+                reasoning_content: Some("The user wants to fix a bug. Let me analyze the code. \
                      I need to check error handling patterns and find the root cause. \
-                     The most likely issue is improper Option/Result handling.",
-                )),
+                     The most likely issue is improper Option/Result handling.".to_string()),
             }),
             2 => messages.push(Message {
                 role: Role::Tool,
@@ -83,8 +81,7 @@ fn main() {
             }),
             3 => messages.push(Message {
                 role: Role::Assistant,
-                content: MessageContent::from_text(format!(
-                    "Found the issue. Here's the fix:\n\n\
+                content: MessageContent::from_text("Found the issue. Here's the fix:\n\n\
                      ```rust\n\
                      // Before (line 42):\n\
                      let value = data.unwrap();\n\
@@ -92,8 +89,7 @@ fn main() {
                      // After:\n\
                      let value = data.ok_or_else(|| anyhow::anyhow!(\"missing data\"))?;\n\
                      ```\n\n\
-                     I'll apply this change now."
-                )),
+                     I'll apply this change now.".to_string()),
                 tool_calls: Some(vec![
                     ToolCall {
                         id: format!("call_{}", i + 1000),

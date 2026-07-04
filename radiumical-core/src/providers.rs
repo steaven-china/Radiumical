@@ -129,7 +129,7 @@ impl ProviderRegistry {
 
         let modified = fs::metadata(&path)?
             .modified()
-            .unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
+            .unwrap_or(SystemTime::UNIX_EPOCH);
         if SystemTime::now()
             .duration_since(modified)
             .unwrap_or(Duration::MAX)
@@ -222,7 +222,7 @@ pub async fn discover_models(
     let is_ollama_native = source
         .models_endpoint
         .as_deref()
-        .map_or(false, |ep| ep.ends_with("/api/tags"));
+        .is_some_and(|ep| ep.ends_with("/api/tags"));
 
     match request.send().await {
         Ok(resp) if resp.status().is_success() => {

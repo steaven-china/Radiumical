@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use crate::orchestrator::Orchestrator;
@@ -49,7 +49,7 @@ pub struct TodoStore {
 }
 
 impl TodoStore {
-    pub fn path_for(workspace: &PathBuf) -> PathBuf {
+    pub fn path_for(workspace: &Path) -> PathBuf {
         let hash = {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
@@ -65,7 +65,7 @@ impl TodoStore {
         dir.join(format!("{hash}.json"))
     }
 
-    pub fn load(workspace: &PathBuf) -> Self {
+    pub fn load(workspace: &Path) -> Self {
         let path = Self::path_for(workspace);
         std::fs::read_to_string(&path)
             .ok()
@@ -73,7 +73,7 @@ impl TodoStore {
             .unwrap_or_default()
     }
 
-    pub fn save(&self, workspace: &PathBuf) {
+    pub fn save(&self, workspace: &Path) {
         let path = Self::path_for(workspace);
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(path, json);
@@ -107,7 +107,7 @@ impl Tool for TodoList {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -366,15 +366,15 @@ fn parse_add_args_todos(input: &str) -> (&str, TodoPriority, Option<String>) {
     // Scan tokens from the end
     let words: Vec<(usize, &str)> = input.split_whitespace().enumerate().collect();
     for (i, word) in words.iter().rev() {
-        if word.starts_with("!") {
-            priority = TodoPriority::from_str(&word[1..]);
+        if let Some(stripped) = word.strip_prefix("!") {
+            priority = TodoPriority::from_str(stripped);
             text_end = input[..*i + word.len()].len() - word.len();
             // Trim trailing space
             while text_end > 0 && input.as_bytes()[text_end - 1] == b' ' {
                 text_end -= 1;
             }
-        } else if word.starts_with("cat:") {
-            category = Some(word[4..].to_string());
+        } else if let Some(stripped) = word.strip_prefix("cat:") {
+            category = Some(stripped.to_string());
             text_end = input[..*i + word.len()].len() - word.len();
             while text_end > 0 && input.as_bytes()[text_end - 1] == b' ' {
                 text_end -= 1;
@@ -448,7 +448,7 @@ fn orchestrators() -> &'static Mutex<HashMap<String, Orchestrator>> {
     ORCS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn workspace_key(workspace: &PathBuf) -> String {
+fn workspace_key(workspace: &Path) -> String {
     workspace.display().to_string()
 }
 
@@ -499,7 +499,7 @@ impl Tool for OrchestrateTool {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -643,7 +643,7 @@ impl Tool for GoalTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {

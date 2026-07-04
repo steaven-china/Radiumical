@@ -1,5 +1,5 @@
 //! System tools — sysinfo, list_dir, tree, time, cron.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// System information (OS, CPU, memory, uptime).
@@ -68,11 +68,11 @@ pub fn sysinfo() -> String {
 }
 
 /// List directory contents.
-pub fn list_dir(path: &PathBuf) -> String {
+pub fn list_dir(path: &Path) -> String {
     let dir = if path.as_os_str().is_empty() {
         PathBuf::from(".")
     } else {
-        path.clone()
+        path.to_path_buf()
     };
     let mut out = String::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -100,11 +100,11 @@ pub fn list_dir(path: &PathBuf) -> String {
 }
 
 /// Directory tree view (max depth 3).
-pub fn tree(path: &PathBuf, depth: usize) -> String {
+pub fn tree(path: &Path, depth: usize) -> String {
     let dir = if path.as_os_str().is_empty() {
         PathBuf::from(".")
     } else {
-        path.clone()
+        path.to_path_buf()
     };
     let mut out = format!("{}\n", dir.display());
     tree_recurse(&dir, "", depth.min(3), &mut out);

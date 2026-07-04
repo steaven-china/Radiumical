@@ -27,17 +27,12 @@ pub struct AgentDef {
     pub prompt: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum AgentRoleMode {
+    #[default]
     Auto,
     Plan,
     Exec,
-}
-
-impl Default for AgentRoleMode {
-    fn default() -> Self {
-        AgentRoleMode::Auto
-    }
 }
 
 impl AgentRoleMode {
@@ -116,10 +111,10 @@ fn parse_agent_file(path: &PathBuf) -> Option<AgentDef> {
     let content = fs::read_to_string(path).ok()?;
 
     // Split frontmatter and body
-    let (frontmatter, body) = if content.starts_with("---") {
-        if let Some(end) = content[3..].find("---") {
-            let fm = content[3..3 + end].trim();
-            let rest = content[3 + end + 3..].trim();
+    let (frontmatter, body) = if let Some(stripped) = content.strip_prefix("---") {
+        if let Some(end) = stripped.find("---") {
+            let fm = stripped[..end].trim();
+            let rest = stripped[end + 3..].trim();
             (fm, rest)
         } else {
             ("", content.trim())
@@ -128,8 +123,10 @@ fn parse_agent_file(path: &PathBuf) -> Option<AgentDef> {
         ("", content.trim())
     };
 
-    let mut def = AgentDef::default();
-    def.prompt = body.to_string();
+    let mut def = AgentDef {
+        prompt: body.to_string(),
+        ..Default::default()
+    };
 
     // Parse frontmatter line by line
     for line in frontmatter.lines() {

@@ -28,7 +28,7 @@ fn machine_id() -> String {
     #[cfg(target_os = "windows")]
     {
         // Windows: MachineGuid from registry
-        win_machine_guid().unwrap_or_else(|| fallback_id())
+        win_machine_guid().unwrap_or_else(fallback_id)
     }
     #[cfg(target_os = "linux")]
     {
@@ -122,7 +122,6 @@ fn xor_obfuscate(data: &[u8], key: &[u8]) -> Vec<u8> {
 /// - 4 bytes: magic "RENV"
 /// - 1 byte: version (1)
 /// - Rest: XOR-obfuscated JSON (HashMap<String, String>)
-
 const MAGIC: &[u8; 4] = b"RENV";
 const VERSION: u8 = 1;
 

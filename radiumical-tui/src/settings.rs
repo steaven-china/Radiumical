@@ -585,7 +585,7 @@ impl SettingsBoard {
             .map(|i| i.label.chars().count())
             .max()
             .unwrap_or(12) as u16;
-        let max_value = (r.width.saturating_sub(label_w + 8) as u16).max(10) as usize;
+        let max_value = (r.width.saturating_sub(label_w + 8)).max(10) as usize;
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)

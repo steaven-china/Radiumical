@@ -157,20 +157,18 @@ impl App {
             show_model_picker: false,
             settings_visible: false,
             settings_board: crate::settings::SettingsBoard::from_config(
-                &radiumical_core::config::Config::load().unwrap_or_else(|_| {
-                    radiumical_core::config::Config {
-                        model: None,
-                        provider: None,
-                        api_key: None,
-                        api_base: None,
-                        heartbeat_secs: None,
-                        llm_timeout_secs: None,
-                        max_iterations: None,
-                        reasoning_effort: None,
-                        mode: None,
-                        max_context_tokens: None,
-                        context_compress_ratio: None,
-                    }
+                &radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
+                    model: None,
+                    provider: None,
+                    api_key: None,
+                    api_base: None,
+                    heartbeat_secs: None,
+                    llm_timeout_secs: None,
+                    max_iterations: None,
+                    reasoning_effort: None,
+                    mode: None,
+                    max_context_tokens: None,
+                    context_compress_ratio: None,
                 }),
                 &config.mode,
             ),

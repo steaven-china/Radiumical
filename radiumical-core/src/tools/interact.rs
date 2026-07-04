@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use crate::tools::{Tool, ToolContext};
@@ -92,13 +92,13 @@ impl Tool for ChoiceTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         choice_prompt(arguments)
     }
 
     async fn execute_with_context(
         &self,
-        _workspace: &PathBuf,
+        _workspace: &Path,
         arguments: &str,
         ctx: &ToolContext,
     ) -> ToolResult {
@@ -271,7 +271,7 @@ impl Tool for AnnotateTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {

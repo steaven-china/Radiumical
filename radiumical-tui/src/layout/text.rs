@@ -61,12 +61,7 @@ pub fn strip_markdown(text: &str) -> String {
 
 pub(crate) fn find_md_pair(chars: &[char], start: usize, d: &str) -> Option<usize> {
     let d: Vec<char> = d.chars().collect();
-    for i in start..chars.len().saturating_sub(1) {
-        if chars[i] == d[0] && chars[i + 1] == d[1] {
-            return Some(i);
-        }
-    }
-    None
+    (start..chars.len().saturating_sub(1)).find(|&i| chars[i] == d[0] && chars[i + 1] == d[1])
 }
 
 pub(crate) fn find_md_single(chars: &[char], start: usize, d: char) -> Option<usize> {

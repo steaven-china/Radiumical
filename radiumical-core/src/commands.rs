@@ -17,6 +17,12 @@ struct CommandEntry {
     handler: fn(&mut SessionConfig, &str) -> CommandOutcome,
 }
 
+impl Default for CommandPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandPool {
     pub fn new() -> Self {
         let mut pool = Self {
@@ -111,7 +117,7 @@ impl CommandPool {
     pub fn dispatch(&self, input: &str, config: &mut SessionConfig) -> CommandOutcome {
         let trimmed = input.trim();
         for entry in &self.entries {
-            if entry.names.iter().any(|n| *n == trimmed) {
+            if entry.names.contains(&trimmed) {
                 return (entry.handler)(config, trimmed);
             }
         }

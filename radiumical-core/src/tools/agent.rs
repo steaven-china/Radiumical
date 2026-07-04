@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
@@ -22,7 +22,7 @@ impl Tool for SubAgentTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -79,7 +79,7 @@ impl Tool for SubAgentWaitTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -170,7 +170,7 @@ impl Tool for SubAgentListTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, _arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, _arguments: &str) -> ToolResult {
         ToolResult {
             tool_call_id: String::new(),
             content: crate::subagent::list(),
@@ -192,7 +192,7 @@ impl Tool for MemoryTool {
         }
     }
 
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -215,7 +215,7 @@ impl Tool for MemoryTool {
                     is_error: true,
                 };
             }
-            let tier = rest.splitn(2, ' ').next().unwrap_or("short");
+            let tier = rest.split(' ').next().unwrap_or("short");
             let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
             match mem.add(tier, content, &tag_refs) {
                 Ok(()) => ToolResult {
@@ -343,7 +343,7 @@ impl Tool for MemoryTool {
     }
 }
 
-fn parse_add_args<'a>(rest: &'a str) -> (&'a str, Vec<String>) {
+fn parse_add_args(rest: &str) -> (&str, Vec<String>) {
     let parts: Vec<&str> = rest.splitn(2, ' ').collect();
     if parts.len() < 2 {
         return ("", Vec::new());
@@ -368,7 +368,7 @@ impl Tool for PlaywrightTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {

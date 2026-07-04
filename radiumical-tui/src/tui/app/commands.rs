@@ -4,7 +4,7 @@ use crate::tui::BackendCmd;
 fn base64_encode(s: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = s.as_bytes();
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
@@ -419,8 +419,8 @@ impl App {
                 if rest == "off" {
                     self.skill_registry.deactivate_all();
                     self.output.push("  All skills deactivated.".into());
-                } else if rest.starts_with("off ") {
-                    let name = rest[4..].trim();
+                } else if let Some(name) = rest.strip_prefix("off ") {
+                    let name = name.trim();
                     self.skill_registry.deactivate(name);
                     self.output.push(format!("  Deactivated: {name}"));
                 } else if rest == "list" {
@@ -678,8 +678,8 @@ impl App {
                 let rest = task[5..].trim();
                 if rest == "toggle" {
                     self.output.push("  Usage: /mcp toggle <name>".into());
-                } else if rest.starts_with("toggle ") {
-                    let name = rest[7..].trim().to_string();
+                } else if let Some(name) = rest.strip_prefix("toggle ") {
+                    let name = name.trim().to_string();
                     if let Some(server) = self.mcp_servers.iter_mut().find(|s| s.name == name) {
                         server.enabled = !server.enabled;
                         let enabled = server.enabled;
@@ -739,7 +739,7 @@ impl App {
                 let after_tier = parts.get(1).copied().unwrap_or("");
                 let segments: Vec<&str> = after_tier.split(" --tag ").collect();
                 let content = segments[0];
-                let tags: Vec<&str> = segments[1..].iter().map(|s| *s).collect();
+                let tags: Vec<&str> = segments[1..].to_vec();
                 if !matches!(tier, "core" | "mino" | "short") {
                     self.output.push(format!(
                         "  Invalid tier: '{tier}'. Use core, mino, or short."
@@ -966,7 +966,7 @@ impl App {
             }
             "/retry" | "/r" => {
                 if let Some(last_task) = self.history.last().cloned() {
-                    self.output.push(format!("> /retry"));
+                    self.output.push("> /retry".to_string());
                     self.output.push(format!("> {last_task}"));
                     self.output.push(String::new());
                     self.stick_to_bottom = true;

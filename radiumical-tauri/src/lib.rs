@@ -107,7 +107,7 @@ async fn run_task(
 
 #[tauri::command]
 fn get_config() -> Result<String, String> {
-    Ok(format!("Model: deepseek-v4-pro\nThinking: max"))
+    Ok("Model: deepseek-v4-pro\nThinking: max".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

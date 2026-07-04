@@ -142,20 +142,18 @@ async fn main() -> Result<()> {
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
-    let file_cfg = radiumical_core::config::Config::load().unwrap_or_else(|_| {
-        radiumical_core::config::Config {
-            model: None,
-            provider: None,
-            api_key: None,
-            api_base: None,
-            heartbeat_secs: None,
-            llm_timeout_secs: None,
-            max_iterations: None,
-            reasoning_effort: None,
-            mode: None,
-            max_context_tokens: None,
-            context_compress_ratio: None,
-        }
+    let file_cfg = radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
+        model: None,
+        provider: None,
+        api_key: None,
+        api_base: None,
+        heartbeat_secs: None,
+        llm_timeout_secs: None,
+        max_iterations: None,
+        reasoning_effort: None,
+        mode: None,
+        max_context_tokens: None,
+        context_compress_ratio: None,
     });
 
     let mut config = SessionConfig {
@@ -269,7 +267,7 @@ async fn main() -> Result<()> {
                 match cmd {
                     Some(BackendCmd::Cancel) => {
                         let _ = cancel_tx.send(true);
-                        let _ = ui_tx.send(UiEvent::ThinkingDone);
+                        let _ = ui_tx.send(UiEvent::ThinkingDone).await;
                     }
                     Some(BackendCmd::ChoiceResponse { id: _, value }) => {
                         if let Some(tx) = radiumical_core::tools::interact::take_choice_tx() {
@@ -293,7 +291,7 @@ async fn main() -> Result<()> {
                                 .await;
                                 let _ = ui_tx.send(UiEvent::LlmChunk(format!(
                                     "Sub-agent '{id}' spawned.\n"
-                                )));
+                                ))).await;
                                 continue;
                             }
                         }
@@ -314,7 +312,7 @@ async fn main() -> Result<()> {
                                         loop {
                                             tokio::select! {
                                                 _ = interval.tick() => {
-                                                    let _ = ui_tx_hb.send(UiEvent::ThinkingTick);
+                                                    let _ = ui_tx_hb.send(UiEvent::ThinkingTick).await;
                                                 }
                                                 _ = hb_rx.recv() => break,
                                             }
@@ -348,9 +346,9 @@ async fn main() -> Result<()> {
                                         .run(task, workspace, &mcp_tools, hb_cancel, ui_tx.clone(), cancel_rx)
                                         .await
                                     {
-                                        let _ = ui_tx.send(UiEvent::Error(e.to_string()));
+                                        let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
                                     }
-                                    let _ = ui_tx.send(UiEvent::ThinkingDone);
+                        let _ = ui_tx.send(UiEvent::ThinkingDone).await;
                                 });
                             }
                         }
@@ -398,7 +396,7 @@ async fn main() -> Result<()> {
                         let cfg = config.clone();
                         tokio::spawn(async move {
                             let models = radiumical_core::providers::discover_models_for_config(&cfg).await;
-                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models));
+                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models)).await;
                         });
                     }
                     Some(BackendCmd::FetchProviders) => {
@@ -413,13 +411,13 @@ async fn main() -> Result<()> {
                                 Ok(s) => (s, true),
                                 Err(_) => (registry.embedded_fallback(), false),
                             };
-                            let _ = ui_tx.send(UiEvent::ProvidersLoaded(sources));
+                            let _ = ui_tx.send(UiEvent::ProvidersLoaded(sources)).await;
                             if !from_online {
                                 let _ = ui_tx.send(UiEvent::Toast {
                                     message: "Using bundled provider list (offline)".into(),
                                     level: "warn".into(),
                                     duration_secs: 5,
-                                });
+                                }).await;
                             }
                         });
                     }
@@ -433,7 +431,7 @@ async fn main() -> Result<()> {
                                 source.api_key(),
                             )
                             .await;
-                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models));
+                            let _ = ui_tx.send(UiEvent::ModelsLoaded(models)).await;
                         });
                     }
                     None => break,

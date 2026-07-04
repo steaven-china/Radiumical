@@ -530,12 +530,7 @@ impl App {
                 None
             };
         }
-        for i in (0..=from).rev() {
-            if self.history[i].starts_with(prefix) {
-                return Some(i);
-            }
-        }
-        None
+        (0..=from).rev().find(|&i| self.history[i].starts_with(prefix))
     }
 
     pub(crate) fn find_next_history_match(&self, prefix: &str, from: usize) -> Option<usize> {
@@ -546,12 +541,7 @@ impl App {
                 None
             };
         }
-        for i in from..self.history.len() {
-            if self.history[i].starts_with(prefix) {
-                return Some(i);
-            }
-        }
-        None
+        (from..self.history.len()).find(|&i| self.history[i].starts_with(prefix))
     }
 
     pub(crate) fn handle_settings_key(&mut self, key: crossterm::event::KeyEvent) {

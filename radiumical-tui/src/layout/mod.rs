@@ -218,8 +218,8 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         }
 
         // Reasoning
-        if line.starts_with("\x01") {
-            let raw = line[1..].trim_start_matches("[thinking] ").trim();
+        if let Some(stripped) = line.strip_prefix("\x01") {
+            let raw = stripped.trim_start_matches("[thinking] ").trim();
             let height = if show_full_reasoning {
                 raw.lines().count().max(1)
             } else {

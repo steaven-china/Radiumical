@@ -313,11 +313,12 @@ impl Conversation {
         }
 
         // Keep: system + first 2 + ... + last 2 + current task
-        let mut result = Vec::new();
-        result.push(msgs[0].clone()); // system
-        result.push(msgs[1].clone()); // workspace outline
-        result.push(msgs[2].clone()); // first user
-        result.push(msgs[3].clone()); // first assistant
+        let mut result = vec![
+            msgs[0].clone(), // system
+            msgs[1].clone(), // workspace outline
+            msgs[2].clone(), // first user
+            msgs[3].clone(), // first assistant
+        ];
 
         let skipped = msgs.len() - 6;
         result.push(Message {
@@ -481,7 +482,7 @@ impl Conversation {
     // ── JSONL loading ──
 
     #[allow(dead_code)]
-    pub fn load_jsonl(path: &PathBuf) -> Option<Vec<Message>> {
+    pub fn load_jsonl(path: &Path) -> Option<Vec<Message>> {
         let zst = zst_path(path);
         if let Some(msgs) = Self::load_zst(&zst) {
             return Some(msgs);
@@ -493,7 +494,7 @@ impl Conversation {
         let file = File::open(path).ok()?;
         let reader = BufReader::new(file);
         let mut msgs = Vec::new();
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if let Ok(msg) = serde_json::from_str::<Message>(&line) {
                 msgs.push(msg);
             }

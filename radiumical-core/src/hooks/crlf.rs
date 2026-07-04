@@ -2,9 +2,15 @@
 //! Auto-converts old_text/new_text line endings to match the target file.
 use crate::pipeline::ToolHook;
 use crate::types::{ToolCall, ToolResult};
-use std::path::PathBuf;
+use std::path::Path;
 
 pub struct CRLFNormalizer;
+
+impl Default for CRLFNormalizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CRLFNormalizer {
     pub fn new() -> Self {
@@ -14,7 +20,7 @@ impl CRLFNormalizer {
 
 #[async_trait::async_trait]
 impl ToolHook for CRLFNormalizer {
-    fn after(&self, call: &ToolCall, mut result: ToolResult, workspace: &PathBuf) -> ToolResult {
+    fn after(&self, call: &ToolCall, mut result: ToolResult, workspace: &Path) -> ToolResult {
         if call.function.name != "edit_file" || !result.is_error {
             return result;
         }

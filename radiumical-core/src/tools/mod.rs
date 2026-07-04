@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::plugins::source::SourcePluginRegistry;
@@ -63,11 +63,11 @@ impl Default for ToolContext {
 #[async_trait::async_trait]
 pub trait Tool: Send + Sync {
     fn definition(&self) -> ToolDefinition;
-    async fn execute(&self, workspace: &PathBuf, arguments: &str) -> ToolResult;
+    async fn execute(&self, workspace: &Path, arguments: &str) -> ToolResult;
 
     async fn execute_with_context(
         &self,
-        workspace: &PathBuf,
+        workspace: &Path,
         arguments: &str,
         _ctx: &ToolContext,
     ) -> ToolResult {
@@ -186,7 +186,7 @@ pub(crate) fn crlf_to_lf(s: &str) -> String {
 mod tests {
     use std::fs::File;
     use std::io::Write;
-    use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
     use super::*;
 
@@ -215,7 +215,7 @@ mod tests {
         dir
     }
 
-    fn cleanup(dir: &PathBuf) {
+    fn cleanup(dir: &Path) {
         std::fs::remove_dir_all(dir).ok();
     }
 

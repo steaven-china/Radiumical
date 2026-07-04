@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use async_trait::async_trait;
 
@@ -27,7 +27,7 @@ impl Tool for ListAgentsTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, _arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, _arguments: &str) -> ToolResult {
         let agents = agent_pool::load_agents();
         if agents.is_empty() {
             return ToolResult {
@@ -79,7 +79,7 @@ impl Tool for LoadAgentTool {
         }
     }
 
-    async fn execute(&self, _workspace: &PathBuf, arguments: &str) -> ToolResult {
+    async fn execute(&self, _workspace: &Path, arguments: &str) -> ToolResult {
         let args: serde_json::Value = match serde_json::from_str(arguments) {
             Ok(v) => v,
             Err(e) => {
@@ -138,6 +138,7 @@ impl Tool for LoadAgentTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_list_agents() {
