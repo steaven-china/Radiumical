@@ -530,12 +530,12 @@ mod tests {
 
         let (tx, mut rx) = mpsc::channel(256);
         provider.chat(&msgs_a, &tools, tx).await.unwrap();
-        while let Some(_) = rx.recv().await {}
+        while rx.recv().await.is_some() {}
         assert_eq!(*mock.call_count.lock().unwrap(), 1);
 
         let (tx2, mut rx2) = mpsc::channel(256);
         provider.chat(&msgs_b, &tools, tx2).await.unwrap();
-        while let Some(_) = rx2.recv().await {}
+        while rx2.recv().await.is_some() {}
         assert_eq!(*mock.call_count.lock().unwrap(), 2);
     }
 }

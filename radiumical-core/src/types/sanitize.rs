@@ -228,7 +228,7 @@ mod tests {
         let orphan_asst = msgs.iter().find(|m| {
             m.role == Role::Assistant
                 && matches!(&m.content, MessageContent::Text(s) if s.is_empty())
-                && m.tool_calls.as_ref().map_or(true, |c| c.is_empty())
+                && m.tool_calls.as_ref().is_none_or(|c| c.is_empty())
         });
         assert!(
             orphan_asst.is_some(),
@@ -238,7 +238,7 @@ mod tests {
             m.role == Role::Assistant
                 && m.tool_calls
                     .as_ref()
-                    .map_or(false, |c| c.iter().any(|tc| tc.id == "call_2"))
+                    .is_some_and(|c| c.iter().any(|tc| tc.id == "call_2"))
         });
         assert!(paired_asst.is_some(), "call_2 should still be paired");
         assert!(!msgs

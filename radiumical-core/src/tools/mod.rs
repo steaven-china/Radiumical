@@ -342,7 +342,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_todo_add_and_list() {
-        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_add_list__");
+        let ws = std::env::temp_dir().join("__test_todo_add_list__");
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
         let result = TodoList
@@ -365,7 +365,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_todo_done() {
-        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_done__");
+        let ws = std::env::temp_dir().join("__test_todo_done__");
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
         TodoList.execute(&ws, r#"{"action": "add task"}"#).await;
@@ -379,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_todo_done_invalid_index() {
-        let ws = PathBuf::from(std::env::temp_dir()).join("__test_todo_invalid__");
+        let ws = std::env::temp_dir().join("__test_todo_invalid__");
         let _ = std::fs::remove_file(task::TodoStore::path_for(&ws));
 
         let result = TodoList.execute(&ws, r#"{"action": "done 99"}"#).await;

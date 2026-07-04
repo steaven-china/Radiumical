@@ -41,7 +41,7 @@ pub fn render_plan_panel(f: &mut Frame, slot: &PanelSlot, title: &str, tasks: &[
         .iter()
         .filter(|t| t.status == TaskStatus::Done)
         .count();
-    let pct = if total > 0 { (done * 100) / total } else { 0 };
+    let pct = (done * 100).checked_div(total).unwrap_or(0);
 
     let mut lines: Vec<Line> = Vec::new();
 

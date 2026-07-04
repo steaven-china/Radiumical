@@ -121,7 +121,7 @@ pub fn render_diagnostics_panel(
     }
 
     let visible = area.height as usize;
-    let start = scroll.min(lines.len().saturating_sub(visible).max(0));
+    let start = scroll.min(lines.len().saturating_sub(visible));
     let end = (start + visible).min(lines.len());
     let visible_lines: Vec<Line> = lines[start..end].to_vec();
 

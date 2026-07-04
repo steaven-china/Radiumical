@@ -425,7 +425,7 @@ fn draw_output(f: &mut Frame, area: Rect, app: &mut App, _vis: usize) {
             let line_w = line.width() as u16;
             let extra = (max_w.saturating_sub(line_w) / 2) as usize;
             let mut spans = vec![Span::raw(" ".repeat(pad_left + extra))];
-            spans.extend(line.spans.into_iter());
+            spans.extend(line.spans);
             padded.push(Line::from(spans));
         }
         f.render_widget(

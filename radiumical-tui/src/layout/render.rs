@@ -442,12 +442,10 @@ fn render_tool_result_lines(
     let sb_thumb_h = ((MAX_RESULT_VIS as f32 / all_lines.len().max(MAX_RESULT_VIS) as f32).min(1.0)
         * sb_h as f32)
         .max(1.0) as usize;
-    let sb_thumb_y = if max_scroll == 0 {
-        0
-    } else {
-        ((scroll * (sb_h.saturating_sub(sb_thumb_h))) / max_scroll)
-            .min(sb_h.saturating_sub(sb_thumb_h))
-    };
+    let sb_thumb_y = (scroll * sb_h.saturating_sub(sb_thumb_h))
+        .checked_div(max_scroll)
+        .unwrap_or(0)
+        .min(sb_h.saturating_sub(sb_thumb_h));
 
     visible
         .iter()

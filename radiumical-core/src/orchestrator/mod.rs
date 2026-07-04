@@ -857,7 +857,7 @@ mod tests {
     fn test_remove_deletes_task() {
         let mut orch = make_orch_with_plan();
         orch.remove(2).unwrap();
-        assert!(orch.plan().tasks.iter().find(|t| t.id == 2).is_none());
+        assert!(!orch.plan().tasks.iter().any(|t| t.id == 2));
         assert_eq!(orch.plan().tasks.len(), 2);
     }
 

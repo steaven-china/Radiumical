@@ -510,11 +510,7 @@ mod tests {
         for block in &blocks {
             let block_end = line_offset + block.height;
             if block_end > start && line_offset < end {
-                let skip = if line_offset < start {
-                    start - line_offset
-                } else {
-                    0
-                };
+                let skip = start.saturating_sub(line_offset);
                 let take = vis.saturating_sub(rendered);
                 let all_lines =
                     block.render(80, 0, &mut crate::markdown::MarkdownRenderer::new(), false);
