@@ -191,7 +191,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn build_initial_state(cli: &Cli) -> Result<(SessionConfig, Arc<dyn radiumical_core::provider::Provider>, PathBuf)> {
+async fn build_initial_state(
+    cli: &Cli,
+) -> Result<(
+    SessionConfig,
+    Arc<dyn radiumical_core::provider::Provider>,
+    PathBuf,
+)> {
     let provider_kind = parse_provider(&cli.provider);
     let model = cli.model.clone().unwrap_or_else(|| {
         if cli.provider.to_lowercase() == "deepseek" {
@@ -246,7 +252,12 @@ async fn build_initial_state(cli: &Cli) -> Result<(SessionConfig, Arc<dyn radium
         ),
     };
 
-    let provider = create_provider(&config.provider, config.api_base.as_deref(), &config.api_key, &config.model);
+    let provider = create_provider(
+        &config.provider,
+        config.api_base.as_deref(),
+        &config.api_key,
+        &config.model,
+    );
     Ok((config, provider, workspace))
 }
 
@@ -281,7 +292,11 @@ async fn load_mcp_clients(tool_timeout_secs: u64) -> Vec<McpClientEntry> {
     clients
 }
 
-async fn dispatch(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender<String>) -> Result<()> {
+async fn dispatch(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
     match req.method.as_str() {
         "initialize" => handle_initialize(req, state, out_tx).await,
         "chat" => handle_chat(req, state, out_tx).await,
@@ -291,7 +306,13 @@ async fn dispatch(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender<St
         "set_mode" => handle_set_mode(req, state, out_tx).await,
         "choice_response" => handle_choice_response(req, state, out_tx).await,
         _ => {
-            send_error(&out_tx, req.id, -32601, format!("method not found: {}", req.method)).await;
+            send_error(
+                &out_tx,
+                req.id,
+                -32601,
+                format!("method not found: {}", req.method),
+            )
+            .await;
             Ok(())
         }
     }
@@ -303,7 +324,13 @@ async fn handle_initialize(
     out_tx: mpsc::Sender<String>,
 ) -> Result<()> {
     if state.running.load(Ordering::SeqCst) {
-        send_error(&out_tx, req.id, -32000, "cannot initialize while chat is running".into()).await;
+        send_error(
+            &out_tx,
+            req.id,
+            -32000,
+            "cannot initialize while chat is running".into(),
+        )
+        .await;
         return Ok(());
     }
 
@@ -330,10 +357,16 @@ async fn handle_initialize(
         config.mode = parse_mode(mode);
     }
     if let Some(workspace) = params.get("workspace").and_then(|v| v.as_str()) {
-        *state.workspace.lock().await = std::fs::canonicalize(workspace).unwrap_or_else(|_| PathBuf::from(workspace));
+        *state.workspace.lock().await =
+            std::fs::canonicalize(workspace).unwrap_or_else(|_| PathBuf::from(workspace));
     }
 
-    let provider = create_provider(&config.provider, config.api_base.as_deref(), &config.api_key, &config.model);
+    let provider = create_provider(
+        &config.provider,
+        config.api_base.as_deref(),
+        &config.api_key,
+        &config.model,
+    );
     radiumical_core::subagent::set_defaults(config.clone(), Arc::clone(&provider));
     radiumical_core::tools::cluster_tool::set_defaults(config.clone(), Arc::clone(&provider));
 
@@ -346,7 +379,11 @@ async fn handle_initialize(
     Ok(())
 }
 
-async fn handle_chat(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender<String>) -> Result<()> {
+async fn handle_chat(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
     if state
         .running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -386,7 +423,9 @@ async fn handle_chat(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender
             })
             .collect();
         harness
-            .run(message, workspace, &agent, &mcp_tools, None, ui_tx, cancel_rx)
+            .run(
+                message, workspace, &agent, &mcp_tools, None, ui_tx, cancel_rx,
+            )
             .await
     });
 
@@ -442,19 +481,38 @@ async fn handle_chat(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender
     result
 }
 
-async fn handle_cancel(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender<String>) -> Result<()> {
+async fn handle_cancel(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
     if let Some(tx) = state.cancel_tx.lock().await.take() {
         let _ = tx.send(true);
         send_result(&out_tx, req.id, serde_json::json!({"status": "cancelled"})).await;
     } else {
-        send_result(&out_tx, req.id, serde_json::json!({"status": "no running chat"})).await;
+        send_result(
+            &out_tx,
+            req.id,
+            serde_json::json!({"status": "no running chat"}),
+        )
+        .await;
     }
     Ok(())
 }
 
-async fn handle_reset(req: Request, state: Arc<ServerState>, out_tx: mpsc::Sender<String>) -> Result<()> {
+async fn handle_reset(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
     if state.running.load(Ordering::SeqCst) {
-        send_error(&out_tx, req.id, -32000, "cannot reset while chat is running".into()).await;
+        send_error(
+            &out_tx,
+            req.id,
+            -32000,
+            "cannot reset while chat is running".into(),
+        )
+        .await;
         return Ok(());
     }
     let mut harness = state.harness.lock().await;
@@ -526,7 +584,12 @@ async fn handle_choice_response(
 
     if let Some(tx) = radiumical_core::tools::interact::take_choice_tx() {
         let _ = tx.send(value);
-        send_result(&out_tx, req.id, serde_json::json!({"status": "ok", "id": id})).await;
+        send_result(
+            &out_tx,
+            req.id,
+            serde_json::json!({"status": "ok", "id": id}),
+        )
+        .await;
     } else {
         send_error(&out_tx, req.id, -32000, "no pending choice".into()).await;
     }
@@ -559,7 +622,12 @@ fn ui_event_to_rpc(ev: UiEvent) -> Option<Event> {
             event: "llm_done".into(),
             data: serde_json::json!({}),
         }),
-        UiEvent::ToolStart { name, index, total, args } => Some(Event {
+        UiEvent::ToolStart {
+            name,
+            index,
+            total,
+            args,
+        } => Some(Event {
             event: "tool_start".into(),
             data: serde_json::json!({"name": name, "index": index, "total": total, "args": args}),
         }),
@@ -591,7 +659,11 @@ fn ui_event_to_rpc(ev: UiEvent) -> Option<Event> {
             event: "subagent_done".into(),
             data: serde_json::json!({"id": id, "success": success}),
         }),
-        UiEvent::McpStatus { name, alive, tool_count } => Some(Event {
+        UiEvent::McpStatus {
+            name,
+            alive,
+            tool_count,
+        } => Some(Event {
             event: "mcp_status".into(),
             data: serde_json::json!({"name": name, "alive": alive, "tool_count": tool_count}),
         }),
@@ -609,24 +681,39 @@ fn ui_event_to_rpc(ev: UiEvent) -> Option<Event> {
     }
 }
 
-async fn send_result(out_tx: &mpsc::Sender<String>, id: serde_json::Value, result: serde_json::Value) {
+async fn send_result(
+    out_tx: &mpsc::Sender<String>,
+    id: serde_json::Value,
+    result: serde_json::Value,
+) {
     let resp = Response {
         id,
         result: Some(result),
         error: None,
     };
-    let _ = out_tx.send(serde_json::to_string(&resp).unwrap_or_default()).await;
+    let _ = out_tx
+        .send(serde_json::to_string(&resp).unwrap_or_default())
+        .await;
 }
 
-async fn send_error(out_tx: &mpsc::Sender<String>, id: serde_json::Value, code: i32, message: String) {
+async fn send_error(
+    out_tx: &mpsc::Sender<String>,
+    id: serde_json::Value,
+    code: i32,
+    message: String,
+) {
     let resp = Response {
         id,
         result: None,
         error: Some(RpcError { code, message }),
     };
-    let _ = out_tx.send(serde_json::to_string(&resp).unwrap_or_default()).await;
+    let _ = out_tx
+        .send(serde_json::to_string(&resp).unwrap_or_default())
+        .await;
 }
 
 async fn send_event(out_tx: &mpsc::Sender<String>, event: Event) {
-    let _ = out_tx.send(serde_json::to_string(&event).unwrap_or_default()).await;
+    let _ = out_tx
+        .send(serde_json::to_string(&event).unwrap_or_default())
+        .await;
 }

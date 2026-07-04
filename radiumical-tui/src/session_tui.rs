@@ -130,7 +130,8 @@ impl SessionTui {
     pub fn select_prev(&mut self) {
         match self.focus {
             SessionFocus::List if self.workspace_mode && !self.workspaces.is_empty() => {
-                self.workspace_selected = (self.workspace_selected + self.workspaces.len() - 1) % self.workspaces.len();
+                self.workspace_selected =
+                    (self.workspace_selected + self.workspaces.len() - 1) % self.workspaces.len();
             }
             SessionFocus::List if !self.sessions.is_empty() => {
                 self.selected = (self.selected + self.sessions.len() - 1) % self.sessions.len();
@@ -225,7 +226,11 @@ impl SessionTui {
         };
 
         f.render_widget(Clear, r);
-        let title = if self.workspace_mode { " Workspaces " } else { " Session Manager " };
+        let title = if self.workspace_mode {
+            " Workspaces "
+        } else {
+            " Session Manager "
+        };
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -256,11 +261,13 @@ impl SessionTui {
                     " Workspaces ",
                 )
             } else {
-                let lines = self.workspaces
+                let lines = self
+                    .workspaces
                     .iter()
                     .enumerate()
                     .map(|(i, w)| {
-                        let selected = self.focus == SessionFocus::List && i == self.workspace_selected;
+                        let selected =
+                            self.focus == SessionFocus::List && i == self.workspace_selected;
                         let prefix = if selected { "▸ " } else { "  " };
                         let pin = if w.pinned { "📌 " } else { "" };
                         let style = if selected {
@@ -289,7 +296,10 @@ impl SessionTui {
                         } else {
                             format!(" [{}]", w.tags.join(","))
                         };
-                        Line::from(Span::styled(format!("{}{}{}{}", prefix, pin, name, tags_str), style))
+                        Line::from(Span::styled(
+                            format!("{}{}{}{}", prefix, pin, name, tags_str),
+                            style,
+                        ))
                     })
                     .collect();
                 (lines, " Workspaces ")
@@ -303,7 +313,8 @@ impl SessionTui {
                 " Sessions ",
             )
         } else {
-            let lines = self.sessions
+            let lines = self
+                .sessions
                 .iter()
                 .enumerate()
                 .map(|(i, s)| {
@@ -355,7 +366,9 @@ impl SessionTui {
                 } else {
                     w.tags.join(", ")
                 };
-                let session_count = self.sessions.iter()
+                let session_count = self
+                    .sessions
+                    .iter()
                     .filter(|s| s.name.starts_with(&w.name) || s.description.contains(&w.name))
                     .count();
                 vec![
@@ -381,7 +394,11 @@ impl SessionTui {
                     ]),
                     Line::from(vec![
                         Span::styled("Last active: ", Style::default().fg(Color::DarkGray)),
-                        Span::raw(if w.last_active.is_empty() { "never" } else { &w.last_active }),
+                        Span::raw(if w.last_active.is_empty() {
+                            "never"
+                        } else {
+                            &w.last_active
+                        }),
                     ]),
                     Line::from(vec![
                         Span::styled("Sessions: ", Style::default().fg(Color::DarkGray)),

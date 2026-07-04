@@ -157,7 +157,10 @@ impl App {
             let cmd = if images.is_empty() {
                 crate::tui::BackendCmd::RunTask(final_task)
             } else {
-                crate::tui::BackendCmd::RunTaskWithImages { task: final_task, images }
+                crate::tui::BackendCmd::RunTaskWithImages {
+                    task: final_task,
+                    images,
+                }
             };
             let _ = self.cmd_tx.blocking_send(cmd);
         }

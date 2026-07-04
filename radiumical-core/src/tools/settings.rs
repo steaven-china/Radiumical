@@ -6,15 +6,33 @@ use crate::types::{AgentMode, FunctionDef, ToolDefinition, ToolResult};
 pub struct SettingsTool;
 
 const AVAILABLE_SETTINGS: &[(&str, &str)] = &[
-    ("model", "LLM model name (e.g. gpt-4o, claude-sonnet-4-20250514)"),
+    (
+        "model",
+        "LLM model name (e.g. gpt-4o, claude-sonnet-4-20250514)",
+    ),
     ("mode", "Agent mode: auto, plan, exec"),
     ("thinking_effort", "Reasoning effort: low, high, max"),
     ("cod", "Chain of Draft: on, off"),
-    ("max_iterations", "Max tool-call iterations per turn (1-128)"),
-    ("llm_timeout_secs", "LLM request timeout in seconds (10-600)"),
-    ("tool_timeout_secs", "Tool execution timeout in seconds (10-1800)"),
-    ("max_context_tokens", "Max context tokens before compression (10000-2000000)"),
-    ("context_compress_ratio", "Compress when context exceeds this ratio (0.5-0.95)"),
+    (
+        "max_iterations",
+        "Max tool-call iterations per turn (1-128)",
+    ),
+    (
+        "llm_timeout_secs",
+        "LLM request timeout in seconds (10-600)",
+    ),
+    (
+        "tool_timeout_secs",
+        "Tool execution timeout in seconds (10-1800)",
+    ),
+    (
+        "max_context_tokens",
+        "Max context tokens before compression (10000-2000000)",
+    ),
+    (
+        "context_compress_ratio",
+        "Compress when context exceeds this ratio (0.5-0.95)",
+    ),
     ("auto_continue", "Auto-continue orchestrator tasks: on, off"),
 ];
 
@@ -81,7 +99,9 @@ impl Tool for SettingsTool {
                 for (k, d) in AVAILABLE_SETTINGS {
                     out.push_str(&format!("  • {k} — {d}\n"));
                 }
-                out.push_str("\nUse 'get <key>' to read current value, 'set <key> <value>' to change.");
+                out.push_str(
+                    "\nUse 'get <key>' to read current value, 'set <key> <value>' to change.",
+                );
                 ToolResult {
                     tool_call_id: String::new(),
                     content: out,
@@ -194,41 +214,31 @@ fn validate_setting(key: &str, value: &str) -> Result<(), String> {
             _ => return Err("must be: on, off".into()),
         },
         "max_iterations" => {
-            let n: usize = value
-                .parse()
-                .map_err(|_| "must be a number".to_string())?;
+            let n: usize = value.parse().map_err(|_| "must be a number".to_string())?;
             if !(1..=128).contains(&n) {
                 return Err("must be 1-128".into());
             }
         }
         "llm_timeout_secs" => {
-            let n: u64 = value
-                .parse()
-                .map_err(|_| "must be a number".to_string())?;
+            let n: u64 = value.parse().map_err(|_| "must be a number".to_string())?;
             if !(10..=600).contains(&n) {
                 return Err("must be 10-600".into());
             }
         }
         "tool_timeout_secs" => {
-            let n: u64 = value
-                .parse()
-                .map_err(|_| "must be a number".to_string())?;
+            let n: u64 = value.parse().map_err(|_| "must be a number".to_string())?;
             if !(10..=1800).contains(&n) {
                 return Err("must be 10-1800".into());
             }
         }
         "max_context_tokens" => {
-            let n: usize = value
-                .parse()
-                .map_err(|_| "must be a number".to_string())?;
+            let n: usize = value.parse().map_err(|_| "must be a number".to_string())?;
             if !(10_000..=2_000_000).contains(&n) {
                 return Err("must be 10000-2000000".into());
             }
         }
         "context_compress_ratio" => {
-            let n: f64 = value
-                .parse()
-                .map_err(|_| "must be a number".to_string())?;
+            let n: f64 = value.parse().map_err(|_| "must be a number".to_string())?;
             if !(0.5..=0.95).contains(&n) {
                 return Err("must be 0.5-0.95".into());
             }
@@ -267,9 +277,7 @@ pub fn apply_setting(
             // Return a marker that the harness forwards via UiEvent.
             Err(format!("__forward_effort__:{value}"))
         }
-        "cod" => {
-            Err(format!("__forward_cod__:{value}"))
-        }
+        "cod" => Err(format!("__forward_cod__:{value}")),
         "max_iterations" => {
             let n: usize = value.parse().map_err(|_| "invalid number")?;
             let old = config.max_iterations;

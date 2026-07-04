@@ -209,11 +209,13 @@ async fn intercept_settings(
         let apply_result = crate::tools::settings::apply_setting(config, key, value);
         return match apply_result {
             Ok(msg) => {
-                let _ = ui_tx.send(UiEvent::Toast {
-                    message: msg.clone(),
-                    level: "info".into(),
-                    duration_secs: 3,
-                }).await;
+                let _ = ui_tx
+                    .send(UiEvent::Toast {
+                        message: msg.clone(),
+                        level: "info".into(),
+                        duration_secs: 3,
+                    })
+                    .await;
                 crate::types::ToolResult {
                     tool_call_id: result.tool_call_id,
                     content: msg,
@@ -222,14 +224,18 @@ async fn intercept_settings(
             }
             Err(e) if e.starts_with("__forward_effort__:") => {
                 let effort = e.strip_prefix("__forward_effort__:").unwrap_or("max");
-                let _ = ui_tx.send(UiEvent::Toast {
-                    message: format!("Thinking effort → {effort}"),
-                    level: "info".into(),
-                    duration_secs: 3,
-                }).await;
+                let _ = ui_tx
+                    .send(UiEvent::Toast {
+                        message: format!("Thinking effort → {effort}"),
+                        level: "info".into(),
+                        duration_secs: 3,
+                    })
+                    .await;
                 crate::types::ToolResult {
                     tool_call_id: result.tool_call_id,
-                    content: format!("Thinking effort set to: {effort} (will take effect on next request)"),
+                    content: format!(
+                        "Thinking effort set to: {effort} (will take effect on next request)"
+                    ),
                     is_error: false,
                 }
             }
@@ -237,7 +243,9 @@ async fn intercept_settings(
                 let val = e.strip_prefix("__forward_cod__:").unwrap_or("off");
                 crate::types::ToolResult {
                     tool_call_id: result.tool_call_id,
-                    content: format!("Chain of Draft set to: {val} (will take effect on next request)"),
+                    content: format!(
+                        "Chain of Draft set to: {val} (will take effect on next request)"
+                    ),
                     is_error: false,
                 }
             }
@@ -272,11 +280,13 @@ async fn intercept_settings(
         cfg.context_compress_ratio = Some(config.context_compress_ratio);
         return match cfg.save() {
             Ok(()) => {
-                let _ = ui_tx.send(UiEvent::Toast {
-                    message: "Settings saved to ~/.radi/config.toml".into(),
-                    level: "info".into(),
-                    duration_secs: 3,
-                }).await;
+                let _ = ui_tx
+                    .send(UiEvent::Toast {
+                        message: "Settings saved to ~/.radi/config.toml".into(),
+                        level: "info".into(),
+                        duration_secs: 3,
+                    })
+                    .await;
                 crate::types::ToolResult {
                     tool_call_id: result.tool_call_id,
                     content: "Settings persisted to ~/.radi/config.toml".into(),
@@ -301,9 +311,18 @@ fn summarize_for_checkpoint(full_text: &str, full_reasoning: &str) -> String {
     } else {
         full_reasoning
     };
-    let first = source.lines().map(|l| l.trim()).find(|l| !l.is_empty()).unwrap_or("agent step");
+    let first = source
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())
+        .unwrap_or("agent step");
     let mut s = first.to_string();
-    s = s.trim_start_matches("#").trim_start_matches("*").trim_start_matches("-").trim().to_string();
+    s = s
+        .trim_start_matches("#")
+        .trim_start_matches("*")
+        .trim_start_matches("-")
+        .trim()
+        .to_string();
     if s.len() > 60 {
         s.truncate(60);
         s.push('…');

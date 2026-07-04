@@ -288,10 +288,7 @@ impl Block {
                 let hint_style = Style::default().fg(DIM);
                 if result_text.is_empty() {
                     lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
-                    lines.push(Line::from(Span::styled(
-                        "  [no output]",
-                        hint_style,
-                    )));
+                    lines.push(Line::from(Span::styled("  [no output]", hint_style)));
                     return lines;
                 }
                 if !*expanded {

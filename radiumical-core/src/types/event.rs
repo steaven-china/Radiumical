@@ -1,9 +1,9 @@
 //! Event types exchanged between the LLM provider, the harness, and the UI layer.
 
+use crate::checkpoint::Checkpoint;
 use crate::orchestrator::TaskStatus;
 use crate::providers::ProviderSource;
 use crate::session::SessionItem;
-use crate::checkpoint::Checkpoint;
 
 use super::config::AgentMode;
 use super::message::ToolCall;

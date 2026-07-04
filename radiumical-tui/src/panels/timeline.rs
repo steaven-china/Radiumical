@@ -37,7 +37,9 @@ pub fn render_timeline_panel(
     let mut lines = Vec::new();
     if items.is_empty() {
         lines.push(Line::from("No checkpoints yet."));
-        lines.push(Line::from("Mutating tool calls will create them automatically."));
+        lines.push(Line::from(
+            "Mutating tool calls will create them automatically.",
+        ));
     } else {
         lines.push(Line::from(Span::styled(
             " ↑/↓ select  Enter diff  r rollback  Esc close ",
@@ -46,10 +48,7 @@ pub fn render_timeline_panel(
         lines.push(Line::from(""));
 
         for (i, cp) in items.iter().enumerate() {
-            let time = cp
-                .created
-                .format("%H:%M")
-                .to_string();
+            let time = cp.created.format("%H:%M").to_string();
             let marker = if i == selected { "●" } else { "○" };
             let branch_info = cp
                 .branch

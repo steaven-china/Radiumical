@@ -13,7 +13,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::session::WorkspaceSettings;
-use crate::types::{AgentMode, SessionConfig, ProviderKind};
+use crate::types::{AgentMode, ProviderKind, SessionConfig};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {

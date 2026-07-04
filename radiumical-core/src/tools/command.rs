@@ -48,19 +48,17 @@ impl Tool for RunCommand {
         // Execute via sh on unix; on Windows prefer Git Bash if available,
         // otherwise fall back to cmd.
         #[cfg(target_os = "windows")]
-        let (shell, flag, cmd_str): (String, String, String) =
-            if let Some(bash) = find_git_bash() {
-                (bash, "-c".into(), cmd_str)
-            } else {
-                (
-                    "cmd".into(),
-                    "/C".into(),
-                    format!("chcp 65001 > nul && {}", cmd_str),
-                )
-            };
+        let (shell, flag, cmd_str): (String, String, String) = if let Some(bash) = find_git_bash() {
+            (bash, "-c".into(), cmd_str)
+        } else {
+            (
+                "cmd".into(),
+                "/C".into(),
+                format!("chcp 65001 > nul && {}", cmd_str),
+            )
+        };
         #[cfg(not(target_os = "windows"))]
-        let (shell, flag, cmd_str): (String, String, String) =
-            ("sh".into(), "-c".into(), cmd_str);
+        let (shell, flag, cmd_str): (String, String, String) = ("sh".into(), "-c".into(), cmd_str);
 
         let ws_clone = workspace.to_path_buf();
         let cmd = cmd_str.clone();

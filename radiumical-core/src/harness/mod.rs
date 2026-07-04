@@ -113,8 +113,17 @@ impl Harness {
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
-        self.run_with_images(task, Vec::new(), workspace, agent, extra_tools, _hb_cancel, ui_tx, cancel_rx)
-            .await
+        self.run_with_images(
+            task,
+            Vec::new(),
+            workspace,
+            agent,
+            extra_tools,
+            _hb_cancel,
+            ui_tx,
+            cancel_rx,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -137,11 +146,17 @@ impl Harness {
         let mut messages = self.conversation.build_context(&task, Some(&workspace));
         if !images.is_empty() {
             // Replace the text-only task message with a multipart text+image message.
-            if messages.last().map(|m| m.role == Role::User).unwrap_or(false) {
+            if messages
+                .last()
+                .map(|m| m.role == Role::User)
+                .unwrap_or(false)
+            {
                 messages.pop();
             }
-            let content = crate::image::build_multipart_content(&task, &images)
-                .unwrap_or_else(|e| MessageContent::Text(format!("{task}\n\n[image load error: {e}]")));
+            let content =
+                crate::image::build_multipart_content(&task, &images).unwrap_or_else(|e| {
+                    MessageContent::Text(format!("{task}\n\n[image load error: {e}]"))
+                });
             messages.push(Message {
                 role: Role::User,
                 content,
@@ -151,8 +166,8 @@ impl Harness {
                 reasoning_content: None,
             });
         }
-        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string(),
-        ) {
+        if let Some(ctx) = orchestrator::get_context_for_workspace(&workspace.display().to_string())
+        {
             messages.push(user_msg(&ctx));
         }
 

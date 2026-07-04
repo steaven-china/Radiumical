@@ -16,9 +16,9 @@ pub mod config;
 pub mod conversation;
 pub mod dynamic;
 pub mod harness;
-pub mod image;
 pub mod highlight;
 pub mod hooks;
+pub mod image;
 pub mod llm_cache;
 pub mod lsp;
 pub mod mcp;
@@ -41,9 +41,8 @@ pub mod types;
 // ═══ Stable public API re-exports ═══
 
 pub use agent::Agent;
-pub use checkpoint::{create_checkpoint, list_checkpoints, rollback, Checkpoint};
-pub use image::{build_multipart_content, format_image_size, image_file_size, load_image_part};
 pub use agent_pool::{AgentDef, AgentRoleMode};
+pub use checkpoint::{create_checkpoint, list_checkpoints, rollback, Checkpoint};
 pub use cluster::{AgentCluster, ClusterEvent, WorkerSlot};
 pub use config::Config;
 pub use dynamic::{
@@ -51,6 +50,7 @@ pub use dynamic::{
     TaskState as DynTaskState,
 };
 pub use harness::{Harness, ToolHook};
+pub use image::{build_multipart_content, format_image_size, image_file_size, load_image_part};
 pub use pipeline::PipelineRunner;
 pub use provider::{create_provider, Provider};
 pub use providers::{ProviderRegistry, ProviderSource};

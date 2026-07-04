@@ -50,8 +50,16 @@ impl PipelineRunner {
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
-        self.run_with_images(task, Vec::new(), workspace, extra_tools, _hb_cancel, ui_tx, cancel_rx)
-            .await
+        self.run_with_images(
+            task,
+            Vec::new(),
+            workspace,
+            extra_tools,
+            _hb_cancel,
+            ui_tx,
+            cancel_rx,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]

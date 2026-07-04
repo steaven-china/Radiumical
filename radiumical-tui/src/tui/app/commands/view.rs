@@ -1,9 +1,9 @@
 //! View and configuration slash commands (`/help`, `/settings`, `/provider`,
 //! `/model`, `/tools`, `/skills`, `/perf`, `/debug`, `/diagnostics`).
 
-use std::path::PathBuf;
 use crate::tui::app::App;
 use crate::tui::BackendCmd;
+use std::path::PathBuf;
 
 impl App {
     pub(super) fn cmd_help(&mut self) -> bool {
@@ -246,9 +246,7 @@ impl App {
     pub(super) fn cmd_timeline(&mut self) -> bool {
         self.output.push("> /timeline".into());
         let workspace = PathBuf::from(&self.workspace);
-        match radiumical_core::checkpoint::list_checkpoints_sync(
-            &workspace, &self.session_id,
-        ) {
+        match radiumical_core::checkpoint::list_checkpoints_sync(&workspace, &self.session_id) {
             Ok(items) => {
                 self.overlays.timeline_items = items;
                 self.overlays.timeline_selected = 0;
@@ -271,7 +269,8 @@ impl App {
         if rest == "clear" {
             self.input.pending_images.clear();
             self.output.push("> /image clear".into());
-            self.output.push("  Cleared pending image attachments.".into());
+            self.output
+                .push("  Cleared pending image attachments.".into());
             self.input.text.clear();
             self.input.cursor = 0;
             self.viewport.stick_to_bottom = true;
@@ -279,7 +278,8 @@ impl App {
         }
         if rest.is_empty() {
             self.output.push("> /image".into());
-            self.output.push("  Usage: /image <path>  |  /image clear".into());
+            self.output
+                .push("  Usage: /image <path>  |  /image clear".into());
             self.input.text.clear();
             self.input.cursor = 0;
             self.viewport.stick_to_bottom = true;
@@ -293,11 +293,14 @@ impl App {
         };
         self.output.push(format!("> /image {}", path.display()));
         if !path.exists() {
-            self.output.push(format!("  File not found: {}", path.display()));
+            self.output
+                .push(format!("  File not found: {}", path.display()));
         } else if let Ok(size) = radiumical_core::image::image_file_size(&path) {
             let idx = self.input.pending_images.len() + 1;
             let placeholder = format!("[image_{idx}]");
-            self.input.pending_images.push((path.clone(), placeholder.clone()));
+            self.input
+                .pending_images
+                .push((path.clone(), placeholder.clone()));
             self.output.push(format!(
                 "  Attached: {} ({}) placeholder {}",
                 path.display(),
@@ -309,7 +312,8 @@ impl App {
                 self.input.pending_images.len()
             ));
         } else {
-            self.output.push(format!("  Cannot read file: {}", path.display()));
+            self.output
+                .push(format!("  Cannot read file: {}", path.display()));
         }
         self.input.text.clear();
         self.input.cursor = 0;
@@ -317,4 +321,3 @@ impl App {
         true
     }
 }
-

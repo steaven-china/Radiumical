@@ -99,10 +99,16 @@ impl App {
                     return;
                 }
                 (KeyCode::Enter, _) => {
-                    if let Some(cp) = self.overlays.timeline_items.get(self.overlays.timeline_selected) {
+                    if let Some(cp) = self
+                        .overlays
+                        .timeline_items
+                        .get(self.overlays.timeline_selected)
+                    {
                         let workspace = std::path::PathBuf::from(&self.workspace);
                         match radiumical_core::checkpoint::diff_checkpoint_sync(
-                            &workspace, &self.session_id, &cp.id,
+                            &workspace,
+                            &self.session_id,
+                            &cp.id,
                         ) {
                             Ok(diff) => self.overlays.timeline_diff = Some(diff),
                             Err(e) => self.toasts.push(crate::board::Toast::new(
@@ -115,10 +121,16 @@ impl App {
                     return;
                 }
                 (KeyCode::Char('r'), _) => {
-                    if let Some(cp) = self.overlays.timeline_items.get(self.overlays.timeline_selected) {
+                    if let Some(cp) = self
+                        .overlays
+                        .timeline_items
+                        .get(self.overlays.timeline_selected)
+                    {
                         let workspace = std::path::PathBuf::from(&self.workspace);
                         match radiumical_core::checkpoint::rollback_sync(
-                            &workspace, &self.session_id, &cp.id,
+                            &workspace,
+                            &self.session_id,
+                            &cp.id,
                         ) {
                             Ok(()) => {
                                 self.toasts.push(crate::board::Toast::new(

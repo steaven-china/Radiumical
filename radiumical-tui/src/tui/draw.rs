@@ -248,10 +248,10 @@ fn sync_panels(app: &mut App) {
         (PanelId::Memory, app.overlays.memory),
         (PanelId::SubAgents, app.overlays.subagents),
         (PanelId::Mcp, app.overlays.mcp),
-            (PanelId::Plan, app.overlays.plan),
-            (PanelId::Agents, app.overlays.agents),
-            (PanelId::Timeline, app.overlays.timeline),
-        ];
+        (PanelId::Plan, app.overlays.plan),
+        (PanelId::Agents, app.overlays.agents),
+        (PanelId::Timeline, app.overlays.timeline),
+    ];
     for (id, visible) in flags {
         if visible && !app.panels.is_open(id) {
             app.panels.open(id);

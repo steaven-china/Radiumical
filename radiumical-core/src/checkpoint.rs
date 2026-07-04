@@ -99,12 +99,20 @@ pub fn list_checkpoints_sync(workspace: &Path, session_id: &str) -> Result<Vec<C
 }
 
 /// Diff between a checkpoint and the current working tree.
-pub async fn diff_checkpoint(workspace: &Path, session_id: &str, checkpoint_id: &str) -> Result<String> {
+pub async fn diff_checkpoint(
+    workspace: &Path,
+    session_id: &str,
+    checkpoint_id: &str,
+) -> Result<String> {
     diff_checkpoint_sync(workspace, session_id, checkpoint_id)
 }
 
 /// Synchronous version of [`diff_checkpoint`].
-pub fn diff_checkpoint_sync(workspace: &Path, session_id: &str, checkpoint_id: &str) -> Result<String> {
+pub fn diff_checkpoint_sync(
+    workspace: &Path,
+    session_id: &str,
+    checkpoint_id: &str,
+) -> Result<String> {
     let cps = list_checkpoints_sync(workspace, session_id)?;
     let cp = cps
         .iter()
@@ -190,7 +198,11 @@ async fn has_any_changes(workspace: &Path) -> Result<bool> {
     }
 }
 
-async fn ensure_checkpoint_branch(workspace: &Path, session_id: &str, commit: &str) -> Result<String> {
+async fn ensure_checkpoint_branch(
+    workspace: &Path,
+    session_id: &str,
+    commit: &str,
+) -> Result<String> {
     let branch = format!("radi/{session_id}");
     // Point the session branch at this checkpoint commit.
     run_git(workspace, &["branch", "-f", &branch, commit]).await?;
@@ -231,12 +243,15 @@ fn local_diff_sync(workspace: &Path, session_id: &str, checkpoint_id: &str) -> R
         anyhow::bail!("snapshot not found");
     }
     let mut lines = Vec::new();
-    diff_dirs_sync(&snapshot_dir, workspace, &mut lines)
-        .with_context(|| "compute local diff")?;
+    diff_dirs_sync(&snapshot_dir, workspace, &mut lines).with_context(|| "compute local diff")?;
     Ok(lines.join("\n"))
 }
 
-fn restore_local_snapshot_sync(workspace: &Path, session_id: &str, checkpoint_id: &str) -> Result<()> {
+fn restore_local_snapshot_sync(
+    workspace: &Path,
+    session_id: &str,
+    checkpoint_id: &str,
+) -> Result<()> {
     let snapshot_dir = local_snapshot_dir(workspace, session_id, checkpoint_id);
     if !snapshot_dir.exists() {
         anyhow::bail!("snapshot not found");
@@ -257,7 +272,8 @@ async fn copy_dir_contents(src: &Path, dst: &Path) -> Result<()> {
             fs::create_dir_all(parent)
                 .with_context(|| format!("create dir {}", parent.display()))?;
         }
-        fs::copy(&from, &to).with_context(|| format!("copy {} to {}", from.display(), to.display()))?;
+        fs::copy(&from, &to)
+            .with_context(|| format!("copy {} to {}", from.display(), to.display()))?;
     }
     Ok(())
 }
@@ -271,16 +287,15 @@ fn copy_dir_contents_sync(src: &Path, dst: &Path) -> Result<()> {
             fs::create_dir_all(parent)
                 .with_context(|| format!("create dir {}", parent.display()))?;
         }
-        fs::copy(&from, &to).with_context(|| format!("copy {} to {}", from.display(), to.display()))?;
+        fs::copy(&from, &to)
+            .with_context(|| format!("copy {} to {}", from.display(), to.display()))?;
     }
     Ok(())
 }
 
 fn clean_dir_contents_sync(dir: &Path) -> Result<()> {
     let mut entries = Vec::new();
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("read dir {}", dir.display()))?
-    {
+    for entry in fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))? {
         let entry = entry?;
         let name = entry.file_name();
         let s = name.to_string_lossy();
@@ -291,11 +306,9 @@ fn clean_dir_contents_sync(dir: &Path) -> Result<()> {
     }
     for path in entries {
         if path.is_dir() {
-            fs::remove_dir_all(&path)
-                .with_context(|| format!("remove dir {}", path.display()))?;
+            fs::remove_dir_all(&path).with_context(|| format!("remove dir {}", path.display()))?;
         } else {
-            fs::remove_file(&path)
-                .with_context(|| format!("remove file {}", path.display()))?;
+            fs::remove_file(&path).with_context(|| format!("remove file {}", path.display()))?;
         }
     }
     Ok(())
@@ -378,10 +391,7 @@ fn diff_dirs_sync(old: &Path, new: &Path, out: &mut Vec<String>) -> Result<()> {
 
 fn is_hidden_or_build_artifact(entry: &walkdir::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
-    name.starts_with('.')
-        || name == "target"
-        || name == "node_modules"
-        || name == ".git"
+    name.starts_with('.') || name == "target" || name == "node_modules" || name == ".git"
 }
 
 // ═══ Metadata persistence ═══
@@ -413,7 +423,6 @@ fn append_checkpoint_meta_sync(workspace: &Path, session_id: &str, cp: &Checkpoi
         .open(&path)
         .with_context(|| format!("open checkpoints file {}", path.display()))?;
     use std::io::Write;
-    writeln!(file, "{line}")
-        .with_context(|| format!("write checkpoint {}", path.display()))?;
+    writeln!(file, "{line}").with_context(|| format!("write checkpoint {}", path.display()))?;
     Ok(())
 }

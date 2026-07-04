@@ -115,12 +115,10 @@ impl App {
             "  /session ws | list-ws | switch-ws <name> | add-ws <path> [name] | remove-ws <name>"
                 .into(),
         );
-        self.output.push(
-            "  /session tag <ws> <tag> | untag <ws> <tag> | pin <ws> | unpin <ws>".into(),
-        );
-        self.output.push(
-            "  /session ws-set <key> <val> | ws-unset <key> | ws-settings".into(),
-        );
+        self.output
+            .push("  /session tag <ws> <tag> | untag <ws> <tag> | pin <ws> | unpin <ws>".into());
+        self.output
+            .push("  /session ws-set <key> <val> | ws-unset <key> | ws-settings".into());
         self.input.text.clear();
         self.input.cursor = 0;
         self.input.hints.clear();
@@ -219,8 +217,7 @@ impl App {
                             self.output
                                 .push(format!("    Tags: {}", entry.tags.join(", ")));
                         }
-                        self.output
-                            .push(format!("    Pinned: {}", entry.pinned));
+                        self.output.push(format!("    Pinned: {}", entry.pinned));
                         self.output
                             .push(format!("    Last active: {}", entry.last_active));
                     }
@@ -316,9 +313,7 @@ impl App {
                 let tag = parts.next().unwrap_or("");
                 let mut registry = radiumical_core::session::WorkspaceRegistry::load();
                 match registry.remove_tag(ws_name, tag) {
-                    Ok(()) => self
-                        .output
-                        .push(format!("  Untagged '{ws_name}': '{tag}'")),
+                    Ok(()) => self.output.push(format!("  Untagged '{ws_name}': '{tag}'")),
                     Err(e) => self.output.push(format!("  Untag failed: {e}")),
                 }
             }
@@ -342,8 +337,7 @@ impl App {
                 let key = parts.next().unwrap_or("");
                 let value = parts.next().unwrap_or("");
                 let ws_hash = radiumical_core::session::workspace_hash(&self.workspace);
-                let mut settings =
-                    radiumical_core::session::load_workspace_settings(&ws_hash);
+                let mut settings = radiumical_core::session::load_workspace_settings(&ws_hash);
                 let valid = match key {
                     "model" => {
                         settings.model = Some(value.to_string());
@@ -393,8 +387,7 @@ impl App {
                             true
                         }
                         Err(_) => {
-                            self.output
-                                .push(format!("  Invalid boolean: {value}"));
+                            self.output.push(format!("  Invalid boolean: {value}"));
                             false
                         }
                     },
@@ -409,10 +402,7 @@ impl App {
                     }
                 };
                 if valid {
-                    match radiumical_core::session::save_workspace_settings(
-                        &ws_hash,
-                        &settings,
-                    ) {
+                    match radiumical_core::session::save_workspace_settings(&ws_hash, &settings) {
                         Ok(()) => {
                             self.toasts.push(crate::board::Toast::new(
                                 format!("Workspace setting saved: {key} = {value}"),
@@ -428,8 +418,7 @@ impl App {
             "ws-unset" => {
                 let key = parts.next().unwrap_or("");
                 let ws_hash = radiumical_core::session::workspace_hash(&self.workspace);
-                let mut settings =
-                    radiumical_core::session::load_workspace_settings(&ws_hash);
+                let mut settings = radiumical_core::session::load_workspace_settings(&ws_hash);
                 let valid = match key {
                     "model" => {
                         settings.model = None;
@@ -465,10 +454,7 @@ impl App {
                     }
                 };
                 if valid {
-                    match radiumical_core::session::save_workspace_settings(
-                        &ws_hash,
-                        &settings,
-                    ) {
+                    match radiumical_core::session::save_workspace_settings(&ws_hash, &settings) {
                         Ok(()) => self.output.push(format!("  Unset {key}")),
                         Err(e) => self.output.push(format!("  Save failed: {e}")),
                     }
@@ -476,8 +462,7 @@ impl App {
             }
             "ws-settings" => {
                 let ws_hash = radiumical_core::session::workspace_hash(&self.workspace);
-                let settings =
-                    radiumical_core::session::load_workspace_settings(&ws_hash);
+                let settings = radiumical_core::session::load_workspace_settings(&ws_hash);
                 self.output.push("  Workspace config overrides:".into());
                 let mut any = false;
                 if let Some(ref v) = settings.model {
@@ -522,9 +507,8 @@ impl App {
                     "  /session ws | list-ws | switch-ws | add-ws | remove-ws | tag | untag | pin | unpin"
                         .into(),
                 );
-                self.output.push(
-                    "  /session ws-set <key> <val> | ws-unset <key> | ws-settings".into(),
-                );
+                self.output
+                    .push("  /session ws-set <key> <val> | ws-unset <key> | ws-settings".into());
             }
         }
         self.input.text.clear();

@@ -579,14 +579,12 @@ impl WorkspaceRegistry {
             return Ok(existing.name.clone());
         }
 
-        let ws_name = name
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                std::path::Path::new(&abs)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| format!("ws-{}", &hash[..8]))
-            });
+        let ws_name = name.map(|s| s.to_string()).unwrap_or_else(|| {
+            std::path::Path::new(&abs)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| format!("ws-{}", &hash[..8]))
+        });
 
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         self.workspaces.push(WorkspaceEntry {
@@ -712,11 +710,7 @@ fn infer_name_from_sessions(dir: &Path, hash: &str) -> String {
             if p.extension().is_some_and(|e| e == "jsonl") {
                 if let Ok(meta) = fs::metadata(&p) {
                     if let Ok(modified) = meta.modified() {
-                        if newest
-                            .as_ref()
-                            .map(|(t, _)| modified > *t)
-                            .unwrap_or(true)
-                        {
+                        if newest.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
                             newest = Some((modified, p.to_string_lossy().to_string()));
                         }
                     }

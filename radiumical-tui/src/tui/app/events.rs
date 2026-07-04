@@ -210,8 +210,7 @@ impl App {
                     let clean = crate::layout::strip_ansi_escapes(
                         &content.replace("\r\n", "\n").replace('\r', ""),
                     );
-                    let width =
-                        box_width(tool_name.len(), tool_args.chars().count(), Some(&clean));
+                    let width = box_width(tool_name.len(), tool_args.chars().count(), Some(&clean));
                     for line in clean.lines() {
                         self.output.push(box_result_line(line, width));
                     }
