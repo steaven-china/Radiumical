@@ -267,6 +267,7 @@ html, body {
   color: var(--accent);
   white-space: pre;
   display: inline-block;
+  text-align: left;
   margin: 0 0 20px;
   background: linear-gradient(
     105deg,

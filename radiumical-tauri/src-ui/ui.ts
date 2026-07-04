@@ -7,8 +7,8 @@ const ASCII_LOGO = `██████╗  █████╗ ██████
 ██╔══██╗██╔══██╗██╔══██╗██║██║   ██║████╗ ████║██║██╔════╝██╔══██╗██║
 ██████╔╝███████║██║  ██║██║██║   ██║██╔████╔██║██║██║     ███████║██║
 ██╔══██╗██╔══██║██║  ██║██║██║   ██║██║╚██╔╝██║██║██║     ██╔══██║██║
-     ██║  ██║██║  ██║██████╔╝██║╚██████╔╝██║ ╚═╝ ██║██║╚██████╗██║  ██║███████╗
-     ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝`;
+██║  ██║██║  ██║██████╔╝██║╚██████╔╝██║ ╚═╝ ██║██║╚██████╗██║  ██║███████╗
+╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝`;
 
 export function mountApp(root: HTMLElement) {
   root.innerHTML = `
@@ -219,20 +219,38 @@ function showModelPicker(models: string[], current: string, onSelect: (m: string
   list.querySelectorAll(".modal-item").forEach((el) => { el.addEventListener("click", () => { onSelect((el as HTMLElement).dataset.model!); closeModal(); }); });
 }
 
-async function showProviderSwitchModal(providerName: string, apiBase: string) {
-  openModal("Switch Provider", `<div class="modal-loading">Loading models...</div>`);
-  let models: string[] = [];
-  try { models = await api.fetchModelsForProvider(providerName, apiBase, ""); } catch {}
-  if (!models.length) {
-    document.getElementById("modal-body")!.innerHTML = `<div class="modal-form"><label>Model</label><input id="modal-model-input" type="text" placeholder="e.g. gpt-4o" autofocus /><button id="modal-confirm" class="small-btn">Switch</button></div>`;
+function showProviderSwitchModal(providerName: string, apiBase: string) {
+  const s = store.get();
+  const prov = s.providers.find((p) => p.provider === providerName);
+  const base = prov?.api_base || apiBase;
+
+  openModal(`Switch to ${prov?.name || providerName}`, `<div class="modal-loading">Loading models...</div>`);
+
+  // Fetch models — backend resolves key from key_env or config
+  api.fetchModelsForProvider(providerName, base, "").then((models) => {
+    if (!models.length) {
+      // No models endpoint — just switch directly
+      store.switchProvider(providerName, base, "", prov?.models?.[0] || "");
+      closeModal();
+      return;
+    }
+    showModelPicker(models, s.appInfo?.model || "", (m) => {
+      store.switchProvider(providerName, base, "", m);
+    });
+  }).catch(() => {
+    // Can't fetch models — ask for model name
+    document.getElementById("modal-body")!.innerHTML = `<div class="modal-form">
+      <label>Model name</label>
+      <input id="modal-model-input" type="text" placeholder="e.g. gpt-4o, deepseek-chat" autofocus />
+      <div class="modal-actions"><button id="modal-cancel" class="small-btn">Cancel</button><button id="modal-confirm" class="small-btn">Switch</button></div>
+    </div>`;
     const input = document.getElementById("modal-model-input") as HTMLInputElement;
-    const go = () => { const m = input.value.trim(); if (m) { store.switchProvider(providerName, apiBase, "", m); closeModal(); } };
+    const go = () => { const m = input.value.trim(); if (m) { store.switchProvider(providerName, base, "", m); closeModal(); } };
     document.getElementById("modal-confirm")!.addEventListener("click", go);
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    document.getElementById("modal-cancel")!.addEventListener("click", closeModal);
     input.focus();
-    return;
-  }
-  showModelPicker(models, store.get().appInfo?.model || "", (m) => store.switchProvider(providerName, apiBase, "", m));
+  });
 }
 
 function showModelPickerFromSettings() {
@@ -325,6 +343,31 @@ function renderChoiceModal(choice: { id: string; mode: string; options: string[]
       });
     }
   }
+}
+
+function showCustomProviderModal() {
+  openModal("Custom Provider", `<div class="modal-form">
+    <label>API Base URL</label>
+    <input id="cp-base" type="text" placeholder="https://api.example.com/v1" autofocus />
+    <label>API Key</label>
+    <input id="cp-key" type="password" placeholder="sk-..." />
+    <label>Model</label>
+    <input id="cp-model" type="text" placeholder="gpt-4o" />
+    <div class="modal-actions"><button id="cp-cancel" class="small-btn">Cancel</button><button id="cp-submit" class="small-btn">Switch</button></div>
+  </div>`);
+  const base = document.getElementById("cp-base") as HTMLInputElement;
+  const key = document.getElementById("cp-key") as HTMLInputElement;
+  const model = document.getElementById("cp-model") as HTMLInputElement;
+  const go = () => {
+    const b = base.value.trim();
+    const k = key.value.trim();
+    const m = model.value.trim();
+    if (b && m) { store.switchProvider("openai", b, k, m); closeModal(); }
+  };
+  document.getElementById("cp-submit")!.addEventListener("click", go);
+  model.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  document.getElementById("cp-cancel")!.addEventListener("click", closeModal);
+  base.focus();
 }
 
 // ── Render ──
@@ -554,12 +597,14 @@ function renderSettingsPanel(container: HTMLElement, s: ReturnType<typeof store.
     <div class="settings-divider"></div>
     <div class="panel-header"><h3>Providers</h3></div>
     <div class="provider-list">${provHtml}</div>
+    <button id="custom-provider-btn" class="provider-item" style="cursor:pointer;justify-content:center;color:var(--accent-dim);font-weight:600">+ Custom Provider</button>
   </div>`;
 
   container.querySelector("#setting-mode")?.addEventListener("change", (e) => store.setMode((e.target as HTMLSelectElement).value));
   container.querySelector("#setting-apikey-save")?.addEventListener("click", () => { const inp = container.querySelector("#setting-apikey") as HTMLInputElement; const k = inp.value.trim(); if (k) { store.saveApiKey(k); inp.value = ""; } });
   container.querySelector("#setting-model-pick")?.addEventListener("click", () => showModelPickerFromSettings());
   container.querySelectorAll(".provider-switch-btn").forEach((btn) => { btn.addEventListener("click", () => showProviderSwitchModal((btn as HTMLElement).dataset.provider!, (btn as HTMLElement).dataset.base!)); });
+  container.querySelector("#custom-provider-btn")?.addEventListener("click", () => showCustomProviderModal());
 }
 
 // ── Utils ──

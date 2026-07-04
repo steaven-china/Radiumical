@@ -10,6 +10,33 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::{watch, Mutex as TokioMutex};
 
+const EMBEDDED_PROVIDERS_JSONL: &str = include_str!("../../providers-record/providers.jsonl");
+
+fn resolve_key_from_registry(provider_name: &str, kind: &ProviderKind) -> String {
+    let name_lower = provider_name.to_lowercase();
+    for line in EMBEDDED_PROVIDERS_JSONL.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if v.get("provider").and_then(|x| x.as_str()).map(|s| s.to_lowercase()) == Some(name_lower.clone()) {
+                if let Some(env) = v.get("key_env").and_then(|x| x.as_str()) {
+                    if let Ok(k) = std::env::var(env) {
+                        if !k.is_empty() { return k; }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback
+    Config::load().ok().and_then(|c| c.api_key).filter(|k| !k.is_empty())
+        .or_else(|| {
+            let env = match kind {
+                ProviderKind::Anthropic => "ANTHROPIC_API_KEY",
+                _ => "DEEPSEEK_API_KEY",
+            };
+            std::env::var(env).ok().filter(|k| !k.is_empty())
+        })
+        .unwrap_or_default()
+}
+
 // ── Display Item — single source of truth for UI ──
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -502,15 +529,7 @@ async fn set_provider(
     let resolved_key = if !api_key.is_empty() {
         api_key
     } else {
-        Config::load().ok().and_then(|c| c.api_key).filter(|k| !k.is_empty())
-            .or_else(|| {
-                let env_name = match kind {
-                    ProviderKind::Anthropic => "ANTHROPIC_API_KEY",
-                    _ => "DEEPSEEK_API_KEY",
-                };
-                std::env::var(env_name).ok().filter(|k| !k.is_empty())
-            })
-            .unwrap_or_default()
+        resolve_key_from_registry(&provider_name, &kind)
     };
 
     let provider = create_provider(&kind, Some(&api_base), &resolved_key, &model);
@@ -537,7 +556,8 @@ async fn fetch_models_for_provider(provider_name: String, api_base: String, api_
         "ollama" => ProviderKind::Ollama,
         _ => ProviderKind::OpenAI,
     };
-    let config = SessionConfig { provider: kind, api_key, api_base: Some(api_base), ..Default::default() };
+    let resolved_key = if !api_key.is_empty() { api_key } else { resolve_key_from_registry(&provider_name, &kind) };
+    let config = SessionConfig { provider: kind, api_key: resolved_key, api_base: Some(api_base), ..Default::default() };
     Ok(discover_models_for_config(&config).await)
 }
 
