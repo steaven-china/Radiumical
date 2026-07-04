@@ -131,7 +131,10 @@ impl App {
                         .push(format!("{}\x02{}", box_top(&header, width), id));
                     self.output.push(box_args_line(args, width));
                     if let Some(result) = result {
-                        for line in result.lines() {
+                        let clean = crate::layout::strip_ansi_escapes(
+                            &result.replace("\r\n", "\n").replace('\r', ""),
+                        );
+                        for line in clean.lines() {
                             self.output.push(box_result_line(line, width));
                         }
                     }

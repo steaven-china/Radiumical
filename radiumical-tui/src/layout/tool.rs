@@ -1,25 +1,34 @@
 /// Strip ANSI escape sequences (including cursor movement and erase) from a
-/// string, returning plain text. Used for tool results where control sequences
-/// would otherwise leave stray characters on screen.
+/// string, returning plain text. Also strips `\r` (carriage return) which
+/// subprocess output (cargo check, eslint, etc.) may include — these cause
+/// layout corruption in ratatui's buffer-based renderer.
 pub fn strip_ansi_escapes(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Skip ESC [ ... letter or ESC ] ... BEL or ESC ( letter etc.
-            if chars.next_if_eq(&'[').is_some() {
-                while let Some(&next) = chars.peek() {
-                    chars.next();
-                    if next.is_ascii_alphabetic() {
-                        break;
+        match ch {
+            '\x1b' => {
+                // Skip ESC [ ... letter (CSI) or ESC ] ... BEL (OSC) or ESC ( letter etc.
+                if chars.next_if_eq(&'[').is_some() {
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
                     }
+                } else {
+                    // Skip the next char as part of a non-CSI escape.
+                    chars.next();
                 }
-            } else {
-                // Skip the next char as part of a non-CSI escape.
-                chars.next();
             }
-        } else {
-            out.push(ch);
+            '\r' => {
+                // Carriage return — skip entirely.
+                // Subprocess progress output uses `\r` to overwrite lines;
+                // ratatui doesn't handle raw CR, so strip it.
+            }
+            _ => {
+                out.push(ch);
+            }
         }
     }
     out

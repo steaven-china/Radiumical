@@ -286,7 +286,15 @@ impl Block {
                 )));
 
                 let hint_style = Style::default().fg(DIM);
-                if !*expanded || result_text.is_empty() {
+                if result_text.is_empty() {
+                    lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
+                    lines.push(Line::from(Span::styled(
+                        "  [no output]",
+                        hint_style,
+                    )));
+                    return lines;
+                }
+                if !*expanded {
                     lines.push(Line::from(Span::styled(box_bottom(box_w), st)));
                     lines.push(Line::from(Span::styled(
                         "  [\u{25b8} click to expand]",

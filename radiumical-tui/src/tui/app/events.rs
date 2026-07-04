@@ -205,9 +205,14 @@ impl App {
                 }
 
                 if !tool_name.is_empty() {
+                    // Strip \r and ANSI escapes before storing — these cause
+                    // padding miscalculation in box_result_line and layout drift.
+                    let clean = crate::layout::strip_ansi_escapes(
+                        &content.replace("\r\n", "\n").replace('\r', ""),
+                    );
                     let width =
-                        box_width(tool_name.len(), tool_args.chars().count(), Some(&content));
-                    for line in content.lines() {
+                        box_width(tool_name.len(), tool_args.chars().count(), Some(&clean));
+                    for line in clean.lines() {
                         self.output.push(box_result_line(line, width));
                     }
                     self.output.push(box_bottom(width));

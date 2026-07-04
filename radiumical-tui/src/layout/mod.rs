@@ -10,7 +10,7 @@ mod tool;
 
 #[allow(unused_imports)]
 pub use text::{fit_table_widths, strip_markdown, wrap_text_to_width};
-pub use tool::wrapped_tool_result_lines;
+pub use tool::{strip_ansi_escapes, wrapped_tool_result_lines};
 
 // ── Block types ──
 
