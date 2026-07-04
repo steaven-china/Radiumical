@@ -6,6 +6,7 @@ use crate::types::{ToolDefinition, ToolResult, UiEvent};
 
 mod agent;
 mod agent_pool;
+pub mod cluster_tool;
 mod command;
 mod file;
 pub mod interact;
@@ -20,6 +21,7 @@ mod task;
 
 pub use agent::{MemoryTool, PlaywrightTool, SubAgentListTool, SubAgentTool, SubAgentWaitTool};
 pub use agent_pool::{ListAgentsTool, LoadAgentTool};
+pub use cluster_tool::ClusterTool;
 pub use command::RunCommand;
 pub use file::{EditFile, ReadFile, WriteFile};
 pub use interact::{AnnotateTool, ChoiceTool};
@@ -104,6 +106,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(ListAgentsTool),
         Box::new(LoadAgentTool),
         Box::new(LayoutPageTool),
+        Box::new(ClusterTool),
     ]
 }
 

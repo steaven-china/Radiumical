@@ -185,6 +185,8 @@ async fn main() -> Result<()> {
 
     // Set sub-agent defaults so SubAgentTool can spawn independently
     radiumical_core::subagent::set_defaults(config.clone(), Arc::clone(&provider));
+    // Set cluster tool defaults
+    radiumical_core::tools::cluster_tool::set_defaults(config.clone(), Arc::clone(&provider));
 
     // ── Channels for frontend ↔ backend communication ──
     let (ui_tx, ui_rx) = tokio::sync::mpsc::channel::<UiEvent>(256);

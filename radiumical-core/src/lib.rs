@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod agent_pool;
+pub mod cluster;
 pub mod commands;
 pub mod config;
 pub mod conversation;
@@ -30,6 +31,7 @@ pub mod types;
 
 pub use agent::Agent;
 pub use agent_pool::{AgentDef, AgentRoleMode};
+pub use cluster::{AgentCluster, ClusterEvent, WorkerSlot};
 pub use config::Config;
 pub use dynamic::{DynamicOrchestrator, DynamicTask, EventBus, Guard, Hook, HookAction, HookTrigger, TaskState as DynTaskState};
 pub use harness::{Harness, ToolHook};
