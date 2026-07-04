@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 
-use radiumical_core::session::SessionMeta;
+use radiumical_core::session::{SessionMeta, WorkspaceEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionFocus {
@@ -45,6 +45,9 @@ pub struct SessionTui {
     pub name_buffer: String,
     pub desc_buffer: String,
     pub message: Option<String>,
+    pub workspaces: Vec<WorkspaceEntry>,
+    pub workspace_selected: usize,
+    pub workspace_mode: bool,
 }
 
 impl Default for SessionTui {
@@ -64,6 +67,9 @@ impl SessionTui {
             name_buffer: String::new(),
             desc_buffer: String::new(),
             message: None,
+            workspaces: Vec::new(),
+            workspace_selected: 0,
+            workspace_mode: false,
         }
     }
 
@@ -87,6 +93,21 @@ impl SessionTui {
         self.visible = false;
     }
 
+    pub fn open_workspaces(&mut self, workspaces: Vec<WorkspaceEntry>) {
+        self.workspaces = workspaces;
+        self.workspace_selected = 0;
+        self.workspace_mode = true;
+    }
+
+    #[allow(dead_code)]
+    pub fn close_workspaces(&mut self) {
+        self.workspace_mode = false;
+    }
+
+    pub fn selected_workspace(&self) -> Option<&WorkspaceEntry> {
+        self.workspaces.get(self.workspace_selected)
+    }
+
     pub fn set_message(&mut self, msg: impl Into<String>) {
         self.message = Some(msg.into());
     }
@@ -108,6 +129,9 @@ impl SessionTui {
 
     pub fn select_prev(&mut self) {
         match self.focus {
+            SessionFocus::List if self.workspace_mode && !self.workspaces.is_empty() => {
+                self.workspace_selected = (self.workspace_selected + self.workspaces.len() - 1) % self.workspaces.len();
+            }
             SessionFocus::List if !self.sessions.is_empty() => {
                 self.selected = (self.selected + self.sessions.len() - 1) % self.sessions.len();
                 self.sync_name_desc_from_selection();
@@ -121,6 +145,9 @@ impl SessionTui {
 
     pub fn select_next(&mut self) {
         match self.focus {
+            SessionFocus::List if self.workspace_mode && !self.workspaces.is_empty() => {
+                self.workspace_selected = (self.workspace_selected + 1) % self.workspaces.len();
+            }
             SessionFocus::List if !self.sessions.is_empty() => {
                 self.selected = (self.selected + 1) % self.sessions.len();
                 self.sync_name_desc_from_selection();
@@ -198,10 +225,11 @@ impl SessionTui {
         };
 
         f.render_widget(Clear, r);
+        let title = if self.workspace_mode { " Workspaces " } else { " Session Manager " };
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(" Session Manager ")
+            .title(title)
             .border_style(Style::default().fg(Color::Cyan))
             .style(Style::default().bg(Color::Rgb(20, 20, 25)));
         let inner = block.inner(r);
@@ -217,14 +245,65 @@ impl SessionTui {
             ])
             .split(inner);
 
-        // Left: session list
-        let list_lines: Vec<Line> = if self.sessions.is_empty() {
-            vec![Line::from(Span::styled(
-                "  No saved sessions",
-                Style::default().fg(Color::Rgb(120, 120, 130)),
-            ))]
+        // Left: session or workspace list
+        let (list_lines, list_title) = if self.workspace_mode {
+            if self.workspaces.is_empty() {
+                (
+                    vec![Line::from(Span::styled(
+                        "  No workspaces",
+                        Style::default().fg(Color::Rgb(120, 120, 130)),
+                    ))],
+                    " Workspaces ",
+                )
+            } else {
+                let lines = self.workspaces
+                    .iter()
+                    .enumerate()
+                    .map(|(i, w)| {
+                        let selected = self.focus == SessionFocus::List && i == self.workspace_selected;
+                        let prefix = if selected { "▸ " } else { "  " };
+                        let pin = if w.pinned { "📌 " } else { "" };
+                        let style = if selected {
+                            Style::default()
+                                .bg(Color::Rgb(50, 50, 60))
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::Rgb(200, 200, 210))
+                        };
+                        let name = if w.name.len() > (list_width as usize).saturating_sub(10) {
+                            format!(
+                                "{}…",
+                                &w.name[..w
+                                    .name
+                                    .char_indices()
+                                    .nth(list_width as usize - 11)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(w.name.len())]
+                            )
+                        } else {
+                            w.name.clone()
+                        };
+                        let tags_str = if w.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" [{}]", w.tags.join(","))
+                        };
+                        Line::from(Span::styled(format!("{}{}{}{}", prefix, pin, name, tags_str), style))
+                    })
+                    .collect();
+                (lines, " Workspaces ")
+            }
+        } else if self.sessions.is_empty() {
+            (
+                vec![Line::from(Span::styled(
+                    "  No saved sessions",
+                    Style::default().fg(Color::Rgb(120, 120, 130)),
+                ))],
+                " Sessions ",
+            )
         } else {
-            self.sessions
+            let lines = self.sessions
                 .iter()
                 .enumerate()
                 .map(|(i, s)| {
@@ -253,13 +332,14 @@ impl SessionTui {
                     };
                     Line::from(Span::styled(format!("{}{}", prefix, name), style))
                 })
-                .collect()
+                .collect();
+            (lines, " Sessions ")
         };
         let list_block = Block::default()
             .borders(Borders::RIGHT)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::DarkGray))
-            .title(" Sessions ");
+            .title(list_title);
         f.render_widget(
             Paragraph::new(Text::from(list_lines))
                 .block(list_block)
@@ -268,7 +348,53 @@ impl SessionTui {
         );
 
         // Right: details + actions
-        let detail_lines = if let Some(s) = self.selected_session() {
+        let detail_lines = if self.workspace_mode {
+            if let Some(w) = self.selected_workspace() {
+                let tags_str = if w.tags.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    w.tags.join(", ")
+                };
+                let session_count = self.sessions.iter()
+                    .filter(|s| s.name.starts_with(&w.name) || s.description.contains(&w.name))
+                    .count();
+                vec![
+                    Line::from(vec![
+                        Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(&w.name),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Path: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(&w.path),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Hash: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(&w.hash),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Tags: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(tags_str),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Pinned: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(if w.pinned { "yes" } else { "no" }),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Last active: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(if w.last_active.is_empty() { "never" } else { &w.last_active }),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Sessions: ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(session_count.to_string()),
+                    ]),
+                ]
+            } else {
+                vec![Line::from(Span::styled(
+                    "  Select a workspace",
+                    Style::default().fg(Color::Rgb(120, 120, 130)),
+                ))]
+            }
+        } else if let Some(s) = self.selected_session() {
             let mode: radiumical_core::types::AgentMode = s.mode.into();
             vec![
                 Line::from(vec![

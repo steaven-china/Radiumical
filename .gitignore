@@ -1,5 +1,5 @@
 /target
-conversation.jsonl
+conversation.jsonl*
 node_modules/
 .rad*
 .radi/

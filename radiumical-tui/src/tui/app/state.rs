@@ -31,6 +31,10 @@ pub struct OverlayState {
     pub plan_tasks: Vec<crate::panels::plan::PlanTask>,
     pub agents: bool,
     pub agents_list: Vec<radiumical_core::agent_pool::AgentDef>,
+    pub timeline: bool,
+    pub timeline_items: Vec<radiumical_core::checkpoint::Checkpoint>,
+    pub timeline_selected: usize,
+    pub timeline_diff: Option<String>,
 }
 
 /// Single-line text input buffer with cursor position, autocomplete hints,
@@ -98,6 +102,10 @@ impl OverlayState {
             plan_tasks: Vec::new(),
             agents: false,
             agents_list: radiumical_core::agent_pool::load_agents(),
+            timeline: false,
+            timeline_items: Vec::new(),
+            timeline_selected: 0,
+            timeline_diff: None,
         }
     }
 }

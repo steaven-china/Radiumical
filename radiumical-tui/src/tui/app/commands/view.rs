@@ -241,4 +241,28 @@ impl App {
         self.output.push(String::new());
         true
     }
+
+    pub(super) fn cmd_timeline(&mut self) -> bool {
+        self.output.push("> /timeline".into());
+        let workspace = PathBuf::from(&self.workspace);
+        match radiumical_core::checkpoint::list_checkpoints_sync(&workspace, &self.session_id,
+        ) {
+            Ok(items) => {
+                self.overlays.timeline_items = items;
+                self.overlays.timeline_selected = 0;
+                self.overlays.timeline_diff = None;
+                self.overlays.timeline = true;
+                self.panels.open(crate::panel::PanelId::Timeline);
+            }
+            Err(e) => {
+                self.output.push(format!("  Failed to load timeline: {e}"));
+            }
+        }
+        self.input.text.clear();
+        self.input.cursor = 0;
+        self.viewport.stick_to_bottom = true;
+        true
+    }
 }
+
+use std::path::PathBuf;

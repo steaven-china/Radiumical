@@ -323,6 +323,10 @@ impl App {
                     })
                     .collect();
             }
+            UiEvent::CheckpointCreated(cp) => {
+                self.overlays.timeline_items.insert(0, cp);
+                self.overlays.timeline_selected = 0;
+            }
         }
     }
 }

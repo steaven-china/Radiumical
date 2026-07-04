@@ -23,3 +23,22 @@ ratatui = { version = "0.28", features = ["crossterm"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Release Profiles ──────────────────────────────────────────────────────────
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Ultra-small binary for distribution — trades some perf for size.
+# Use: cargo build --profile release-small
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = true

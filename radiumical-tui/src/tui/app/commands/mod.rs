@@ -46,6 +46,7 @@ impl App {
             "/new" => self.cmd_new(),
             "/clear" | "/cls" => self.cmd_clear(),
             _ if task == "/sessions" || task == "/session tui" => self.cmd_sessions_tui(),
+            _ if task == "/ws" || task == "/session ws-tui" => self.cmd_ws_tui(),
             _ if task == "/session" => self.cmd_session_help(),
             _ if task.starts_with("/session") => self.cmd_session(task),
 
@@ -75,6 +76,7 @@ impl App {
             "/debug linevis" => self.cmd_debug_linevis(),
             _ if task.starts_with("/debug") => self.cmd_debug(task),
             "/outline" | "/lint" | "/diagnostics" => self.cmd_diagnostics(),
+            "/timeline" => self.cmd_timeline(),
 
             // ── utility ──
             "/end" | "/bottom" => self.cmd_end(),

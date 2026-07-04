@@ -148,6 +148,20 @@ async fn main() -> Result<()> {
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
+    // ── Workspace registry: discover + auto-register ──
+    let ws_hash = radiumical_core::session::workspace_hash(&workspace.to_string_lossy());
+    {
+        let mut registry = radiumical_core::session::WorkspaceRegistry::load();
+        registry.discover();
+        let _ = registry.register(&workspace.to_string_lossy(), None);
+        let ws_name = registry
+            .get_by_hash(&ws_hash)
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| "default".into());
+        let _ = registry.switch(&ws_name);
+    }
+
+    // ── Config: global + workspace merge ──
     let file_cfg =
         radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
             model: None,
@@ -179,7 +193,18 @@ async fn main() -> Result<()> {
         max_context_tokens: file_cfg.max_context_tokens.unwrap_or(1_000_000),
         context_compress_ratio: file_cfg.context_compress_ratio.unwrap_or(0.8),
         auto_continue: true,
+        session_id: format!(
+            "sess-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ),
     };
+
+    // Apply workspace-level overrides
+    let ws_settings = radiumical_core::session::load_workspace_settings(&ws_hash);
+    ws_settings.apply_to_config(&mut config);
 
     let mut provider = create_provider(
         &config.provider,

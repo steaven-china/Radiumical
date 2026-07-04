@@ -474,6 +474,292 @@ impl SessionPool {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace Registry — maps human-readable names to session directories.
+//
+// Stored at `~/.radi/workspaces.json`.  Each workspace has a name, path,
+// hash, optional tags, and an optional per-workspace config override
+// (`workspace.toml` inside the session directory).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceEntry {
+    pub name: String,
+    pub path: String,
+    pub hash: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub last_active: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorkspaceSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_context_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_timeout_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_timeout_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_compress_ratio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_continue: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorkspaceRegistry {
+    #[serde(default)]
+    pub active: Option<String>,
+    #[serde(default)]
+    pub workspaces: Vec<WorkspaceEntry>,
+}
+
+fn registry_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".radi")
+        .join("workspaces.json")
+}
+
+fn sessions_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".radi")
+        .join("sessions")
+}
+
+impl WorkspaceRegistry {
+    pub fn load() -> Self {
+        let path = registry_path();
+        fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = registry_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(&path, json)?;
+        Ok(())
+    }
+
+    pub fn get(&self, name: &str) -> Option<&WorkspaceEntry> {
+        self.workspaces.iter().find(|w| w.name == name)
+    }
+
+    pub fn get_by_hash(&self, hash: &str) -> Option<&WorkspaceEntry> {
+        self.workspaces.iter().find(|w| w.hash == hash)
+    }
+
+    pub fn active_entry(&self) -> Option<&WorkspaceEntry> {
+        self.active.as_deref().and_then(|name| self.get(name))
+    }
+
+    /// Register a new workspace. If name is None, derive from path.
+    pub fn register(&mut self, path: &str, name: Option<&str>) -> Result<String> {
+        let abs = std::fs::canonicalize(path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string());
+        let hash = workspace_hash(&abs);
+
+        // Already registered?
+        if let Some(existing) = self.get_by_hash(&hash) {
+            return Ok(existing.name.clone());
+        }
+
+        let ws_name = name
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                std::path::Path::new(&abs)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| format!("ws-{}", &hash[..8]))
+            });
+
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        self.workspaces.push(WorkspaceEntry {
+            name: ws_name.clone(),
+            path: abs,
+            hash,
+            tags: Vec::new(),
+            pinned: false,
+            last_active: now,
+        });
+        self.save()?;
+        Ok(ws_name)
+    }
+
+    /// Switch the active workspace by name.
+    pub fn switch(&mut self, name: &str) -> Result<()> {
+        if self.get(name).is_none() {
+            anyhow::bail!("Workspace '{name}' not found");
+        }
+        self.active = Some(name.to_string());
+        // Update last_active
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        if let Some(ws) = self.workspaces.iter_mut().find(|w| w.name == name) {
+            ws.last_active = now;
+        }
+        self.save()
+    }
+
+    pub fn remove(&mut self, name: &str) -> Result<bool> {
+        let before = self.workspaces.len();
+        self.workspaces.retain(|w| w.name != name);
+        if self.workspaces.len() < before {
+            if self.active.as_deref() == Some(name) {
+                self.active = None;
+            }
+            self.save()?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn add_tag(&mut self, name: &str, tag: &str) -> Result<()> {
+        let ws = self
+            .workspaces
+            .iter_mut()
+            .find(|w| w.name == name)
+            .ok_or_else(|| anyhow::anyhow!("Workspace '{name}' not found"))?;
+        if !ws.tags.iter().any(|t| t == tag) {
+            ws.tags.push(tag.to_string());
+        }
+        self.save()
+    }
+
+    pub fn remove_tag(&mut self, name: &str, tag: &str) -> Result<()> {
+        let ws = self
+            .workspaces
+            .iter_mut()
+            .find(|w| w.name == name)
+            .ok_or_else(|| anyhow::anyhow!("Workspace '{name}' not found"))?;
+        ws.tags.retain(|t| t != tag);
+        self.save()
+    }
+
+    pub fn set_pinned(&mut self, name: &str, pinned: bool) -> Result<()> {
+        let ws = self
+            .workspaces
+            .iter_mut()
+            .find(|w| w.name == name)
+            .ok_or_else(|| anyhow::anyhow!("Workspace '{name}' not found"))?;
+        ws.pinned = pinned;
+        self.save()
+    }
+
+    /// Auto-discover unregistered session directories and register them.
+    pub fn discover(&mut self) {
+        let dir = sessions_dir();
+        if !dir.exists() {
+            return;
+        }
+        let known_hashes: std::collections::HashSet<String> =
+            self.workspaces.iter().map(|w| w.hash.clone()).collect();
+
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let hash = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if known_hashes.contains(&hash) {
+                    continue;
+                }
+
+                // Try to infer name from the latest session meta
+                let name = infer_name_from_sessions(&path, &hash);
+
+                let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+                self.workspaces.push(WorkspaceEntry {
+                    name,
+                    path: String::new(), // unknown for auto-discovered
+                    hash,
+                    tags: Vec::new(),
+                    pinned: false,
+                    last_active: now,
+                });
+            }
+        }
+        let _ = self.save();
+    }
+}
+
+/// Try to derive a human-readable name from session files in a directory.
+fn infer_name_from_sessions(dir: &Path, hash: &str) -> String {
+    // Look for the newest .jsonl and read its meta
+    let mut newest: Option<(std::time::SystemTime, String)> = None;
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e == "jsonl") {
+                if let Ok(meta) = fs::metadata(&p) {
+                    if let Ok(modified) = meta.modified() {
+                        if newest
+                            .as_ref()
+                            .map(|(t, _)| modified > *t)
+                            .unwrap_or(true)
+                        {
+                            newest = Some((modified, p.to_string_lossy().to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some((_, path)) = newest {
+        if let Ok(data) = fs::read_to_string(&path) {
+            if let Some(first) = data.lines().next() {
+                if let Ok(SessionItem::Meta { name, .. }) = serde_json::from_str(first) {
+                    if !name.is_empty() && !name.starts_with("auto-") {
+                        return name;
+                    }
+                }
+            }
+        }
+    }
+
+    format!("ws-{}", &hash[..8.min(hash.len())])
+}
+
+/// Load workspace-level settings from `workspace.toml` inside the session dir.
+pub fn load_workspace_settings(hash: &str) -> WorkspaceSettings {
+    let path = sessions_dir().join(hash).join("workspace.toml");
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Save workspace-level settings to `workspace.toml` inside the session dir.
+pub fn save_workspace_settings(hash: &str, settings: &WorkspaceSettings) -> Result<()> {
+    let dir = sessions_dir().join(hash);
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("workspace.toml");
+    let data = toml::to_string_pretty(settings)?;
+    fs::write(&path, data)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Backward compat: static `Session` methods delegate to the legacy dir.
 // New code should use `SessionPool::for_workspace()` instead.
 // ---------------------------------------------------------------------------

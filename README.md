@@ -4,8 +4,8 @@
   <img src="https://img.shields.io/badge/language-Rust-dea584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-green?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/binary-11%20MB-orange?style=flat-square" alt="Binary">
-  <img src="https://img.shields.io/badge/memory-<30%20MB%20idle-brightgreen?style=flat-square" alt="Memory">
+  <img src="https://img.shields.io/badge/binary-6%20MB-orange?style=flat-square" alt="Binary">
+  <img src="https://img.shields.io/badge/memory-10%20MB%20idle-brightgreen?style=flat-square" alt="Memory">
 </p>
 
 A lightweight, Rust-native agentic coding assistant for your terminal. 11 MB binary, 24 MB idle memory, 21 providers, full TUI.

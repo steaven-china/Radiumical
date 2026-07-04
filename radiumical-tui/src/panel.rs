@@ -32,6 +32,7 @@ pub enum PanelId {
     Outline,
     Perf,
     Confirm,
+    Timeline,
 }
 
 /// How a panel participates in layout.
@@ -62,6 +63,7 @@ impl PanelId {
             PanelId::Outline => " Outline ",
             PanelId::Perf => " Perf ",
             PanelId::Confirm => " Confirm ",
+            PanelId::Timeline => " Timeline ",
         }
     }
 
@@ -84,6 +86,7 @@ impl PanelId {
             PanelId::Outline => (0.35, 0.70),
             PanelId::Diagnostics => (0.50, 0.60),
             PanelId::Memory => (0.45, 0.50),
+            PanelId::Timeline => (0.55, 0.70),
             _ => (0.50, 0.65),
         }
     }

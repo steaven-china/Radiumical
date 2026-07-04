@@ -37,6 +37,28 @@ pub(crate) async fn execute_tool_calls(
         full_reasoning,
     ));
 
+    // ── Checkpoint before mutating tool batches ──
+    let has_mutating = calls.iter().any(|tc| {
+        matches!(
+            tc.function.name.as_str(),
+            "write_file" | "edit_file" | "writeFile" | "editFile"
+        )
+    });
+    if has_mutating {
+        let summary = summarize_for_checkpoint(full_text, full_reasoning);
+        match crate::checkpoint::create_checkpoint(workspace, &config.session_id, &summary).await {
+            Ok(Some(cp)) => {
+                if let Err(e) = ui_tx.send(UiEvent::CheckpointCreated(cp)).await {
+                    tracing::warn!(error = %e, "failed to send CheckpointCreated to UI");
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to create checkpoint");
+            }
+        }
+    }
+
     let total = calls.len();
     for (i, tc) in calls.iter().enumerate() {
         if !allowed_names.contains(&tc.function.name) {
@@ -271,4 +293,20 @@ async fn intercept_settings(
 
     // Not a settings marker — pass through
     result
+}
+
+fn summarize_for_checkpoint(full_text: &str, full_reasoning: &str) -> String {
+    let source = if full_reasoning.trim().is_empty() {
+        full_text
+    } else {
+        full_reasoning
+    };
+    let first = source.lines().map(|l| l.trim()).find(|l| !l.is_empty()).unwrap_or("agent step");
+    let mut s = first.to_string();
+    s = s.trim_start_matches("#").trim_start_matches("*").trim_start_matches("-").trim().to_string();
+    if s.len() > 60 {
+        s.truncate(60);
+        s.push('…');
+    }
+    s
 }

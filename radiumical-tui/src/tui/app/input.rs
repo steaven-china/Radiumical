@@ -85,6 +85,67 @@ impl App {
                 _ => {}
             }
         }
+        if self.overlays.timeline {
+            match (key.code, key.modifiers) {
+                (KeyCode::Up, _) => {
+                    self.overlays.timeline_selected =
+                        self.overlays.timeline_selected.saturating_sub(1);
+                    return;
+                }
+                (KeyCode::Down, _) => {
+                    if self.overlays.timeline_selected + 1 < self.overlays.timeline_items.len() {
+                        self.overlays.timeline_selected += 1;
+                    }
+                    return;
+                }
+                (KeyCode::Enter, _) => {
+                    if let Some(cp) = self.overlays.timeline_items.get(self.overlays.timeline_selected) {
+                        let workspace = std::path::PathBuf::from(&self.workspace);
+                        match radiumical_core::checkpoint::diff_checkpoint_sync(
+                            &workspace, &self.session_id, &cp.id,
+                        ) {
+                            Ok(diff) => self.overlays.timeline_diff = Some(diff),
+                            Err(e) => self.toasts.push(crate::board::Toast::new(
+                                format!("diff failed: {e}"),
+                                crate::board::ToastLevel::Error,
+                                std::time::Duration::from_secs(5),
+                            )),
+                        }
+                    }
+                    return;
+                }
+                (KeyCode::Char('r'), _) => {
+                    if let Some(cp) = self.overlays.timeline_items.get(self.overlays.timeline_selected) {
+                        let workspace = std::path::PathBuf::from(&self.workspace);
+                        match radiumical_core::checkpoint::rollback_sync(
+                            &workspace, &self.session_id, &cp.id,
+                        ) {
+                            Ok(()) => {
+                                self.toasts.push(crate::board::Toast::new(
+                                    format!("Rolled back to {}", cp.id),
+                                    crate::board::ToastLevel::Info,
+                                    std::time::Duration::from_secs(3),
+                                ));
+                                self.overlays.timeline_diff = None;
+                            }
+                            Err(e) => self.toasts.push(crate::board::Toast::new(
+                                format!("rollback failed: {e}"),
+                                crate::board::ToastLevel::Error,
+                                std::time::Duration::from_secs(5),
+                            )),
+                        }
+                    }
+                    return;
+                }
+                (KeyCode::Esc, _) => {
+                    self.overlays.timeline = false;
+                    self.overlays.timeline_diff = None;
+                    self.panels.close(crate::panel::PanelId::Timeline);
+                    return;
+                }
+                _ => {}
+            }
+        }
         match (key.code, key.modifiers) {
             (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
                 self.thinking.show_full_reasoning = !self.thinking.show_full_reasoning;

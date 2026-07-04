@@ -237,6 +237,13 @@ async fn build_initial_state(cli: &Cli) -> Result<(SessionConfig, Arc<dyn radium
         max_context_tokens: 1_000_000,
         context_compress_ratio: 0.8,
         auto_continue: true,
+        session_id: format!(
+            "rpc-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ),
     };
 
     let provider = create_provider(&config.provider, config.api_base.as_deref(), &config.api_key, &config.model);

@@ -68,6 +68,8 @@ pub struct App {
     pub mcp_servers: Vec<crate::panels::mcp_status::McpServerStatus>,
     pub agent_role: String,
     pub tip_state: crate::tips::TipState,
+    pub session_id: String,
+    pub workspace: String,
 }
 
 impl App {
@@ -165,6 +167,8 @@ impl App {
             memory: radiumical_core::memory::Memory::for_workspace(workspace),
             choice_panel: crate::choice_panel::ChoicePanel::new(),
             tip_state: crate::tips::TipState::new(),
+            session_id: config.session_id.clone(),
+            workspace: workspace.to_string(),
         }
     }
 

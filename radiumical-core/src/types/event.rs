@@ -3,6 +3,7 @@
 use crate::orchestrator::TaskStatus;
 use crate::providers::ProviderSource;
 use crate::session::SessionItem;
+use crate::checkpoint::Checkpoint;
 
 use super::config::AgentMode;
 use super::message::ToolCall;
@@ -65,6 +66,7 @@ pub enum UiEvent {
         title: String,
         tasks: Vec<PlanTaskUpdate>,
     },
+    CheckpointCreated(Checkpoint),
 }
 
 /// A lightweight task update emitted when the orchestration plan changes.

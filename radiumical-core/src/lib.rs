@@ -9,6 +9,7 @@
 
 pub mod agent;
 pub mod agent_pool;
+pub mod checkpoint;
 pub mod cluster;
 pub mod commands;
 pub mod config;
@@ -39,6 +40,7 @@ pub mod types;
 // ═══ Stable public API re-exports ═══
 
 pub use agent::Agent;
+pub use checkpoint::{create_checkpoint, list_checkpoints, rollback, Checkpoint};
 pub use agent_pool::{AgentDef, AgentRoleMode};
 pub use cluster::{AgentCluster, ClusterEvent, WorkerSlot};
 pub use config::Config;

@@ -42,6 +42,8 @@ pub struct SessionConfig {
     /// Whether the harness should auto-continue when the orchestrator has ready tasks.
     /// When false, the harness stops after each LLM turn and waits for the user.
     pub auto_continue: bool,
+    /// Stable identifier for this TUI/backend session. Used for checkpoint branches.
+    pub session_id: String,
 }
 
 /// Supported LLM provider backends.
@@ -96,6 +98,7 @@ impl Default for SessionConfig {
             max_context_tokens: 1_000_000,
             context_compress_ratio: 0.8,
             auto_continue: true,
+            session_id: "default".into(),
         }
     }
 }

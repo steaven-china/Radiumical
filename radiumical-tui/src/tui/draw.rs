@@ -120,6 +120,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                     &app.agent_role,
                 );
             }
+            crate::panel::PanelId::Timeline => {
+                crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
+                crate::panels::timeline::render_timeline_panel(
+                    f,
+                    slot,
+                    &app.overlays.timeline_items,
+                    app.overlays.timeline_selected,
+                    app.overlays.timeline_diff.as_deref(),
+                );
+            }
             _ => {
                 crate::panel::PanelManager::render_panel_frame(f, slot, title, border, bg);
             }
@@ -238,9 +248,10 @@ fn sync_panels(app: &mut App) {
         (PanelId::Memory, app.overlays.memory),
         (PanelId::SubAgents, app.overlays.subagents),
         (PanelId::Mcp, app.overlays.mcp),
-        (PanelId::Plan, app.overlays.plan),
-        (PanelId::Agents, app.overlays.agents),
-    ];
+            (PanelId::Plan, app.overlays.plan),
+            (PanelId::Agents, app.overlays.agents),
+            (PanelId::Timeline, app.overlays.timeline),
+        ];
     for (id, visible) in flags {
         if visible && !app.panels.is_open(id) {
             app.panels.open(id);
