@@ -64,6 +64,17 @@ pub(crate) async fn execute_tool_calls(
     for (i, tc) in calls.iter().enumerate() {
         // ── Cancel check before each tool call ──
         if *cancel_rx.borrow() {
+            // Fill in "cancelled" results for remaining tool calls so the
+            // conversation stays well-formed (every tool_call needs a result).
+            for remaining in &calls[i..] {
+                let tr = ToolResult {
+                    tool_call_id: remaining.id.clone(),
+                    content: "Cancelled by user.".into(),
+                    is_error: true,
+                };
+                conversation.push_tool_result(remaining, &tr, Some(workspace));
+                messages.push(tool_result_msg(remaining, tr));
+            }
             return true;
         }
         if !allowed_names.contains(&tc.function.name) {
