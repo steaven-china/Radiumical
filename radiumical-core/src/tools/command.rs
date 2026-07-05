@@ -1,7 +1,6 @@
 //! Shell command execution tool.
 
 use std::path::Path;
-use std::process::Command;
 
 use crate::tools::Tool;
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
@@ -45,8 +44,6 @@ impl Tool for RunCommand {
 
         let cmd_str = args["command"].as_str().unwrap_or("").to_string();
 
-        // Execute via sh on unix; on Windows prefer Git Bash if available,
-        // otherwise fall back to cmd.
         #[cfg(target_os = "windows")]
         let (shell, flag, cmd_str): (String, String, String) = if let Some(bash) = find_git_bash() {
             (bash, "-c".into(), cmd_str)
@@ -62,27 +59,22 @@ impl Tool for RunCommand {
 
         let ws_clone = workspace.to_path_buf();
         let cmd = cmd_str.clone();
-        let output = match tokio::task::spawn_blocking(move || {
-            Command::new(&shell)
-                .arg(&flag)
-                .arg(&cmd)
-                .current_dir(&ws_clone)
-                .output()
-        })
-        .await
+
+        // Use tokio::process::Command with kill_on_drop so the child process
+        // is killed when the JoinHandle is aborted (on cancel or timeout).
+        let output = match tokio::process::Command::new(&shell)
+            .arg(&flag)
+            .arg(&cmd)
+            .current_dir(&ws_clone)
+            .kill_on_drop(true)
+            .output()
+            .await
         {
-            Ok(Ok(o)) => o,
-            Ok(Err(e)) => {
+            Ok(o) => o,
+            Err(e) => {
                 return ToolResult {
                     tool_call_id: String::new(),
                     content: format!("Failed to execute command: {e}"),
-                    is_error: true,
-                }
-            }
-            Err(je) => {
-                return ToolResult {
-                    tool_call_id: String::new(),
-                    content: format!("Command panicked: {je}"),
                     is_error: true,
                 }
             }
@@ -115,8 +107,6 @@ impl Tool for RunCommand {
 }
 
 /// Locate a usable Git Bash executable on Windows.
-///
-/// Checks common installation paths first, then falls back to PATH lookup.
 #[cfg(target_os = "windows")]
 fn find_git_bash() -> Option<String> {
     use std::path::PathBuf;
@@ -131,7 +121,6 @@ fn find_git_bash() -> Option<String> {
             return Some(candidate.to_string_lossy().to_string());
         }
     }
-    // Fallback: search PATH for bash.exe.
     if let Ok(path_env) = std::env::var("PATH") {
         for dir in path_env.split(';') {
             let candidate = PathBuf::from(dir).join("bash.exe");

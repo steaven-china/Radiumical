@@ -236,7 +236,17 @@ impl App {
                 } else {
                     " (try /retry)"
                 };
-                self.output.push(format!("\x03  \u{2717} Error: {e}{hint}"));
+                // Split multi-line errors so each line gets its own block with
+                // correct height (measure_blocks gives Text blocks height=1).
+                let first_line = format!("\x03  \u{2717} Error: {}", e.lines().next().unwrap_or(&e));
+                let rest: Vec<&str> = e.lines().skip(1).collect();
+                self.output.push(first_line);
+                for line in rest {
+                    self.output.push(format!("\x03    {line}"));
+                }
+                if !hint.is_empty() {
+                    self.output.push(format!("\x03    {hint}"));
+                }
                 self.thinking.active = false;
                 self.session_items.push(SessionItem::Raw { lines: vec![e] });
             }

@@ -28,6 +28,8 @@ struct RegistryEntry {
     result: SubAgentResult,
     /// Watch channel: sends `true` when done. Receivers can block until done.
     done_tx: watch::Sender<bool>,
+    /// Cancel sender — external code can send `true` to cancel this sub-agent.
+    cancel_tx: tokio::sync::watch::Sender<bool>,
     /// Snapshot of all UI events (chunks/errors) produced by this sub-agent.
     /// Stored so the main agent can retrieve the full output after waiting.
     output_buffer: Vec<String>,
@@ -115,6 +117,7 @@ pub async fn spawn(
     let workspace = std::env::current_dir().unwrap_or_default();
 
     let (done_tx, done_rx) = watch::channel(false);
+    let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
 
     // Register as in-progress
     registry().lock().unwrap().insert(
@@ -130,6 +133,7 @@ pub async fn spawn(
                 error: None,
             },
             done_tx: done_tx.clone(),
+            cancel_tx: cancel_tx.clone(),
             output_buffer: Vec::new(),
         },
     );
@@ -160,7 +164,6 @@ pub async fn spawn(
 
     let id_for_task = id.clone();
     tokio::spawn(async move {
-        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         let result = runner
             .run(task.clone(), workspace, &[], None, ui_tx, cancel_rx)
             .await;
@@ -213,7 +216,6 @@ pub async fn spawn(
                 tracing::warn!(error = %e, subagent_id = %id_for_task, "failed to send SubAgentDone");
             }
         }
-        drop(cancel_tx);
     });
 
     SubAgentHandle { id, done_rx }
@@ -291,4 +293,26 @@ pub fn get(id: &str) -> Option<SubAgentResult> {
 pub fn cleanup_done() {
     let mut reg = registry().lock().unwrap();
     reg.retain(|_, entry| !entry.result.done);
+}
+
+/// Cancel a running sub-agent by ID. Returns true if the sub-agent was found
+/// and signalled to cancel.
+pub fn cancel(id: &str) -> bool {
+    let reg = registry().lock().unwrap();
+    if let Some(entry) = reg.get(id) {
+        let _ = entry.cancel_tx.send(true);
+        true
+    } else {
+        false
+    }
+}
+
+/// Cancel ALL running sub-agents.
+pub fn cancel_all() {
+    let reg = registry().lock().unwrap();
+    for (_, entry) in reg.iter() {
+        if !entry.result.done {
+            let _ = entry.cancel_tx.send(true);
+        }
+    }
 }

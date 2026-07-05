@@ -27,7 +27,8 @@ pub(crate) async fn execute_tool_calls(
     tool_timeout: Duration,
     allowed_names: &HashSet<String>,
     config: &mut crate::types::SessionConfig,
-) {
+    cancel_rx: &tokio::sync::watch::Receiver<bool>,
+) -> bool {
     use crate::harness::helpers::assistant_msg;
 
     conversation.push_assistant(full_text, Some(calls.to_vec()), Some(full_reasoning));
@@ -61,6 +62,10 @@ pub(crate) async fn execute_tool_calls(
 
     let total = calls.len();
     for (i, tc) in calls.iter().enumerate() {
+        // ── Cancel check before each tool call ──
+        if *cancel_rx.borrow() {
+            return true;
+        }
         if !allowed_names.contains(&tc.function.name) {
             let err = format!(
                 "Tool '{}' is not allowed for this agent/mode",
@@ -159,6 +164,7 @@ pub(crate) async fn execute_tool_calls(
             }
         }
     }
+    false
 }
 
 /// Intercept settings tool markers and apply config changes.

@@ -106,7 +106,7 @@ impl Harness {
         workspace: PathBuf,
         agent: &Agent,
         extra_tools: &[Box<dyn Tool>],
-        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
@@ -116,7 +116,7 @@ impl Harness {
             workspace,
             agent,
             extra_tools,
-            _hb_cancel,
+            hb_cancel,
             ui_tx,
             cancel_rx,
         )
@@ -131,11 +131,12 @@ impl Harness {
         workspace: PathBuf,
         agent: &Agent,
         extra_tools: &[Box<dyn Tool>],
-        _hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
+        hb_cancel: Option<tokio::sync::mpsc::Sender<()>>,
         ui_tx: tokio::sync::mpsc::Sender<UiEvent>,
         mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let _flush_handle = self.conversation.spawn_flush_task();
+        let hb_cancel = hb_cancel;
 
         let llm_timeout = Duration::from_secs(self.config.llm_timeout_secs);
         let tool_timeout = Duration::from_secs(self.config.tool_timeout_secs);
@@ -232,7 +233,14 @@ impl Harness {
         self.conversation.sanitize();
 
         for iteration in 0..self.config.max_iterations {
-            // ── 0. Context compression ──
+            // ── 0. Cancel check at top of each iteration ──
+            if *cancel_rx.borrow() {
+                crate::subagent::cancel_all();
+                drop(hb_cancel);
+                return Ok(());
+            }
+
+            // ── 0b. Context compression ──
             if iteration > 0 {
                 let compressed = compress::compress_context(
                     &self.config,
@@ -272,12 +280,26 @@ impl Harness {
                     tokio::select! {
                         e = rx.recv() => e,
                         _ = tokio::time::sleep(llm_timeout) => { timed_out = true; None }
-                        _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return Ok(()); } else { continue; } }
+                        _ = cancel_rx.changed() => {
+                            if *cancel_rx.borrow() {
+                                chat_handle.abort();
+                                crate::subagent::cancel_all();
+                                drop(hb_cancel);
+                                return Ok(());
+                            } else { continue; }
+                        }
                     }
                 } else {
                     tokio::select! {
                         e = rx.recv() => e,
-                        _ = cancel_rx.changed() => { if *cancel_rx.borrow() { return Ok(()); } else { continue; } }
+                        _ = cancel_rx.changed() => {
+                            if *cancel_rx.borrow() {
+                                chat_handle.abort();
+                                crate::subagent::cancel_all();
+                                drop(hb_cancel);
+                                return Ok(());
+                            } else { continue; }
+                        }
                     }
                 };
 
@@ -348,7 +370,7 @@ impl Harness {
 
             // ── 2. Tool execution ──
             if let Some(ref calls) = last_tool_calls {
-                tool_loop::execute_tool_calls(
+                let cancelled = tool_loop::execute_tool_calls(
                     calls,
                     &full_text,
                     &full_reasoning,
@@ -363,8 +385,14 @@ impl Harness {
                     tool_timeout,
                     &allowed_names,
                     &mut self.config,
+                    &cancel_rx,
                 )
                 .await;
+                if cancelled {
+                    crate::subagent::cancel_all();
+                    drop(hb_cancel);
+                    return Ok(());
+                }
                 continue;
             }
 
@@ -458,6 +486,7 @@ impl Harness {
                 });
             }
 
+            drop(hb_cancel);
             return Ok(());
         }
 
