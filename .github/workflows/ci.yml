@@ -69,16 +69,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: radiumical
-            rpc_binary: radiumical-rpc
+            suffix: linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary: radiumical
-            rpc_binary: radiumical-rpc
+            suffix: macos-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: radiumical.exe
-            rpc_binary: radiumical-rpc.exe
+            suffix: windows-x64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -89,9 +86,6 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}-${{ matrix.target }}
@@ -108,17 +102,32 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --release --target ${{ matrix.target }}
 
-      - name: Upload TUI binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: radiumical-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+      - name: Organize output
+        shell: bash
+        run: |
+          BASE="target/${{ matrix.target }}/release"
+          for dir in tui rpc tauri; do mkdir -p "$BASE/$dir"; done
+          cp "$BASE/radiumical"*         "$BASE/tui/"    2>/dev/null || true
+          cp "$BASE/radiumical-rpc"*     "$BASE/rpc/"    2>/dev/null || true
+          cp "$BASE/radiumical-tauri"*   "$BASE/tauri/"  2>/dev/null || true
 
-      - name: Upload RPC binary
+      - name: Upload TUI
         uses: actions/upload-artifact@v4
         with:
-          name: radiumical-rpc-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.rpc_binary }}
+          name: radiumical-tui-${{ matrix.suffix }}
+          path: target/${{ matrix.target }}/release/tui/
+
+      - name: Upload RPC
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiumical-rpc-${{ matrix.suffix }}
+          path: target/${{ matrix.target }}/release/rpc/
+
+      - name: Upload Tauri
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiumical-tauri-${{ matrix.suffix }}
+          path: target/${{ matrix.target }}/release/tauri/
 
   # ── Bench / Memory sanity ───────────────────────────────────
   bench:
@@ -145,10 +154,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: radiumical-x86_64-unknown-linux-gnu
+          name: radiumical-tui-linux-x64
 
       - name: Smoke test (help/version)
         run: |
-          chmod +x radiumical
-          ./radiumical --help || true
-          ./radiumical --version || true
+          chmod +x tui/radiumical
+          ./tui/radiumical --help || true
+          ./tui/radiumical --version || true

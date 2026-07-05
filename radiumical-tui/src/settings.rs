@@ -79,12 +79,22 @@ impl SettingsBoard {
         mode: &radiumical_core::types::AgentMode,
     ) -> Self {
         let provider = config.provider.clone().unwrap_or_else(|| "deepseek".into());
+        let registry_entry = radiumical_core::find_provider(&provider);
         let model = config
             .model
             .clone()
-            .unwrap_or_else(|| "deepseek-v4-pro".into());
+            .or_else(|| {
+                registry_entry
+                    .as_ref()
+                    .and_then(|e| e.default_model.clone())
+            })
+            .unwrap_or_else(|| "deepseek-chat".into());
         let api_key = config.api_key.clone().unwrap_or_default();
-        let api_base = config.api_base.clone().unwrap_or_default();
+        let api_base = config
+            .api_base
+            .clone()
+            .or_else(|| registry_entry.as_ref().map(|e| e.api_base.clone()))
+            .unwrap_or_default();
         let heartbeat_secs = config.heartbeat_secs.unwrap_or(10);
         let llm_timeout_secs = config.llm_timeout_secs.unwrap_or(120);
         let max_iterations = config.max_iterations.unwrap_or(32);

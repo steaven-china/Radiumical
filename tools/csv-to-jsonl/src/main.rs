@@ -43,6 +43,8 @@ struct SourceEntry {
     version_header: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     models: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_model: Option<String>,
     #[serde(flatten)]
     extra: HashMap<String, serde_json::Value>,
 }
@@ -101,6 +103,7 @@ fn main() -> Result<()> {
                     | "auth_header"
                     | "version_header"
                     | "models"
+                    | "default_model"
             );
             if !known {
                 let v = record.get(i).unwrap_or("").trim();
@@ -127,6 +130,7 @@ fn main() -> Result<()> {
             auth_header: get("auth_header"),
             version_header: get("version_header"),
             models,
+            default_model: get("default_model"),
             extra,
         };
 

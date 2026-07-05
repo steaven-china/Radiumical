@@ -62,11 +62,38 @@ struct Cli {
 // ═══ Protocol types ═══
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum RpcMessage {
+    Full {
+        id: serde_json::Value,
+        method: String,
+        #[serde(default)]
+        params: serde_json::Value,
+    },
+    Short {
+        proc: String,
+        #[serde(default)]
+        params: serde_json::Value,
+    },
+}
+
 struct Request {
     id: serde_json::Value,
     method: String,
-    #[serde(default)]
     params: serde_json::Value,
+}
+
+impl From<RpcMessage> for Request {
+    fn from(msg: RpcMessage) -> Self {
+        match msg {
+            RpcMessage::Full { id, method, params } => Request { id, method, params },
+            RpcMessage::Short { proc, params } => Request {
+                id: serde_json::Value::Null,
+                method: proc,
+                params,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -99,6 +126,7 @@ struct ServerState {
     cancel_tx: Mutex<Option<tokio::sync::watch::Sender<bool>>>,
     running: AtomicBool,
     mcp_clients: Vec<McpClientEntry>,
+    conversation_items: Mutex<Vec<radiumical_core::session::SessionItem>>,
 }
 
 struct McpClientEntry {
@@ -142,6 +170,7 @@ async fn main() -> Result<()> {
         cancel_tx: Mutex::new(None),
         running: AtomicBool::new(false),
         mcp_clients,
+        conversation_items: Mutex::new(Vec::new()),
     });
 
     let (out_tx, mut out_rx) = mpsc::channel::<String>(256);
@@ -172,8 +201,8 @@ async fn main() -> Result<()> {
         if line.is_empty() {
             continue;
         }
-        let req: Request = match serde_json::from_str(line) {
-            Ok(r) => r,
+        let req: Request = match serde_json::from_str::<RpcMessage>(line) {
+            Ok(msg) => msg.into(),
             Err(e) => {
                 send_error(&out_tx, serde_json::Value::Null, -32700, e.to_string()).await;
                 continue;
@@ -199,31 +228,47 @@ async fn build_initial_state(
     PathBuf,
 )> {
     let provider_kind = parse_provider(&cli.provider);
+    let registry_entry = radiumical_core::find_provider(&cli.provider);
+
     let model = cli.model.clone().unwrap_or_else(|| {
-        if cli.provider.to_lowercase() == "deepseek" {
-            "deepseek-v4-pro".into()
-        } else {
-            provider_kind.default_model().into()
-        }
+        registry_entry
+            .as_ref()
+            .and_then(|e| e.default_model.clone())
+            .or_else(|| {
+                registry_entry
+                    .as_ref()
+                    .and_then(|e| e.models.as_ref().and_then(|m| m.first().cloned()))
+            })
+            .unwrap_or_else(|| provider_kind.default_model().into())
     });
+
     let api_key = cli.api_key.clone().unwrap_or_else(|| {
+        // Try provider-specific env var from registry first
+        if let Some(ref entry) = registry_entry {
+            if let Some(ref key_env) = entry.key_env {
+                if let Ok(key) = std::env::var(key_env) {
+                    return key;
+                }
+            }
+        }
         std::env::var("RADIUMICAL_API_KEY")
             .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
             .or_else(|_| std::env::var("OPENAI_API_KEY"))
             .unwrap_or_default()
     });
     if api_key.is_empty() {
-        eprintln!("No API key. Set DEEPSEEK_API_KEY or use --api-key.");
+        let hint = registry_entry
+            .as_ref()
+            .and_then(|e| e.key_env.as_deref())
+            .unwrap_or("OPENAI_API_KEY");
+        eprintln!("No API key. Set {hint} or use --api-key.");
         std::process::exit(1);
     }
 
-    let api_base = cli.api_base.clone().or_else(|| {
-        if cli.provider.to_lowercase() == "deepseek" {
-            Some("https://api.deepseek.com/v1".into())
-        } else {
-            None
-        }
-    });
+    let api_base = cli
+        .api_base
+        .clone()
+        .or_else(|| registry_entry.map(|e| e.api_base));
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
@@ -305,6 +350,10 @@ async fn dispatch(
         "set_model" => handle_set_model(req, state, out_tx).await,
         "set_mode" => handle_set_mode(req, state, out_tx).await,
         "choice_response" => handle_choice_response(req, state, out_tx).await,
+        "exit" => handle_exit(req, state, out_tx).await,
+        "status" => handle_status(req, state, out_tx).await,
+        "get_config" => handle_get_config(req, state, out_tx).await,
+        "list_tools" => handle_list_tools(req, state, out_tx).await,
         _ => {
             send_error(
                 &out_tx,
@@ -593,6 +642,103 @@ async fn handle_choice_response(
     } else {
         send_error(&out_tx, req.id, -32000, "no pending choice".into()).await;
     }
+    Ok(())
+}
+
+async fn handle_exit(
+    req: Request,
+    _state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
+    send_result(&out_tx, req.id, serde_json::json!({"status": "exiting"})).await;
+    std::process::exit(0);
+}
+
+async fn handle_status(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
+    let running = state.running.load(Ordering::SeqCst);
+    let config = state.config.lock().await;
+    let mcp_count = state.mcp_clients.len();
+    let mcp_alive = state.mcp_clients.iter().filter(|e| e.enabled).count();
+    let conversation_len = state.conversation_items.lock().await.len();
+
+    send_result(
+        &out_tx,
+        req.id,
+        serde_json::json!({
+            "running": running,
+            "model": config.model,
+            "provider": format!("{:?}", config.provider),
+            "mode": format!("{:?}", config.mode),
+            "mcp_servers": mcp_count,
+            "mcp_alive": mcp_alive,
+            "conversation_items": conversation_len,
+        }),
+    )
+    .await;
+    Ok(())
+}
+
+async fn handle_get_config(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
+    let config = state.config.lock().await;
+    let workspace = state.workspace.lock().await;
+    send_result(
+        &out_tx,
+        req.id,
+        serde_json::json!({
+            "provider": format!("{:?}", config.provider),
+            "model": config.model,
+            "mode": format!("{:?}", config.mode),
+            "api_base": config.api_base,
+            "max_iterations": config.max_iterations,
+            "llm_timeout_secs": config.llm_timeout_secs,
+            "tool_timeout_secs": config.tool_timeout_secs,
+            "max_context_tokens": config.max_context_tokens,
+            "auto_continue": config.auto_continue,
+            "workspace": workspace.display().to_string(),
+            "session_id": config.session_id,
+        }),
+    )
+    .await;
+    Ok(())
+}
+
+async fn handle_list_tools(
+    req: Request,
+    state: Arc<ServerState>,
+    out_tx: mpsc::Sender<String>,
+) -> Result<()> {
+    let tools: Vec<serde_json::Value> = state
+        .mcp_clients
+        .iter()
+        .flat_map(|e| {
+            e.tools.iter().map(move |info| {
+                serde_json::json!({
+                    "name": info.name,
+                    "description": info.description,
+                    "server": e.client.name(),
+                    "enabled": e.enabled,
+                })
+            })
+        })
+        .collect();
+
+    send_result(
+        &out_tx,
+        req.id,
+        serde_json::json!({
+            "tools": tools,
+            "count": tools.len(),
+        }),
+    )
+    .await;
     Ok(())
 }
 

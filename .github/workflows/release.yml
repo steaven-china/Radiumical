@@ -14,7 +14,6 @@ permissions:
   contents: write
 
 jobs:
-  # ── Build release binaries ──────────────────────────────────
   build-release:
     strategy:
       fail-fast: false
@@ -22,18 +21,12 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: radiumical
-            rpc_binary: radiumical-rpc
             suffix: linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary: radiumical
-            rpc_binary: radiumical-rpc
             suffix: macos-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: radiumical.exe
-            rpc_binary: radiumical-rpc.exe
             suffix: windows-x64.exe
 
     runs-on: ${{ matrix.os }}
@@ -49,41 +42,89 @@ jobs:
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
 
-      - name: Build release
-        run: cargo build --package radiumical --package radiumical-rpc --profile release-small --target ${{ matrix.target }}
+      - name: Install Tauri system deps (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libappindicator3-dev librsvg2-dev \
+            build-essential wget file libssl-dev
+
+      - name: Build all packages
+        run: cargo build --package radiumical --package radiumical-rpc --package radiumical-tauri --profile release-small --target ${{ matrix.target }}
+
+      - name: Organize output
+        shell: bash
+        run: |
+          BASE="target/${{ matrix.target }}/release-small"
+          for dir in tui rpc tauri; do mkdir -p "$BASE/$dir"; done
+
+          # tui
+          cp "$BASE/radiumical"*         "$BASE/tui/"      2>/dev/null || true
+          # rpc
+          cp "$BASE/radiumical-rpc"*     "$BASE/rpc/"      2>/dev/null || true
+          # tauri
+          cp "$BASE/radiumical-tauri"*   "$BASE/tauri/"    2>/dev/null || true
 
       - name: Strip binaries (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
-          strip target/${{ matrix.target }}/release-small/${{ matrix.binary }}
-          strip target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }}
+          BASE="target/${{ matrix.target }}/release-small"
+          find "$BASE/tui" "$BASE/rpc" "$BASE/tauri" -type f ! -name '*.d' -exec strip {} + 2>/dev/null || true
 
-      - name: Rename binaries
+      - name: Rename for release
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release-small/${{ matrix.binary }} radiumical-${{ matrix.suffix }}
-          cp target/${{ matrix.target }}/release-small/${{ matrix.rpc_binary }} radiumical-rpc-${{ matrix.suffix }}
+          SUFFIX="${{ matrix.suffix }}"
+          BASE="target/${{ matrix.target }}/release-small"
 
-      - name: Upload TUI to GitHub Release
+          for dir in tui rpc tauri; do
+            for f in "$BASE/$dir/"*; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f")
+              [[ "$name" == *.d ]] && continue
+              ext="${name##*.}"
+              stem="${name%.*}"
+              if [[ "$ext" == "$name" || "$ext" == "exe" ]]; then
+                new="${stem}-${SUFFIX}"
+                [[ "$ext" == "exe" ]] && new="${new}.exe"
+              else
+                new="${stem}-${SUFFIX}.${ext}"
+              fi
+              cp "$f" "$BASE/$dir/$new"
+            done
+          done
+
+      - name: Upload TUI
         uses: softprops/action-gh-release@v2
         with:
-          files: radiumical-${{ matrix.suffix }}
+          files: target/${{ matrix.target }}/release-small/tui/*
           name: ${{ github.ref_name }}
           prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
           body: |
             ${{ startsWith(github.ref_name, 'pre-') && '⚠️ **Pre-release** — not production ready.' || format('Release {} of Radiumical.', github.ref_name) }}
 
-            Binaries:
-            - Linux x64: `radiumical-linux-x64`, `radiumical-rpc-linux-x64`
-            - macOS x64: `radiumical-macos-x64`, `radiumical-rpc-macos-x64`
-            - Windows x64: `radiumical-windows-x64.exe`, `radiumical-rpc-windows-x64.exe`
+            Binaries per platform:
+            - `radiumical-{linux,macos,windows-x64}` — TUI agent
+            - `radiumical-rpc-{linux,macos,windows-x64}` — RPC server
+            - `radiumical-tauri-{linux,macos,windows-x64}` — Tauri backend
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload RPC to GitHub Release
+      - name: Upload RPC
         uses: softprops/action-gh-release@v2
         with:
-          files: radiumical-rpc-${{ matrix.suffix }}
+          files: target/${{ matrix.target }}/release-small/rpc/*
+          name: ${{ github.ref_name }}
+          prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Tauri
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/${{ matrix.target }}/release-small/tauri/*
           name: ${{ github.ref_name }}
           prerelease: ${{ startsWith(github.ref_name, 'pre-') }}
         env:

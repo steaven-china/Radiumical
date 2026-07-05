@@ -95,6 +95,10 @@ pub struct McpClient {
 }
 
 impl McpClient {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Spawn an MCP server process and perform the handshake.
     pub async fn spawn(name: &str, config: &McpServerConfig, timeout: Duration) -> Result<Self> {
         let mut cmd = Command::new(&config.command);

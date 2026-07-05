@@ -58,10 +58,7 @@ impl Harness {
     pub fn new(config: SessionConfig, provider: Arc<dyn Provider>) -> Self {
         let tools = all_tools();
         let tool_defs = tools.iter().map(|t| t.definition()).collect();
-        let conversation = Conversation::new(
-            config.system_prompt.clone(),
-            None,
-        );
+        let conversation = Conversation::new(config.system_prompt.clone(), None);
         Self {
             config,
             provider,

@@ -1,8 +1,12 @@
 use radiumical_core::config::Config;
 use radiumical_core::pipeline::PipelineRunner;
 use radiumical_core::provider::create_provider;
-use radiumical_core::providers::{fetch_provider_sources, discover_models_for_config, ProviderSource};
-use radiumical_core::session::{SessionItem, SessionMeta, SessionMode, SessionPool, WorkspaceRegistry};
+use radiumical_core::providers::{
+    discover_models_for_config, fetch_provider_sources, ProviderSource,
+};
+use radiumical_core::session::{
+    SessionItem, SessionMeta, SessionMode, SessionPool, WorkspaceRegistry,
+};
 use radiumical_core::types::{AgentMode, ProviderKind, SessionConfig, UiEvent};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -16,17 +20,26 @@ fn resolve_key_from_registry(provider_name: &str, kind: &ProviderKind) -> String
     let name_lower = provider_name.to_lowercase();
     for line in EMBEDDED_PROVIDERS_JSONL.lines() {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            if v.get("provider").and_then(|x| x.as_str()).map(|s| s.to_lowercase()) == Some(name_lower.clone()) {
+            if v.get("provider")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_lowercase())
+                == Some(name_lower.clone())
+            {
                 if let Some(env) = v.get("key_env").and_then(|x| x.as_str()) {
                     if let Ok(k) = std::env::var(env) {
-                        if !k.is_empty() { return k; }
+                        if !k.is_empty() {
+                            return k;
+                        }
                     }
                 }
             }
         }
     }
     // Fallback
-    Config::load().ok().and_then(|c| c.api_key).filter(|k| !k.is_empty())
+    Config::load()
+        .ok()
+        .and_then(|c| c.api_key)
+        .filter(|k| !k.is_empty())
         .or_else(|| {
             let env = match kind {
                 ProviderKind::Anthropic => "ANTHROPIC_API_KEY",
@@ -102,11 +115,15 @@ async fn run_task(
     // Push user message to both session and display
     {
         let mut items = state.session_items.lock().await;
-        items.push(SessionItem::User { content: task.clone() });
+        items.push(SessionItem::User {
+            content: task.clone(),
+        });
     }
     {
         let mut display = state.display_items.lock().await;
-        display.push(DisplayItem::User { content: task.clone() });
+        display.push(DisplayItem::User {
+            content: task.clone(),
+        });
     }
     let _ = app.emit("display-sync", state.display_items.lock().await.clone());
 
@@ -202,10 +219,14 @@ async fn run_task(
                     {
                         let mut items = items_handle.lock().await;
                         if !assistant_reasoning.is_empty() {
-                            items.push(SessionItem::Reasoning { content: assistant_reasoning.clone() });
+                            items.push(SessionItem::Reasoning {
+                                content: assistant_reasoning.clone(),
+                            });
                         }
                         if !assistant_content.is_empty() {
-                            items.push(SessionItem::Assistant { content: assistant_content.clone() });
+                            items.push(SessionItem::Assistant {
+                                content: assistant_content.clone(),
+                            });
                         }
                     }
                     assistant_content.clear();
@@ -231,7 +252,10 @@ async fn run_task(
                     // Update display tool item
                     let mut d = display_handle.lock().await;
                     for item in d.iter_mut().rev() {
-                        if let DisplayItem::Tool { running, result, .. } = item {
+                        if let DisplayItem::Tool {
+                            running, result, ..
+                        } = item
+                        {
                             if *running {
                                 *running = false;
                                 *result = Some(content.clone());
@@ -260,22 +284,37 @@ async fn run_task(
                     drop(d);
                     {
                         let mut items = items_handle.lock().await;
-                        items.push(SessionItem::Raw { lines: vec![e.clone()] });
+                        items.push(SessionItem::Raw {
+                            lines: vec![e.clone()],
+                        });
                     }
                     let _ = handle.emit("display-sync", display_handle.lock().await.clone());
                 }
-                UiEvent::Toast { message, level, duration_secs } => {
-                    let _ = handle.emit("toast", serde_json::json!({
-                        "message": message, "level": level, "durationSecs": duration_secs
-                    }));
+                UiEvent::Toast {
+                    message,
+                    level,
+                    duration_secs,
+                } => {
+                    let _ = handle.emit(
+                        "toast",
+                        serde_json::json!({
+                            "message": message, "level": level, "durationSecs": duration_secs
+                        }),
+                    );
                 }
                 UiEvent::Choice { id, mode, options } => {
-                    let _ = handle.emit("choice", serde_json::json!({
-                        "id": id, "mode": mode, "options": options
-                    }));
+                    let _ = handle.emit(
+                        "choice",
+                        serde_json::json!({
+                            "id": id, "mode": mode, "options": options
+                        }),
+                    );
                 }
                 UiEvent::ProvidersLoaded(sources) => {
-                    let _ = handle.emit("providers-loaded", serde_json::json!({ "sources": sources }));
+                    let _ = handle.emit(
+                        "providers-loaded",
+                        serde_json::json!({ "sources": sources }),
+                    );
                 }
                 UiEvent::ModelsLoaded(models) => {
                     let _ = handle.emit("models-loaded", serde_json::json!({ "models": models }));
@@ -284,18 +323,31 @@ async fn run_task(
                     let _ = handle.emit("session-title", title);
                 }
                 UiEvent::SubAgentDone { id, success } => {
-                    let _ = handle.emit("subagent-done", serde_json::json!({ "id": id, "success": success }));
+                    let _ = handle.emit(
+                        "subagent-done",
+                        serde_json::json!({ "id": id, "success": success }),
+                    );
                 }
-                UiEvent::McpStatus { name, alive, tool_count } => {
-                    let _ = handle.emit("mcp-status", serde_json::json!({
-                        "name": name, "alive": alive, "toolCount": tool_count
-                    }));
+                UiEvent::McpStatus {
+                    name,
+                    alive,
+                    tool_count,
+                } => {
+                    let _ = handle.emit(
+                        "mcp-status",
+                        serde_json::json!({
+                            "name": name, "alive": alive, "toolCount": tool_count
+                        }),
+                    );
                 }
                 UiEvent::PlanUpdated { title, tasks } => {
                     let task_list: Vec<serde_json::Value> = tasks.iter().map(|t| {
                         serde_json::json!({ "id": t.id, "title": t.title, "status": format!("{:?}", t.status) })
                     }).collect();
-                    let _ = handle.emit("plan-updated", serde_json::json!({ "title": title, "tasks": task_list }));
+                    let _ = handle.emit(
+                        "plan-updated",
+                        serde_json::json!({ "title": title, "tasks": task_list }),
+                    );
                 }
                 UiEvent::CheckpointCreated(cp) => {
                     let _ = handle.emit("checkpoint-created", serde_json::json!(cp));
@@ -307,7 +359,9 @@ async fn run_task(
     let mut runner = state.runner.lock().await;
     let workspace = state.workspace.clone();
     let task_desc = task.clone();
-    let result = runner.run(task, workspace, &[], None, ui_tx, cancel_rx).await;
+    let result = runner
+        .run(task, workspace, &[], None, ui_tx, cancel_rx)
+        .await;
     drop(runner);
 
     event_task.abort();
@@ -326,9 +380,13 @@ async fn run_task(
             let config = state.config.lock().await;
             let mode = SessionMode::from(config.mode.clone());
             let _ = pool.save(
-                "autosave", &items, &config.model,
+                "autosave",
+                &items,
+                &config.model,
                 &format!("{:?}", config.provider).to_lowercase(),
-                mode, "", Some(&task_desc),
+                mode,
+                "",
+                Some(&task_desc),
             );
         }
     }
@@ -354,7 +412,10 @@ async fn is_running(state: tauri::State<'_, AppState>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn new_session(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
+async fn new_session(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     {
         let items = state.session_items.lock().await;
         if !items.is_empty() {
@@ -363,9 +424,13 @@ async fn new_session(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -
             let config = state.config.lock().await;
             let mode = SessionMode::from(config.mode.clone());
             let _ = pool.save(
-                "autosave", &items, &config.model,
+                "autosave",
+                &items,
+                &config.model,
                 &format!("{:?}", config.provider).to_lowercase(),
-                mode, "", None,
+                mode,
+                "",
+                None,
             );
         }
     }
@@ -395,8 +460,16 @@ async fn save_session(
     let workspace = state.workspace.to_string_lossy().to_string();
     let pool = SessionPool::for_workspace(&workspace);
     let mode = SessionMode::from(config.mode.clone());
-    pool.save(&name, &items, &config.model, &format!("{:?}", config.provider).to_lowercase(), mode, "", description.as_deref())
-        .map_err(|e| e.to_string())
+    pool.save(
+        &name,
+        &items,
+        &config.model,
+        &format!("{:?}", config.provider).to_lowercase(),
+        mode,
+        "",
+        description.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -407,7 +480,9 @@ async fn load_session(
 ) -> Result<(), String> {
     let workspace = state.workspace.to_string_lossy().to_string();
     let pool = SessionPool::for_workspace(&workspace);
-    let (meta, items) = pool.load(&name).map_err(|e| e.to_string())?
+    let (meta, items) = pool
+        .load(&name)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Session '{}' not found", name))?;
 
     let mut runner = state.runner.lock().await;
@@ -442,11 +517,19 @@ async fn get_app_info(state: tauri::State<'_, AppState>) -> Result<AppInfo, Stri
             ProviderKind::Ollama => "OLLAMA_API_KEY",
             _ => "OPENAI_API_KEY",
         };
-        if std::env::var(env_name).ok().filter(|k| !k.is_empty()).is_some() {
+        if std::env::var(env_name)
+            .ok()
+            .filter(|k| !k.is_empty())
+            .is_some()
+        {
             format!("env:{env_name}")
         } else {
             let fallback = "DEEPSEEK_API_KEY";
-            if std::env::var(fallback).ok().filter(|k| !k.is_empty()).is_some() {
+            if std::env::var(fallback)
+                .ok()
+                .filter(|k| !k.is_empty())
+                .is_some()
+            {
                 format!("env:{fallback}")
             } else {
                 "none".to_string()
@@ -478,12 +561,20 @@ async fn save_api_key(
 
     let mut config = state.config.lock().await;
     config.api_key = api_key.clone();
-    let provider = create_provider(&config.provider, config.api_base.as_deref(), &api_key, &config.model);
+    let provider = create_provider(
+        &config.provider,
+        config.api_base.as_deref(),
+        &api_key,
+        &config.model,
+    );
     let new_runner = PipelineRunner::new(config.clone(), provider);
     drop(config);
 
     *state.runner.lock().await = new_runner;
-    let _ = app.emit("provider-changed", serde_json::json!({ "api_key_source": "config" }));
+    let _ = app.emit(
+        "provider-changed",
+        serde_json::json!({ "api_key_source": "config" }),
+    );
     Ok(())
 }
 
@@ -550,14 +641,27 @@ async fn set_provider(
 }
 
 #[tauri::command]
-async fn fetch_models_for_provider(provider_name: String, api_base: String, api_key: String) -> Result<Vec<String>, String> {
+async fn fetch_models_for_provider(
+    provider_name: String,
+    api_base: String,
+    api_key: String,
+) -> Result<Vec<String>, String> {
     let kind = match provider_name.to_lowercase().as_str() {
         "anthropic" => ProviderKind::Anthropic,
         "ollama" => ProviderKind::Ollama,
         _ => ProviderKind::OpenAI,
     };
-    let resolved_key = if !api_key.is_empty() { api_key } else { resolve_key_from_registry(&provider_name, &kind) };
-    let config = SessionConfig { provider: kind, api_key: resolved_key, api_base: Some(api_base), ..Default::default() };
+    let resolved_key = if !api_key.is_empty() {
+        api_key
+    } else {
+        resolve_key_from_registry(&provider_name, &kind)
+    };
+    let config = SessionConfig {
+        provider: kind,
+        api_key: resolved_key,
+        api_base: Some(api_base),
+        ..Default::default()
+    };
     Ok(discover_models_for_config(&config).await)
 }
 
@@ -568,7 +672,8 @@ async fn get_config() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 async fn save_config(config_json: serde_json::Value) -> Result<(), String> {
-    let config: Config = serde_json::from_value(config_json).map_err(|e| format!("Invalid config: {}", e))?;
+    let config: Config =
+        serde_json::from_value(config_json).map_err(|e| format!("Invalid config: {}", e))?;
     config.save().map_err(|e| e.to_string())
 }
 
@@ -596,15 +701,25 @@ fn session_items_to_display(items: &[SessionItem]) -> Vec<DisplayItem> {
     for item in items {
         match item {
             SessionItem::User { content } => {
-                out.push(DisplayItem::User { content: content.clone() });
+                out.push(DisplayItem::User {
+                    content: content.clone(),
+                });
             }
             SessionItem::Assistant { content } => {
-                out.push(DisplayItem::Assistant { content: content.clone(), streaming: false });
+                out.push(DisplayItem::Assistant {
+                    content: content.clone(),
+                    streaming: false,
+                });
             }
             SessionItem::Reasoning { content } => {
-                out.push(DisplayItem::Reasoning { content: content.clone(), streaming: false });
+                out.push(DisplayItem::Reasoning {
+                    content: content.clone(),
+                    streaming: false,
+                });
             }
-            SessionItem::Tool { name, args, result, .. } => {
+            SessionItem::Tool {
+                name, args, result, ..
+            } => {
                 out.push(DisplayItem::Tool {
                     name: name.clone(),
                     args: args.clone(),
@@ -614,7 +729,9 @@ fn session_items_to_display(items: &[SessionItem]) -> Vec<DisplayItem> {
             }
             SessionItem::Raw { lines } => {
                 if !lines.is_empty() {
-                    out.push(DisplayItem::Error { content: lines.join("\n") });
+                    out.push(DisplayItem::Error {
+                        content: lines.join("\n"),
+                    });
                 }
             }
             SessionItem::Meta { .. } => {}
@@ -624,10 +741,15 @@ fn session_items_to_display(items: &[SessionItem]) -> Vec<DisplayItem> {
 }
 
 fn detect_workspace() -> PathBuf {
-    std::env::current_dir().ok()
+    std::env::current_dir()
+        .ok()
         .and_then(|cwd| {
-            if cwd.join("Cargo.toml").exists() { return Some(cwd); }
-            cwd.parent().filter(|p| p.join("Cargo.toml").exists()).map(|p| p.to_path_buf())
+            if cwd.join("Cargo.toml").exists() {
+                return Some(cwd);
+            }
+            cwd.parent()
+                .filter(|p| p.join("Cargo.toml").exists())
+                .map(|p| p.to_path_buf())
         })
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
@@ -650,7 +772,11 @@ pub fn run() {
 
     let initial_items = {
         let pool = SessionPool::for_workspace(&workspace_str);
-        pool.load("autosave").ok().flatten().map(|(_, items)| items).unwrap_or_default()
+        pool.load("autosave")
+            .ok()
+            .flatten()
+            .map(|(_, items)| items)
+            .unwrap_or_default()
     };
 
     let mut runner = PipelineRunner::new(session_config.clone(), provider);
@@ -671,11 +797,25 @@ pub fn run() {
             display_items: Arc::new(TokioMutex::new(initial_display)),
         })
         .invoke_handler(tauri::generate_handler![
-            run_task, cancel_task, is_running, new_session,
-            list_sessions, save_session, load_session, delete_session,
-            get_display, get_app_info, save_api_key,
-            set_model, set_mode, fetch_providers, set_provider,
-            fetch_models_for_provider, get_config, save_config, get_workspaces,
+            run_task,
+            cancel_task,
+            is_running,
+            new_session,
+            list_sessions,
+            save_session,
+            load_session,
+            delete_session,
+            get_display,
+            get_app_info,
+            save_api_key,
+            set_model,
+            set_mode,
+            fetch_providers,
+            set_provider,
+            fetch_models_for_provider,
+            get_config,
+            save_config,
+            get_workspaces,
             choice_response,
         ])
         .run(tauri::generate_context!())

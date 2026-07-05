@@ -41,6 +41,8 @@ pub struct ProviderSource {
     pub version_header: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub models: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -271,6 +273,7 @@ pub async fn discover_models_for_config(config: &crate::types::SessionConfig) ->
             None
         },
         models: None,
+        default_model: None,
         extra: std::collections::HashMap::new(),
     };
     discover_models(
@@ -283,6 +286,16 @@ pub async fn discover_models_for_config(config: &crate::types::SessionConfig) ->
         },
     )
     .await
+}
+
+/// Look up a provider by name from the embedded (bundled) provider list.
+/// Returns `None` if no match is found.
+pub fn find_provider(name: &str) -> Option<ProviderSource> {
+    let needle = name.to_lowercase();
+    parse_jsonl(EMBEDDED_PROVIDERS)
+        .ok()?
+        .into_iter()
+        .find(|s| s.provider.to_lowercase() == needle)
 }
 
 /// Fetch the provider registry from the remote URL, local cache, or embedded fallback.
@@ -376,6 +389,7 @@ mod tests {
             auth_header: None,
             version_header: None,
             models: None,
+            default_model: None,
             extra: HashMap::new(),
         };
         assert_eq!(

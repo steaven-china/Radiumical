@@ -35,6 +35,10 @@ struct Cli {
     #[arg(short = 't', long)]
     task: Option<String>,
 
+    /// Run an internal command and exit (e.g. -c help, -c update)
+    #[arg(short = 'c', long = "cmd")]
+    cmd: Option<String>,
+
     /// Workspace directory (defaults to current directory)
     #[arg(short = 'w', long, default_value = ".")]
     workspace: PathBuf,
@@ -93,6 +97,12 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
+    // ── Handle -c (CLI command mode) ──────────────────────────────
+    if let Some(ref cmd) = cli.cmd {
+        handle_cli_command(cmd).await;
+        return Ok(());
+    }
+
     // Ensure default agent and skill definitions exist
     radiumical_core::agent_pool::ensure_defaults();
     radiumical_core::skill::ensure_defaults();
@@ -105,12 +115,12 @@ async fn main() -> Result<()> {
     }
 
     let provider_kind = match cli.provider.to_lowercase().as_str() {
-        "openai" => ProviderKind::OpenAI,
-        "deepseek" => ProviderKind::OpenAI,
         "anthropic" => ProviderKind::Anthropic,
         "ollama" => ProviderKind::Ollama,
         _ => ProviderKind::OpenAI,
     };
+
+    let registry_entry = radiumical_core::find_provider(&cli.provider);
 
     let model = cli
         .model
@@ -119,14 +129,25 @@ async fn main() -> Result<()> {
             cfg.and_then(|c| c.model)
         })
         .unwrap_or_else(|| {
-            if cli.provider.to_lowercase() == "deepseek" {
-                "deepseek-v4-pro".into()
-            } else {
-                provider_kind.default_model().into()
-            }
+            registry_entry
+                .as_ref()
+                .and_then(|e| e.default_model.clone())
+                .or_else(|| {
+                    registry_entry
+                        .as_ref()
+                        .and_then(|e| e.models.as_ref().and_then(|m| m.first().cloned()))
+                })
+                .unwrap_or_else(|| provider_kind.default_model().into())
         });
 
     let api_key = cli.api_key.unwrap_or_else(|| {
+        if let Some(ref entry) = registry_entry {
+            if let Some(ref key_env) = entry.key_env {
+                if let Ok(key) = std::env::var(key_env) {
+                    return key;
+                }
+            }
+        }
         std::env::var("RADIUMICAL_API_KEY")
             .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
             .or_else(|_| std::env::var("OPENAI_API_KEY"))
@@ -134,17 +155,15 @@ async fn main() -> Result<()> {
     });
 
     if api_key.is_empty() {
-        eprintln!("⚠️  No API key. Set DEEPSEEK_API_KEY or use --api-key.");
+        let hint = registry_entry
+            .as_ref()
+            .and_then(|e| e.key_env.as_deref())
+            .unwrap_or("OPENAI_API_KEY");
+        eprintln!("⚠️  No API key. Set {hint} or use --api-key.");
         std::process::exit(1);
     }
 
-    let api_base = cli.api_base.or_else(|| {
-        if cli.provider.to_lowercase() == "deepseek" {
-            Some("https://api.deepseek.com/v1".into())
-        } else {
-            None
-        }
-    });
+    let api_base = cli.api_base.or_else(|| registry_entry.map(|e| e.api_base));
 
     let workspace = std::fs::canonicalize(&cli.workspace).unwrap_or_else(|_| cli.workspace.clone());
 
@@ -559,5 +578,242 @@ async fn main() -> Result<()> {
     }
 
     tui_handle.join().ok();
+    Ok(())
+}
+
+async fn handle_cli_command(cmd: &str) {
+    let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
+    let sub = parts[0].to_lowercase();
+    let _arg = parts.get(1).map(|s| s.trim());
+
+    match sub.as_str() {
+        "help" | "h" | "?" => {
+            println!("radiumical -c <command>");
+            println!();
+            println!("Commands:");
+            println!("  help        Show this help");
+            println!("  version     Show version info");
+            println!("  update      Self-update to latest release");
+            println!("  tools       List available tools");
+        }
+        "version" | "v" => {
+            println!("radiumical {}", env!("CARGO_PKG_VERSION"));
+            println!(
+                "commit:     {}",
+                option_env!("GIT_SHA").unwrap_or("unknown")
+            );
+            println!("target:     {}", std::env::consts::OS);
+        }
+        "update" => {
+            self_update().await;
+        }
+        "tools" => {
+            use radiumical_core::tools::all_tools;
+            let tools = all_tools();
+            println!("Available tools ({}):", tools.len());
+            for t in &tools {
+                let def = t.definition();
+                println!(
+                    "  {:<16} {}",
+                    def.function.name,
+                    def.function.description.lines().next().unwrap_or("")
+                );
+            }
+        }
+        _ => {
+            eprintln!("Unknown command: {sub}");
+            eprintln!("Run 'radiumical -c help' for available commands.");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn self_update() {
+    use std::env::consts::{ARCH, OS};
+
+    let repo = "steaven-china/Radiumical";
+    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+
+    println!("Checking for updates...");
+
+    let client = match reqwest::Client::builder()
+        .user_agent("radiumical-updater")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to create HTTP client: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let resp = match client.get(&api_url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to check releases: {e}");
+            eprintln!("You can manually download from: https://github.com/{repo}/releases");
+            std::process::exit(1);
+        }
+    };
+
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("Failed to parse release info: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let tag = json["tag_name"].as_str().unwrap_or("unknown");
+    let current = env!("CARGO_PKG_VERSION");
+
+    println!("Latest:  {tag}");
+    println!("Current: v{current}");
+
+    if tag == format!("v{current}") {
+        println!("Already up to date!");
+        return;
+    }
+
+    let suffix = match (OS, ARCH) {
+        ("windows", "x86_64") => "x86_64-pc-windows-msvc.zip",
+        ("linux", "x86_64") => "x86_64-unknown-linux-gnu.tar.gz",
+        ("linux", "aarch64") => "aarch64-unknown-linux-gnu.tar.gz",
+        ("macos", "x86_64") => "x86_64-apple-darwin.tar.gz",
+        ("macos", "aarch64") => "aarch64-apple-darwin.tar.gz",
+        _ => {
+            eprintln!("No pre-built binary for {OS}/{ARCH}.");
+            eprintln!("Build from source: cargo install --path radiumical-tui");
+            std::process::exit(1);
+        }
+    };
+
+    let asset_name = format!("radiumical-{tag}-{suffix}");
+    let assets = json["assets"].as_array();
+    let download_url = assets.and_then(|arr| {
+        arr.iter()
+            .find(|a| a["name"].as_str() == Some(&asset_name))
+            .and_then(|a| a["browser_download_url"].as_str())
+    });
+
+    let download_url = match download_url {
+        Some(u) => u.to_string(),
+        None => {
+            let tag_clean = tag.trim_start_matches('v');
+            format!(
+                "https://github.com/{repo}/releases/download/{tag}/radiumical-{tag_clean}-{suffix}"
+            )
+        }
+    };
+
+    println!("Downloading: {download_url}");
+
+    let bytes = match client.get(&download_url).send().await {
+        Ok(r) => match r.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("Download failed: {e}");
+                std::process::exit(1);
+            }
+        },
+        Err(e) => {
+            eprintln!("Download failed: {e}");
+            eprintln!("Manual download: https://github.com/{repo}/releases");
+            std::process::exit(1);
+        }
+    };
+
+    let current_exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Cannot determine current executable: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let tmp_dir = std::env::temp_dir().join("radi_update");
+    let _ = std::fs::create_dir_all(&tmp_dir);
+
+    if suffix.ends_with(".zip") {
+        let zip_path = tmp_dir.join(&asset_name);
+        if let Err(e) = std::fs::write(&zip_path, &bytes) {
+            eprintln!("Failed to write zip: {e}");
+            std::process::exit(1);
+        }
+        let extract_dir = tmp_dir.join("extracted");
+        let _ = std::fs::remove_dir_all(&extract_dir);
+        if let Err(e) = extract_zip(&zip_path, &extract_dir) {
+            eprintln!("Failed to extract zip: {e}");
+            eprintln!("Try manually: cargo install --path radiumical-tui --force");
+            std::process::exit(1);
+        }
+        let bin_name = if OS == "windows" {
+            "radiumical.exe"
+        } else {
+            "radiumical"
+        };
+        let new_bin = extract_dir.join(bin_name);
+        if !new_bin.exists() {
+            eprintln!("Binary not found in archive at {}", new_bin.display());
+            std::process::exit(1);
+        }
+        if let Err(e) = std::fs::copy(&new_bin, &current_exe) {
+            eprintln!("Failed to replace binary: {e}");
+            eprintln!("Try running as administrator / with elevated permissions.");
+            std::process::exit(1);
+        }
+    } else {
+        // tar.gz
+        let tar_path = tmp_dir.join(&asset_name);
+        if let Err(e) = std::fs::write(&tar_path, &bytes) {
+            eprintln!("Failed to write archive: {e}");
+            std::process::exit(1);
+        }
+        let extract_dir = tmp_dir.join("extracted");
+        let _ = std::fs::remove_dir_all(&extract_dir);
+        if let Err(e) = extract_tar_gz(&tar_path, &extract_dir) {
+            eprintln!("Failed to extract: {e}");
+            eprintln!("Try manually: cargo install --path radiumical-tui --force");
+            std::process::exit(1);
+        }
+        let new_bin = extract_dir.join("radiumical");
+        if !new_bin.exists() {
+            eprintln!("Binary not found in archive");
+            std::process::exit(1);
+        }
+        if let Err(e) = std::fs::copy(&new_bin, &current_exe) {
+            eprintln!("Failed to replace binary: {e}");
+            std::process::exit(1);
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    println!("Updated to {tag} successfully!");
+}
+
+fn extract_zip(zip_path: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    let file = std::fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let out_path = dest.join(entry.mangled_name());
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut out_file = std::fs::File::create(&out_path)?;
+            std::io::copy(&mut entry, &mut out_file)?;
+        }
+    }
+    Ok(())
+}
+
+fn extract_tar_gz(tar_path: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    let file = std::fs::File::open(tar_path)?;
+    let dec = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(dec);
+    archive.unpack(dest)?;
     Ok(())
 }

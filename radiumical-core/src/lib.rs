@@ -53,7 +53,7 @@ pub use harness::{Harness, ToolHook};
 pub use image::{build_multipart_content, format_image_size, image_file_size, load_image_part};
 pub use pipeline::PipelineRunner;
 pub use provider::{create_provider, Provider};
-pub use providers::{ProviderRegistry, ProviderSource};
+pub use providers::{find_provider, ProviderRegistry, ProviderSource};
 pub use skill::{Skill, SkillMeta, SkillRegistry};
 pub use subagent::{SubAgentHandle, SubAgentResult};
 pub use types::{AgentMode, BackendCmd, Message, SessionConfig, UiEvent};

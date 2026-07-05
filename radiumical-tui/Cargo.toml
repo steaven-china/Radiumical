@@ -22,3 +22,7 @@ tracing = { workspace = true }
     pulldown-cmark = { workspace = true }
     unicode-width = "0.1"
     image = { workspace = true }
+    zip = "2"
+    tar = "0.4"
+    flate2 = "1"
+    reqwest = { workspace = true }
