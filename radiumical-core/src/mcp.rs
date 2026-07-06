@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 use tokio::sync::Mutex;
 
 // ── Config ──
@@ -101,7 +101,7 @@ impl McpClient {
 
     /// Spawn an MCP server process and perform the handshake.
     pub async fn spawn(name: &str, config: &McpServerConfig, timeout: Duration) -> Result<Self> {
-        let mut cmd = Command::new(&config.command);
+        let mut cmd = crate::process_util::tokio_command(&config.command);
         cmd.args(&config.args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

@@ -58,13 +58,14 @@ impl Tool for RunCommand {
         let (shell, flag, cmd_str): (String, String, String) = ("sh".into(), "-c".into(), cmd_str);
 
         let ws_clone = workspace.to_path_buf();
-        let cmd = cmd_str.clone();
+        let cmd_str_for_spawn = cmd_str.clone();
 
         // Use tokio::process::Command with kill_on_drop so the child process
         // is killed when the JoinHandle is aborted (on cancel or timeout).
-        let output = match tokio::process::Command::new(&shell)
+        let mut proc = crate::process_util::tokio_command(&shell);
+        let output = match proc
             .arg(&flag)
-            .arg(&cmd)
+            .arg(&cmd_str_for_spawn)
             .current_dir(&ws_clone)
             .kill_on_drop(true)
             .output()

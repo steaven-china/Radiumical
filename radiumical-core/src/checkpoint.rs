@@ -11,7 +11,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 
 pub const CHECKPOINTS_FILE: &str = "checkpoints.jsonl";
 
@@ -148,7 +147,7 @@ pub fn rollback_sync(workspace: &Path, session_id: &str, checkpoint_id: &str) ->
 // ═══ Git helpers ═══
 
 fn run_git_sync(workspace: &Path, args: &[&str]) -> Result<String> {
-    let output = std::process::Command::new("git")
+    let output = crate::process_util::std_command("git")
         .arg("-C")
         .arg(workspace)
         .args(args)
@@ -162,7 +161,7 @@ fn run_git_sync(workspace: &Path, args: &[&str]) -> Result<String> {
 }
 
 async fn run_git(workspace: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
+    let output = crate::process_util::tokio_command("git")
         .arg("-C")
         .arg(workspace)
         .args(args)
@@ -177,7 +176,7 @@ async fn run_git(workspace: &Path, args: &[&str]) -> Result<String> {
 }
 
 async fn is_git_repo(workspace: &Path) -> bool {
-    Command::new("git")
+    crate::process_util::tokio_command("git")
         .arg("-C")
         .arg(workspace)
         .args(["rev-parse", "--git-dir"])

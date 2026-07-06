@@ -28,6 +28,7 @@ pub mod outline;
 pub mod perf;
 pub mod pipeline;
 pub mod plugins;
+pub mod process_util;
 pub mod provider;
 pub mod providers;
 pub mod secure_env;

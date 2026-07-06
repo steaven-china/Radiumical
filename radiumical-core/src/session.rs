@@ -920,10 +920,10 @@ impl SessionTools {
             sessions.retain(|s| {
                 f.name_contains
                     .as_ref()
-                    .map_or(true, |n| s.name.to_lowercase().contains(&n.to_lowercase()))
-                    && f.model.as_ref().map_or(true, |m| s.model == *m)
-                    && f.mode.map_or(true, |m| s.mode == m)
-                    && f.provider.as_ref().map_or(true, |p| s.provider == *p)
+                    .is_none_or(|n| s.name.to_lowercase().contains(&n.to_lowercase()))
+                    && f.model.as_ref().is_none_or(|m| s.model == *m)
+                    && f.mode.is_none_or(|m| s.mode == m)
+                    && f.provider.as_ref().is_none_or(|p| s.provider == *p)
             });
         }
 
@@ -1129,14 +1129,14 @@ impl WorkspaceTools {
             entries.retain(|w| {
                 f.name_contains
                     .as_ref()
-                    .map_or(true, |n| w.name.to_lowercase().contains(&n.to_lowercase()))
+                    .is_none_or(|n| w.name.to_lowercase().contains(&n.to_lowercase()))
                     && f.path_contains
                         .as_ref()
-                        .map_or(true, |p| w.path.to_lowercase().contains(&p.to_lowercase()))
-                    && f.pinned.map_or(true, |p| w.pinned == p)
+                        .is_none_or(|p| w.path.to_lowercase().contains(&p.to_lowercase()))
+                    && f.pinned.is_none_or(|p| w.pinned == p)
                     && f.has_tag
                         .as_ref()
-                        .map_or(true, |t| w.tags.iter().any(|tag| tag == t))
+                        .is_none_or(|t| w.tags.iter().any(|tag| tag == t))
             });
         }
 

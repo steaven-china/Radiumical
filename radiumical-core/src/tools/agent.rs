@@ -424,7 +424,7 @@ impl Tool for PlaywrightTool {
                 } else {
                     format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); await p.locator('{selector}').screenshot({{ path: '{out}' }}); console.log('OK:' + '{out}'); await b.close(); }})();")
                 };
-                match std::process::Command::new("node").arg("-e").arg(&script).output() {
+                match crate::process_util::std_command("node").arg("-e").arg(&script).output() {
                     Ok(o) => {
                         let stdout = String::from_utf8_lossy(&o.stdout);
                         let stderr = String::from_utf8_lossy(&o.stderr);
@@ -457,7 +457,7 @@ impl Tool for PlaywrightTool {
                 } else {
                     format!("const {{ chromium }} = require('playwright'); (async () => {{ const b = await chromium.launch(); const p = await b.newPage(); await p.goto('{url}'); const text = await p.locator('{selector}').textContent(); console.log(text); await b.close(); }})();")
                 };
-                match std::process::Command::new("node")
+                match crate::process_util::std_command("node")
                     .arg("-e")
                     .arg(&script)
                     .output()

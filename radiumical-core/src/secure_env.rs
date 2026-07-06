@@ -61,8 +61,7 @@ fn machine_id() -> String {
 
 #[cfg(target_os = "windows")]
 fn win_machine_guid() -> Option<String> {
-    use std::process::Command;
-    let output = Command::new("reg")
+    let output = crate::process_util::std_command("reg")
         .args([
             "query",
             r#"HKLM\SOFTWARE\Microsoft\Cryptography"#,

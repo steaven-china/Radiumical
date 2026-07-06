@@ -1,13 +1,14 @@
 //! System tools — sysinfo, list_dir, tree, time, cron.
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::process_util::std_command;
 
 /// System information (OS, CPU, memory, uptime).
 pub fn sysinfo() -> String {
     let mut out = String::new();
 
     // OS info
-    if let Ok(output) = Command::new("uname").arg("-a").output() {
+    if let Ok(output) = std_command("uname").arg("-a").output() {
         out.push_str(&format!(
             "OS: {}",
             String::from_utf8_lossy(&output.stdout).trim()
@@ -53,7 +54,7 @@ pub fn sysinfo() -> String {
         out.push_str(&format!("Uptime: {hours}h {mins}m\n"));
     }
     // Disk usage
-    if let Ok(output) = Command::new("df").args(["-h", "."]).output() {
+    if let Ok(output) = std_command("df").args(["-h", "."]).output() {
         let df = String::from_utf8_lossy(&output.stdout);
         if let Some(line) = df.lines().nth(1) {
             out.push_str(&format!("Disk: {line}"));
@@ -145,7 +146,7 @@ pub fn time_now() -> String {
 /// Simple cron-like: parse a crontab entry and show next run times.
 pub fn cron_info() -> String {
     // Just show the system crontab if available
-    if let Ok(output) = Command::new("crontab").args(["-l"]).output() {
+    if let Ok(output) = std_command("crontab").args(["-l"]).output() {
         let content = String::from_utf8_lossy(&output.stdout);
         if content.trim().is_empty() {
             "No crontab entries.".into()

@@ -80,7 +80,7 @@ pub async fn run_diagnostics(workspace: &Path, lang: &str) -> Result<String, Str
 }
 
 async fn run_cargo_check(workspace: &Path) -> Result<String, String> {
-    let output = tokio::process::Command::new("cargo")
+    let output = crate::process_util::tokio_command("cargo")
         .args(["check", "--message-format=short"])
         .current_dir(workspace)
         .output()
@@ -96,7 +96,7 @@ async fn run_cargo_check(workspace: &Path) -> Result<String, String> {
 
 async fn run_python_lint(workspace: &Path) -> Result<String, String> {
     for cmd in &["ruff", "pylint", "flake8"] {
-        if let Ok(output) = tokio::process::Command::new(cmd)
+        if let Ok(output) = crate::process_util::tokio_command(cmd)
             .args(["."])
             .current_dir(workspace)
             .output()
@@ -116,7 +116,7 @@ async fn run_python_lint(workspace: &Path) -> Result<String, String> {
 async fn run_eslint(workspace: &Path) -> Result<String, String> {
     for cmd in &["npx eslint", "eslint"] {
         let parts: Vec<&str> = cmd.split_whitespace().collect();
-        if let Ok(output) = tokio::process::Command::new(parts[0])
+        if let Ok(output) = crate::process_util::tokio_command(parts[0])
             .args(&parts[1..])
             .arg(".")
             .current_dir(workspace)
@@ -133,7 +133,7 @@ async fn run_eslint(workspace: &Path) -> Result<String, String> {
 }
 
 async fn run_go_vet(workspace: &Path) -> Result<String, String> {
-    let output = tokio::process::Command::new("go")
+    let output = crate::process_util::tokio_command("go")
         .args(["vet", "./..."])
         .current_dir(workspace)
         .output()
