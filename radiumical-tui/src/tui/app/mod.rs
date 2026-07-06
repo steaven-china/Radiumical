@@ -124,6 +124,7 @@ impl App {
                         mode: None,
                         max_context_tokens: None,
                         context_compress_ratio: None,
+                        auto_resume_last_task: None,
                     },
                 ),
                 &config.mode,

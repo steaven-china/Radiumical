@@ -42,6 +42,13 @@ jobs:
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: radiumical-tauri/package-lock.json
+
       - name: Install Tauri system deps (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -51,8 +58,19 @@ jobs:
             libsoup-3.0-dev libappindicator3-dev librsvg2-dev \
             build-essential wget file libssl-dev
 
-      - name: Build all packages
-        run: cargo build --package radiumical --package radiumical-rpc --package radiumical-tauri --profile release-small --target ${{ matrix.target }}
+      - name: Install npm dependencies
+        working-directory: radiumical-tauri
+        run: npm ci
+
+      - name: Build Tauri frontend
+        working-directory: radiumical-tauri
+        run: npm run build
+
+      - name: Build TUI and RPC
+        run: cargo build --package radiumical --package radiumical-rpc --profile release-small --target ${{ matrix.target }}
+
+      - name: Build Tauri (custom-protocol enabled)
+        run: cargo build --package radiumical-tauri --profile release-small --target ${{ matrix.target }} --features custom-protocol
 
       - name: Organize output
         shell: bash

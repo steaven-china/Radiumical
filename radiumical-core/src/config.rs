@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use crate::providers::{find_provider, parse_provider_kind};
 use crate::session::WorkspaceSettings;
-use crate::types::{AgentMode, ProviderKind, SessionConfig};
+use crate::types::{AgentMode, SessionConfig};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -28,6 +29,7 @@ pub struct Config {
     pub mode: Option<String>,
     pub max_context_tokens: Option<usize>,
     pub context_compress_ratio: Option<f64>,
+    pub auto_resume_last_task: Option<bool>,
 }
 
 impl Config {
@@ -59,6 +61,7 @@ impl Config {
                 mode: None,
                 max_context_tokens: None,
                 context_compress_ratio: None,
+                auto_resume_last_task: None,
             })
         }
     }
@@ -85,8 +88,9 @@ impl Config {
         let mut config = SessionConfig::default();
 
         // Layer 1: global config.toml
-        if let Ok(global) = Self::load() {
-            global.apply_to_config(&mut config);
+        match Self::load() {
+            Ok(global) => global.apply_to_config(&mut config),
+            Err(e) => eprintln!("[radiumical] failed to load config.toml: {e}"),
         }
 
         // Layer 2: workspace.toml overrides
@@ -104,17 +108,56 @@ impl Config {
             config.model = m.clone();
         }
         if let Some(ref p) = self.provider {
-            config.provider = match p.to_lowercase().as_str() {
-                "anthropic" => ProviderKind::Anthropic,
-                "ollama" => ProviderKind::Ollama,
-                _ => ProviderKind::OpenAI,
-            };
+            let source = find_provider(p);
+            config.provider = parse_provider_kind(p);
+
+            // Resolve api_base from registry if not explicitly configured (or explicitly empty).
+            let explicit_empty = self
+                .api_base
+                .as_deref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(false);
+            if self.api_base.is_none() || explicit_empty {
+                if let Some(ref s) = source {
+                    config.api_base = Some(s.api_base.clone());
+                }
+            }
+
+            // Resolve API key from registry's key_env if not explicitly configured.
+            if self.api_key.is_none() {
+                if let Some(key) = source.as_ref().and_then(|s| s.api_key()) {
+                    config.api_key = key;
+                }
+            }
+
+            // Resolve default model from registry if not explicitly configured.
+            if self.model.is_none() {
+                if let Some(ref s) = source {
+                    if let Some(ref m) = s.default_model {
+                        config.model = m.clone();
+                    }
+                }
+            }
+        }
+        if let Some(ref k) = self.api_key {
+            config.api_key = k.clone();
+        }
+        if let Some(ref b) = self.api_base {
+            if !b.trim().is_empty() {
+                config.api_base = Some(b.clone());
+            }
+        }
+        if let Some(h) = self.heartbeat_secs {
+            config.heartbeat_interval_secs = h;
         }
         if let Some(t) = self.llm_timeout_secs {
             config.llm_timeout_secs = t;
         }
         if let Some(n) = self.max_iterations {
             config.max_iterations = n;
+        }
+        if let Some(ref e) = self.reasoning_effort {
+            config.thinking_effort = Some(e.clone());
         }
         if let Some(ref m) = self.mode {
             config.mode = match m.to_lowercase().as_str() {
@@ -128,6 +171,9 @@ impl Config {
         }
         if let Some(r) = self.context_compress_ratio {
             config.context_compress_ratio = r;
+        }
+        if let Some(b) = self.auto_resume_last_task {
+            config.auto_resume_last_task = b;
         }
     }
 }
@@ -159,6 +205,12 @@ impl WorkspaceSettings {
         }
         if let Some(b) = self.auto_continue {
             config.auto_continue = b;
+        }
+        if let Some(ref e) = self.thinking_effort {
+            config.thinking_effort = Some(e.clone());
+        }
+        if let Some(b) = self.auto_resume_last_task {
+            config.auto_resume_last_task = b;
         }
     }
 }

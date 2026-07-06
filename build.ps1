@@ -87,22 +87,60 @@ if ($Clean) {
 }
 
 # ── Build ───────────────────────────────────────────────────────
-$pkgSpecs = @()
-foreach ($p in $packages) {
-    $pkgSpecs += "--package"
-    $pkgSpecs += $crateMap[$p].crate
+$nonTauri = $packages | Where-Object { $_ -ne "tauri" }
+$hasTauri = $packages -contains "tauri"
+
+# Build non-Tauri packages together
+if ($nonTauri) {
+    $pkgSpecs = @()
+    foreach ($p in $nonTauri) {
+        $pkgSpecs += "--package"
+        $pkgSpecs += $crateMap[$p].crate
+    }
+    $cmd = @("cargo", "build") + $pkgSpecs
+    if ($Profile -ne "dev") { $cmd += @("--profile", $Profile) }
+    if ($Target) { $cmd += @("--target", $Target) }
+
+    Write-Host "`n▸ $($cmd -join ' ')" -ForegroundColor Cyan
+    & $cmd[0] $cmd[1..($cmd.Length-1)]
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed." -ForegroundColor Red
+        exit 1
+    }
 }
 
-$cmd = @("cargo", "build") + $pkgSpecs
-if ($Profile -ne "dev") { $cmd += @("--profile", $Profile) }
-if ($Target) { $cmd += @("--target", $Target) }
+# Build Tauri separately: ensure frontend dist exists and enable custom protocol for release builds
+if ($hasTauri) {
+    $tauriDir = "radiumical-tauri"
+    if (Test-Path "$tauriDir/package.json") {
+        Write-Host "`n▸ npm run build (Tauri frontend)" -ForegroundColor Cyan
+        Push-Location $tauriDir
+        try {
+            npm run build | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Tauri frontend build failed." -ForegroundColor Red
+                exit 1
+            }
+        } finally {
+            Pop-Location
+        }
+    }
 
-Write-Host "`n▸ $($cmd -join ' ')" -ForegroundColor Cyan
-& $cmd[0] $cmd[1..($cmd.Length-1)]
+    $cmd = @("cargo", "build", "--package", $crateMap["tauri"].crate)
+    if ($Profile -ne "dev") {
+        $cmd += @("--profile", $Profile)
+        $cmd += @("--features", "custom-protocol")
+    }
+    if ($Target) { $cmd += @("--target", $Target) }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build failed." -ForegroundColor Red
-    exit 1
+    Write-Host "`n▸ $($cmd -join ' ')" -ForegroundColor Cyan
+    & $cmd[0] $cmd[1..($cmd.Length-1)]
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # ── Copy binaries ───────────────────────────────────────────────

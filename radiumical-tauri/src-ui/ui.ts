@@ -219,25 +219,37 @@ function showModelPicker(models: string[], current: string, onSelect: (m: string
   list.querySelectorAll(".modal-item").forEach((el) => { el.addEventListener("click", () => { onSelect((el as HTMLElement).dataset.model!); closeModal(); }); });
 }
 
-function showProviderSwitchModal(providerName: string, apiBase: string) {
+async function showProviderSwitchModal(providerName: string, apiBase: string) {
   const s = store.get();
-  const prov = s.providers.find((p) => p.provider === providerName);
-  const base = prov?.api_base || apiBase;
+  if (!s.providers.length) {
+    await store.loadProviders();
+  }
+  const refreshed = store.get();
+  const prov = refreshed.providers.find((p) => p.provider === providerName);
+  // Prefer the api_base passed by the caller (e.g. current custom base); fallback to registry default.
+  const base = apiBase || prov?.api_base || "";
+
+  if (!base) {
+    store.addToast(`No API base configured for ${providerName}`, "error");
+    return;
+  }
 
   openModal(`Switch to ${prov?.name || providerName}`, `<div class="modal-loading">Loading models...</div>`);
 
   // Fetch models — backend resolves key from key_env or config
-  api.fetchModelsForProvider(providerName, base, "").then((models) => {
+  try {
+    const models = await api.fetchModelsForProvider(providerName, base, "");
     if (!models.length) {
       // No models endpoint — just switch directly
-      store.switchProvider(providerName, base, "", prov?.models?.[0] || "");
+      await store.switchProvider(providerName, base, "", prov?.models?.[0] || "");
       closeModal();
       return;
     }
-    showModelPicker(models, s.appInfo?.model || "", (m) => {
-      store.switchProvider(providerName, base, "", m);
+    showModelPicker(models, refreshed.appInfo?.model || "", async (m) => {
+      await store.switchProvider(providerName, base, "", m);
     });
-  }).catch(() => {
+  } catch (e: any) {
+    store.addToast(`Failed to fetch models: ${e}`, "error");
     // Can't fetch models — ask for model name
     document.getElementById("modal-body")!.innerHTML = `<div class="modal-form">
       <label>Model name</label>
@@ -245,21 +257,26 @@ function showProviderSwitchModal(providerName: string, apiBase: string) {
       <div class="modal-actions"><button id="modal-cancel" class="small-btn">Cancel</button><button id="modal-confirm" class="small-btn">Switch</button></div>
     </div>`;
     const input = document.getElementById("modal-model-input") as HTMLInputElement;
-    const go = () => { const m = input.value.trim(); if (m) { store.switchProvider(providerName, base, "", m); closeModal(); } };
+    const go = async () => { const m = input.value.trim(); if (m) { await store.switchProvider(providerName, base, "", m); closeModal(); } };
     document.getElementById("modal-confirm")!.addEventListener("click", go);
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     document.getElementById("modal-cancel")!.addEventListener("click", closeModal);
     input.focus();
-  });
+  }
 }
 
-function showModelPickerFromSettings() {
+async function showModelPickerFromSettings() {
   const s = store.get();
   if (!s.appInfo) return;
-  const info = s.appInfo;
+  if (!s.providers.length) {
+    await store.loadProviders();
+  }
+  const refreshed = store.get();
+  const info = refreshed.appInfo!;
   openModal("Select Model", `<div class="modal-loading">Loading...</div>`);
-  const pname = resolveProviderName(info.api_base, s.providers) || info.provider;
-  api.fetchModelsForProvider(pname, info.api_base, "").then((models) => {
+  const pname = resolveProviderName(info.api_base, refreshed.providers) || info.provider;
+  try {
+    const models = await api.fetchModelsForProvider(pname, info.api_base, "", info.api_type);
     if (!models.length) {
       document.getElementById("modal-body")!.innerHTML = `<div class="modal-form"><label>Model</label><input id="modal-model-input" type="text" value="${esc(info.model)}" autofocus /><button id="modal-confirm" class="small-btn">Apply</button></div>`;
       const input = document.getElementById("modal-model-input") as HTMLInputElement;
@@ -270,14 +287,15 @@ function showModelPickerFromSettings() {
     } else {
       showModelPicker(models, info.model, (m) => store.setModel(m));
     }
-  }).catch(() => {
+  } catch (e: any) {
+    store.addToast(`Failed to fetch models: ${e}`, "error");
     document.getElementById("modal-body")!.innerHTML = `<div class="modal-form"><label>Model</label><input id="modal-model-input" type="text" value="${esc(info.model)}" autofocus /><button id="modal-confirm" class="small-btn">Apply</button></div>`;
     const input = document.getElementById("modal-model-input") as HTMLInputElement;
     const go = () => { const m = input.value.trim(); if (m) { store.setModel(m); closeModal(); } };
     document.getElementById("modal-confirm")!.addEventListener("click", go);
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     input.focus();
-  });
+  }
 }
 
 // ── Choice Modal ──
@@ -349,6 +367,13 @@ function showCustomProviderModal() {
   openModal("Custom Provider", `<div class="modal-form">
     <label>API Base URL</label>
     <input id="cp-base" type="text" placeholder="https://api.example.com/v1" autofocus />
+    <label>API Type</label>
+    <select id="cp-api-type">
+      <option value="openai-chat" selected>OpenAI-compatible (openai-chat)</option>
+      <option value="anthropic">Anthropic (anthropic)</option>
+      <option value="ollama">Ollama (ollama)</option>
+      <option value="other">Other / Unknown</option>
+    </select>
     <label>API Key</label>
     <input id="cp-key" type="password" placeholder="sk-..." />
     <label>Model</label>
@@ -356,13 +381,16 @@ function showCustomProviderModal() {
     <div class="modal-actions"><button id="cp-cancel" class="small-btn">Cancel</button><button id="cp-submit" class="small-btn">Switch</button></div>
   </div>`);
   const base = document.getElementById("cp-base") as HTMLInputElement;
+  const apiTypeSelect = document.getElementById("cp-api-type") as HTMLSelectElement;
   const key = document.getElementById("cp-key") as HTMLInputElement;
   const model = document.getElementById("cp-model") as HTMLInputElement;
   const go = () => {
     const b = base.value.trim();
     const k = key.value.trim();
     const m = model.value.trim();
-    if (b && m) { store.switchProvider("openai", b, k, m); closeModal(); }
+    let apiType = apiTypeSelect.value;
+    if (apiType === "other") apiType = "openai-chat";
+    if (b && m) { store.switchProvider("custom", b, k, m, apiType); closeModal(); }
   };
   document.getElementById("cp-submit")!.addEventListener("click", go);
   model.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
@@ -580,8 +608,11 @@ function renderSettingsPanel(container: HTMLElement, s: ReturnType<typeof store.
   let provHtml = "";
   if (!s.providers.length) { provHtml = `<div class="empty-state">Loading...</div>`; store.loadProviders(); }
   else for (const p of s.providers) {
-    const active = info.api_base.replace(/\/+$/, "").toLowerCase() === p.api_base.replace(/\/+$/, "").toLowerCase();
-    provHtml += `<div class="provider-item${active ? " active" : ""}"><div class="provider-info"><span class="provider-name">${esc(p.name)}</span><span class="provider-base">${esc(p.api_base)}</span></div>${active ? '<span class="provider-active-tag">active</span>' : `<button class="provider-switch-btn" data-provider="${esc(p.provider)}" data-base="${esc(p.api_base)}">Switch</button>`}</div>`;
+    const active = info.provider.toLowerCase() === p.provider.toLowerCase();
+    // Preserve the current backend api_base when re-selecting the active provider,
+    // otherwise use the registry default for the target provider.
+    const switchBase = active ? info.api_base : p.api_base;
+    provHtml += `<div class="provider-item${active ? " active" : ""}"><div class="provider-info"><span class="provider-name">${esc(p.name)}</span><span class="provider-base">${esc(p.api_base)}</span></div>${active ? '<span class="provider-active-tag">active</span>' : `<button class="provider-switch-btn" data-provider="${esc(p.provider)}" data-base="${esc(switchBase)}">Switch</button>`}</div>`;
   }
   container.innerHTML = `<div class="panel-section">
     <div class="panel-header"><h3>Settings</h3></div>
@@ -591,6 +622,7 @@ function renderSettingsPanel(container: HTMLElement, s: ReturnType<typeof store.
       <label>Model</label><div class="setting-row"><div class="setting-value" style="flex:1">${esc(info.model)}</div><button id="setting-model-pick" class="small-btn">Change</button></div>
       <label>Mode</label><select id="setting-mode"><option value="auto" ${info.mode === "auto" ? "selected" : ""}>Auto</option><option value="plan" ${info.mode === "plan" ? "selected" : ""}>Plan</option><option value="exec" ${info.mode === "exec" ? "selected" : ""}>Exec</option></select>
       <label>API Base</label><div class="setting-value">${esc(info.api_base)}</div>
+      <label>Config</label><button id="setting-reload-config" class="small-btn">Reload Config</button>
       <label>Max Context</label><div class="setting-value">${info.max_context_tokens.toLocaleString()} tokens</div>
       <label>Timeouts</label><div class="setting-value">LLM ${info.llm_timeout_secs}s / Tool ${info.tool_timeout_secs}s</div>
     </div>
@@ -603,6 +635,7 @@ function renderSettingsPanel(container: HTMLElement, s: ReturnType<typeof store.
   container.querySelector("#setting-mode")?.addEventListener("change", (e) => store.setMode((e.target as HTMLSelectElement).value));
   container.querySelector("#setting-apikey-save")?.addEventListener("click", () => { const inp = container.querySelector("#setting-apikey") as HTMLInputElement; const k = inp.value.trim(); if (k) { store.saveApiKey(k); inp.value = ""; } });
   container.querySelector("#setting-model-pick")?.addEventListener("click", () => showModelPickerFromSettings());
+  container.querySelector("#setting-reload-config")?.addEventListener("click", () => store.reloadConfig());
   container.querySelectorAll(".provider-switch-btn").forEach((btn) => { btn.addEventListener("click", () => showProviderSwitchModal((btn as HTMLElement).dataset.provider!, (btn as HTMLElement).dataset.base!)); });
   container.querySelector("#custom-provider-btn")?.addEventListener("click", () => showCustomProviderModal());
 }

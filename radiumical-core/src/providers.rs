@@ -50,7 +50,9 @@ pub struct ProviderSource {
 impl ProviderSource {
     /// Resolve the API key for this source from its configured env var.
     pub fn api_key(&self) -> Option<String> {
-        self.key_env.as_ref().and_then(|k| std::env::var(k).ok())
+        self.key_env
+            .as_ref()
+            .and_then(|k| std::env::var(k).ok().filter(|v| !v.trim().is_empty()))
     }
 
     /// Full URL for the models list endpoint, if any.
@@ -199,7 +201,10 @@ pub async fn discover_models(
         return source.models.clone().unwrap_or_default();
     };
 
-    let Some(key) = api_key.or_else(|| source.api_key()) else {
+    let Some(key) = api_key
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| source.api_key())
+    else {
         return source.models.clone().unwrap_or_default();
     };
 
@@ -246,28 +251,41 @@ pub async fn discover_models(
 
 /// Convenience wrapper that discovers models for a [`SessionConfig`](crate::types::SessionConfig).
 pub async fn discover_models_for_config(config: &crate::types::SessionConfig) -> Vec<String> {
-    use crate::types::ProviderKind;
     let client = reqwest::Client::new();
+
+    // Prefer the embedded registry for complete metadata (api_base, auth headers, etc.).
+    if let Some(source) = find_provider(config.provider.name()) {
+        let api_key = if config.api_key.is_empty() {
+            source.api_key()
+        } else {
+            Some(config.api_key.clone())
+        };
+        return discover_models(&client, &source, api_key).await;
+    }
+
+    // Fallback: construct a minimal source from the ProviderKind itself.
     let api_base = config
         .api_base
         .clone()
         .unwrap_or_else(|| config.provider.default_base().to_string());
+    let is_ollama_native = config.provider.api_type() == "ollama";
     let source = ProviderSource {
         provider: config.provider.name().to_string(),
         name: config.provider.name().to_string(),
-        api_type: match config.provider {
-            ProviderKind::OpenAI | ProviderKind::Ollama => "openai-chat".into(),
-            ProviderKind::Anthropic => "anthropic".into(),
-        },
+        api_type: config.provider.api_type().to_string(),
         api_base,
         key_env: None,
-        models_endpoint: Some("/models".into()),
-        auth_header: if config.provider == ProviderKind::Anthropic {
+        models_endpoint: if is_ollama_native {
+            Some("/api/tags".into())
+        } else {
+            Some("/models".into())
+        },
+        auth_header: if config.provider == crate::types::ProviderKind::Anthropic {
             Some("x-api-key".into())
         } else {
             None
         },
-        version_header: if config.provider == ProviderKind::Anthropic {
+        version_header: if config.provider == crate::types::ProviderKind::Anthropic {
             Some("2023-06-01".into())
         } else {
             None
@@ -288,14 +306,62 @@ pub async fn discover_models_for_config(config: &crate::types::SessionConfig) ->
     .await
 }
 
-/// Look up a provider by name from the embedded (bundled) provider list.
+/// Load provider sources from the local cache file synchronously.
+/// Returns `None` if the cache does not exist or cannot be parsed.
+fn load_cache_sync() -> Option<Vec<ProviderSource>> {
+    let cache_dir = dirs::cache_dir()?;
+    let path = cache_dir.join(CACHE_FILE_NAME);
+    if !path.exists() {
+        return None;
+    }
+    let text = fs::read_to_string(&path).ok()?;
+    parse_jsonl(&text).ok()
+}
+
+/// Look up a provider by name.
+///
+/// Resolution order:
+/// 1. Local on-disk cache (written by the last online fetch)
+/// 2. Embedded (bundled) provider list
+///
 /// Returns `None` if no match is found.
 pub fn find_provider(name: &str) -> Option<ProviderSource> {
     let needle = name.to_lowercase();
+    let cached = load_cache_sync().unwrap_or_default();
+    if let Some(source) = cached
+        .into_iter()
+        .find(|s| s.provider.to_lowercase() == needle)
+    {
+        return Some(source);
+    }
     parse_jsonl(EMBEDDED_PROVIDERS)
         .ok()?
         .into_iter()
         .find(|s| s.provider.to_lowercase() == needle)
+}
+
+/// Resolve a provider name to a [`ProviderKind`] using the embedded registry.
+/// Falls back to built-in heuristics for names not present in the registry.
+///
+/// Built-in names (`openai`, `anthropic`, `ollama`) map to the corresponding
+/// enum variant; other registry providers keep their original name in
+/// [`ProviderKind::Custom`] so that downstream code can look them up again.
+pub fn parse_provider_kind(name: &str) -> crate::types::ProviderKind {
+    use crate::types::ProviderKind;
+    let name_lower = name.to_lowercase();
+    if let Some(source) = find_provider(name) {
+        return match name_lower.as_str() {
+            "openai" => ProviderKind::OpenAI,
+            "anthropic" => ProviderKind::Anthropic,
+            "ollama" => ProviderKind::Ollama,
+            _ => ProviderKind::Custom(name_lower, source.api_type.clone()),
+        };
+    }
+    match name_lower.as_str() {
+        "anthropic" => ProviderKind::Anthropic,
+        "ollama" => ProviderKind::Ollama,
+        other => ProviderKind::Custom(other.to_string(), "openai-chat".to_string()),
+    }
 }
 
 /// Fetch the provider registry from the remote URL, local cache, or embedded fallback.

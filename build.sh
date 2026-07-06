@@ -74,19 +74,44 @@ if $CLEAN; then
 fi
 
 # Build
-CRATE_ARGS=""
+NON_TAURI=()
+HAS_TAURI=false
 for pkg in "${PKG_LIST[@]}"; do
-    CRATE_ARGS="$CRATE_ARGS --package ${CRATE_MAP[$pkg]}"
+    if [[ "$pkg" == "tauri" ]]; then
+        HAS_TAURI=true
+    else
+        NON_TAURI+=("$pkg")
+    fi
 done
 
-PROFILE_ARG=""
-if [[ "$PROFILE" != "dev" ]]; then
-    PROFILE_ARG="--profile $PROFILE"
+# Build non-Tauri packages together
+if [[ ${#NON_TAURI[@]} -gt 0 ]]; then
+    CRATE_ARGS=""
+    for pkg in "${NON_TAURI[@]}"; do
+        CRATE_ARGS="$CRATE_ARGS --package ${CRATE_MAP[$pkg]}"
+    done
+    echo ""
+    echo "▸ cargo build $PROFILE_ARG $TARGET_FLAG $CRATE_ARGS"
+    cargo build $PROFILE_ARG $TARGET_FLAG $CRATE_ARGS
 fi
 
-echo ""
-echo "▸ cargo build $PROFILE_ARG $TARGET_FLAG $CRATE_ARGS"
-cargo build $PROFILE_ARG $TARGET_FLAG $CRATE_ARGS
+# Build Tauri separately: ensure frontend dist exists and enable custom protocol for release builds
+if $HAS_TAURI; then
+    TAURI_DIR="radiumical-tauri"
+    if [[ -f "$TAURI_DIR/package.json" ]]; then
+        echo ""
+        echo "▸ npm run build (Tauri frontend)"
+        (cd "$TAURI_DIR" && npm run build)
+    fi
+
+    FEATURE_ARG=""
+    if [[ "$PROFILE" != "dev" ]]; then
+        FEATURE_ARG="--features custom-protocol"
+    fi
+    echo ""
+    echo "▸ cargo build $PROFILE_ARG $TARGET_FLAG --package ${CRATE_MAP[tauri]} $FEATURE_ARG"
+    cargo build $PROFILE_ARG $TARGET_FLAG --package ${CRATE_MAP[tauri]} $FEATURE_ARG
+fi
 
 # Copy binaries
 for pkg in "${PKG_LIST[@]}"; do

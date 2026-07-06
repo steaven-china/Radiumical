@@ -107,6 +107,7 @@ impl SettingsBoard {
             .context_compress_ratio
             .map(|v| format!("{v:.2}"))
             .unwrap_or_else(|| "0.75".into());
+        let auto_resume = config.auto_resume_last_task.unwrap_or(true);
         let mode_str = match mode {
             radiumical_core::types::AgentMode::Auto => "auto",
             radiumical_core::types::AgentMode::Plan => "plan",
@@ -208,6 +209,17 @@ impl SettingsBoard {
                         mask: false,
                     },
                 },
+                SettingItem {
+                    label: "Auto-resume session".into(),
+                    kind: SettingKind::Enum {
+                        value: if auto_resume {
+                            "on".into()
+                        } else {
+                            "off".into()
+                        },
+                        options: vec!["on".into(), "off".into()],
+                    },
+                },
             ],
         }
     }
@@ -226,6 +238,7 @@ impl SettingsBoard {
             mode: None,
             max_context_tokens: None,
             context_compress_ratio: None,
+            auto_resume_last_task: None,
         };
         for item in &self.items {
             match item.label.as_str() {
@@ -286,6 +299,11 @@ impl SettingsBoard {
                         if let Ok(v) = value.parse::<f64>() {
                             config.context_compress_ratio = Some(v.clamp(0.5, 0.95));
                         }
+                    }
+                }
+                "Auto-resume session" => {
+                    if let SettingKind::Enum { value, .. } = &item.kind {
+                        config.auto_resume_last_task = Some(value == "on");
                     }
                 }
                 _ => {}

@@ -211,8 +211,7 @@ impl Tool for FindFiles {
         let ws = workspace.to_path_buf();
         let pattern = args["pattern"].as_str().unwrap_or("*").to_string();
 
-        let result = tokio::task::spawn_blocking(move || find_files_sync(&ws, &pattern))
-            .await;
+        let result = tokio::task::spawn_blocking(move || find_files_sync(&ws, &pattern)).await;
 
         match result {
             Ok(r) => r,

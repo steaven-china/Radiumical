@@ -49,6 +49,28 @@ cargo build --release
 cargo build --profile release-small
 ```
 
+### Tauri Desktop App
+
+The Tauri crate requires the `custom-protocol` feature for release builds so that the embedded frontend assets are loaded instead of the development server URL:
+
+```bash
+cd radiumical-tauri
+npm install
+npm run build
+cd ..
+cargo build -p radiumical-tauri --release --features custom-protocol
+```
+
+For convenience use the provided wrapper scripts:
+
+```bash
+# Linux/macOS
+./build.sh -p release-small
+
+# Windows
+./build.ps1 -Profile release-small
+```
+
 Binary locations:
 - Debug: `target/debug/radiumical(.exe)`
 - Release: `target/release/radiumical(.exe)`

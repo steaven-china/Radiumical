@@ -57,3 +57,11 @@ pub use providers::{find_provider, ProviderRegistry, ProviderSource};
 pub use skill::{Skill, SkillMeta, SkillRegistry};
 pub use subagent::{SubAgentHandle, SubAgentResult};
 pub use types::{AgentMode, BackendCmd, Message, SessionConfig, UiEvent};
+
+// ═══ Session / workspace utilities ═══
+
+pub use session::{
+    items_to_messages, SessionFilter, SessionItem, SessionMeta, SessionMode, SessionPool,
+    SessionStats, SessionTools, SortBy, SortOrder, UsageChoices, WorkspaceEntry, WorkspaceFilter,
+    WorkspaceRegistry, WorkspaceSortBy, WorkspaceTools,
+};

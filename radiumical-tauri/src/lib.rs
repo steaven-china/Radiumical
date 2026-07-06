@@ -2,7 +2,7 @@ use radiumical_core::config::Config;
 use radiumical_core::pipeline::PipelineRunner;
 use radiumical_core::provider::create_provider;
 use radiumical_core::providers::{
-    discover_models_for_config, fetch_provider_sources, ProviderSource,
+    discover_models_for_config, fetch_provider_sources, find_provider, ProviderSource,
 };
 use radiumical_core::session::{
     SessionItem, SessionMeta, SessionMode, SessionPool, WorkspaceRegistry,
@@ -14,40 +14,62 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::{watch, Mutex as TokioMutex};
 
-const EMBEDDED_PROVIDERS_JSONL: &str = include_str!("../../providers-record/providers.jsonl");
-
-fn resolve_key_from_registry(provider_name: &str, kind: &ProviderKind) -> String {
-    let name_lower = provider_name.to_lowercase();
-    for line in EMBEDDED_PROVIDERS_JSONL.lines() {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            if v.get("provider")
-                .and_then(|x| x.as_str())
-                .map(|s| s.to_lowercase())
-                == Some(name_lower.clone())
-            {
-                if let Some(env) = v.get("key_env").and_then(|x| x.as_str()) {
-                    if let Ok(k) = std::env::var(env) {
-                        if !k.is_empty() {
-                            return k;
-                        }
-                    }
-                }
-            }
+fn resolve_key_from_registry(provider_name: &str) -> String {
+    // Try the provider registry (cache -> embedded) first.
+    if let Some(source) = find_provider(provider_name) {
+        if let Some(key) = source.api_key() {
+            return key;
         }
     }
-    // Fallback
+    // Fall back to the global config file.
     Config::load()
         .ok()
         .and_then(|c| c.api_key)
         .filter(|k| !k.is_empty())
-        .or_else(|| {
-            let env = match kind {
-                ProviderKind::Anthropic => "ANTHROPIC_API_KEY",
-                _ => "DEEPSEEK_API_KEY",
-            };
-            std::env::var(env).ok().filter(|k| !k.is_empty())
-        })
         .unwrap_or_default()
+}
+
+/// Resolve provider kind and fill in missing api_base / api_key / model from the registry.
+fn resolve_provider_inputs(
+    provider_name: &str,
+    api_base: String,
+    api_key: String,
+    model: String,
+    api_type: Option<String>,
+) -> (ProviderKind, String, String, String) {
+    let kind = if let Some(api_type) = api_type {
+        ProviderKind::Custom(provider_name.to_lowercase(), api_type)
+    } else {
+        radiumical_core::providers::parse_provider_kind(provider_name)
+    };
+
+    let source = find_provider(provider_name);
+
+    let api_base = if api_base.trim().is_empty() {
+        source
+            .as_ref()
+            .map(|s| s.api_base.clone())
+            .unwrap_or_default()
+    } else {
+        api_base
+    };
+
+    let api_key = if !api_key.trim().is_empty() {
+        api_key.trim().to_string()
+    } else {
+        resolve_key_from_registry(provider_name)
+    };
+
+    let model = if !model.trim().is_empty() {
+        model.trim().to_string()
+    } else {
+        source
+            .as_ref()
+            .and_then(|s| s.default_model.clone())
+            .unwrap_or_default()
+    };
+
+    (kind, api_base, api_key, model)
 }
 
 // ── Display Item — single source of truth for UI ──
@@ -89,6 +111,7 @@ struct AppState {
 struct AppInfo {
     model: String,
     provider: String,
+    api_type: String,
     mode: String,
     workspace: String,
     api_base: String,
@@ -359,6 +382,17 @@ async fn run_task(
     let mut runner = state.runner.lock().await;
     let workspace = state.workspace.clone();
     let task_desc = task.clone();
+
+    // Validate that we have a usable provider configuration before running.
+    {
+        let cfg = state.config.lock().await;
+        if cfg.api_base.as_deref().unwrap_or("").is_empty() {
+            drop(cfg);
+            drop(runner);
+            return Err("API base is not configured. Check provider settings.".into());
+        }
+    }
+
     let result = runner
         .run(task, workspace, &[], None, ui_tx, cancel_rx)
         .await;
@@ -383,7 +417,7 @@ async fn run_task(
                 "autosave",
                 &items,
                 &config.model,
-                &format!("{:?}", config.provider).to_lowercase(),
+                &config.provider.name(),
                 mode,
                 "",
                 Some(&task_desc),
@@ -427,7 +461,7 @@ async fn new_session(
                 "autosave",
                 &items,
                 &config.model,
-                &format!("{:?}", config.provider).to_lowercase(),
+                &config.provider.name(),
                 mode,
                 "",
                 None,
@@ -538,7 +572,8 @@ async fn get_app_info(state: tauri::State<'_, AppState>) -> Result<AppInfo, Stri
     };
     Ok(AppInfo {
         model: config.model.clone(),
-        provider: format!("{:?}", config.provider).to_lowercase(),
+        provider: config.provider.name().to_string(),
+        api_type: config.provider.api_type().to_string(),
         mode: format!("{:?}", config.mode).to_lowercase(),
         workspace: state.workspace.to_string_lossy().to_string(),
         api_base: config.api_base.clone().unwrap_or_default(),
@@ -555,6 +590,7 @@ async fn save_api_key(
     app: tauri::AppHandle,
     api_key: String,
 ) -> Result<(), String> {
+    let api_key = api_key.trim().to_string();
     let mut cfg = Config::load().map_err(|e| e.to_string())?;
     cfg.api_key = Some(api_key.clone());
     cfg.save().map_err(|e| e.to_string())?;
@@ -610,18 +646,17 @@ async fn set_provider(
     api_base: String,
     api_key: String,
     model: String,
-) -> Result<(), String> {
-    let kind = match provider_name.to_lowercase().as_str() {
-        "anthropic" => ProviderKind::Anthropic,
-        "ollama" => ProviderKind::Ollama,
-        _ => ProviderKind::OpenAI,
-    };
+    api_type: Option<String>,
+) -> Result<AppInfo, String> {
+    let (kind, api_base, resolved_key, model) =
+        resolve_provider_inputs(&provider_name, api_base, api_key, model, api_type);
 
-    let resolved_key = if !api_key.is_empty() {
-        api_key
-    } else {
-        resolve_key_from_registry(&provider_name, &kind)
-    };
+    if api_base.trim().is_empty() {
+        return Err(format!(
+            "API base is empty for provider '{}'",
+            provider_name
+        ));
+    }
 
     let provider = create_provider(&kind, Some(&api_base), &resolved_key, &model);
     let mut config = state.config.lock().await;
@@ -635,9 +670,11 @@ async fn set_provider(
     let mut runner = state.runner.lock().await;
     runner.set_model(model.clone());
     *runner = PipelineRunner::new(cfg_clone, provider);
+    drop(runner);
 
+    let info = get_app_info(state).await?;
     let _ = app.emit("provider-changed", serde_json::json!({ "model": model }));
-    Ok(())
+    Ok(info)
 }
 
 #[tauri::command]
@@ -645,21 +682,26 @@ async fn fetch_models_for_provider(
     provider_name: String,
     api_base: String,
     api_key: String,
+    api_type: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let kind = match provider_name.to_lowercase().as_str() {
-        "anthropic" => ProviderKind::Anthropic,
-        "ollama" => ProviderKind::Ollama,
-        _ => ProviderKind::OpenAI,
-    };
-    let resolved_key = if !api_key.is_empty() {
-        api_key
-    } else {
-        resolve_key_from_registry(&provider_name, &kind)
-    };
+    let (kind, api_base, resolved_key, _model) =
+        resolve_provider_inputs(&provider_name, api_base, api_key, String::new(), api_type);
+
+    if api_base.trim().is_empty() {
+        return Err(format!(
+            "API base is empty for provider '{}'",
+            provider_name
+        ));
+    }
+
     let config = SessionConfig {
         provider: kind,
         api_key: resolved_key,
-        api_base: Some(api_base),
+        api_base: if api_base.is_empty() {
+            None
+        } else {
+            Some(api_base)
+        },
         ..Default::default()
     };
     Ok(discover_models_for_config(&config).await)
@@ -667,14 +709,55 @@ async fn fetch_models_for_provider(
 
 #[tauri::command]
 async fn get_config() -> Result<serde_json::Value, String> {
-    serde_json::to_value(&Config::load().map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    let mut value = serde_json::to_value(&Config::load().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    // Never expose the raw API key to the frontend.
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("api_key".into(), serde_json::Value::String("***".into()));
+    }
+    Ok(value)
 }
 
 #[tauri::command]
 async fn save_config(config_json: serde_json::Value) -> Result<(), String> {
-    let config: Config =
+    let mut config: Config =
         serde_json::from_value(config_json).map_err(|e| format!("Invalid config: {}", e))?;
+    // Preserve the existing API key; use `save_api_key` to change it.
+    config.api_key = Config::load().ok().and_then(|c| c.api_key);
     config.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn reload_config(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<AppInfo, String> {
+    let workspace_str = state.workspace.to_string_lossy().to_string();
+    let ws_hash = radiumical_core::session::workspace_hash(&workspace_str);
+    let session_config = Config::load_for_workspace(&ws_hash);
+
+    let provider = create_provider(
+        &session_config.provider,
+        session_config.api_base.as_deref(),
+        &session_config.api_key,
+        &session_config.model,
+    );
+
+    {
+        let mut cfg = state.config.lock().await;
+        *cfg = session_config.clone();
+    }
+    {
+        let mut runner = state.runner.lock().await;
+        *runner = PipelineRunner::new(session_config.clone(), provider);
+    }
+
+    let info = get_app_info(state).await?;
+    let _ = app.emit(
+        "provider-changed",
+        serde_json::json!({ "model": info.model }),
+    );
+    Ok(info)
 }
 
 #[tauri::command]
@@ -815,6 +898,7 @@ pub fn run() {
             fetch_models_for_provider,
             get_config,
             save_config,
+            reload_config,
             get_workspaces,
             choice_response,
         ])

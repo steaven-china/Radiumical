@@ -131,14 +131,16 @@ pub fn run(
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(cmd_tx, ui_rx, &config, &workspace);
-    // Auto-load previous session if available [deprecated]
-    // if let Ok(Some((_, items))) = radiumical_core::session::Session::load("autosave") {
-    //     if !items.is_empty() {
-    //         app.session_items = items;
-    //         app.render_session_items_to_output();
-    //     }
-    // }
-    let frame_time = Duration::from_nanos(16_666_667); // 60 FPS
+    // Auto-load previous session if configured
+    if config.auto_resume_last_task {
+        if let Ok(Some((_, items))) = radiumical_core::session::Session::load("autosave") {
+            if !items.is_empty() {
+                app.session_items = items;
+                app.render_session_items_to_output();
+            }
+        }
+    }
+    let frame_time = Duration::from_nanos(16_666_666); // 60 FPS
     let mut term_size = terminal.size()?;
 
     let result = (|| -> anyhow::Result<()> {

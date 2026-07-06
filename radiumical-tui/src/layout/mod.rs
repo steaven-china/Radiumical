@@ -287,7 +287,9 @@ pub fn measure_blocks(output: &[String], area_width: u16, show_full_reasoning: b
         // Regular text (including blank lines — must preserve spacing)
         // Calculate wrapped height so long lines (errors, etc.) get correct viewport math.
         let text_height = if line.len() > area_width as usize && area_width > 0 {
-            text::wrap_text_to_width(line, area_width as usize).len().max(1)
+            text::wrap_text_to_width(line, area_width as usize)
+                .len()
+                .max(1)
         } else {
             1
         };

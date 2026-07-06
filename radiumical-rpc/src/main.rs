@@ -17,7 +17,7 @@ use clap::Parser;
 use radiumical_core::agent::Agent;
 use radiumical_core::harness::Harness;
 use radiumical_core::provider::create_provider;
-use radiumical_core::types::{AgentMode, ProviderKind, SessionConfig, UiEvent};
+use radiumical_core::types::{AgentMode, SessionConfig, UiEvent};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
@@ -227,7 +227,7 @@ async fn build_initial_state(
     Arc<dyn radiumical_core::provider::Provider>,
     PathBuf,
 )> {
-    let provider_kind = parse_provider(&cli.provider);
+    let provider_kind = radiumical_core::providers::parse_provider_kind(&cli.provider);
     let registry_entry = radiumical_core::find_provider(&cli.provider);
 
     let model = cli.model.clone().unwrap_or_else(|| {
@@ -288,6 +288,8 @@ async fn build_initial_state(
         max_context_tokens: 1_000_000,
         context_compress_ratio: 0.8,
         auto_continue: true,
+        auto_resume_last_task: true,
+        thinking_effort: None,
         session_id: format!(
             "rpc-{}",
             std::time::SystemTime::now()
@@ -304,14 +306,6 @@ async fn build_initial_state(
         &config.model,
     );
     Ok((config, provider, workspace))
-}
-
-fn parse_provider(s: &str) -> ProviderKind {
-    match s.to_lowercase().as_str() {
-        "anthropic" => ProviderKind::Anthropic,
-        "ollama" => ProviderKind::Ollama,
-        _ => ProviderKind::OpenAI,
-    }
 }
 
 async fn load_mcp_clients(tool_timeout_secs: u64) -> Vec<McpClientEntry> {
@@ -387,7 +381,7 @@ async fn handle_initialize(
     let params = &req.params;
 
     if let Some(provider) = params.get("provider").and_then(|v| v.as_str()) {
-        config.provider = parse_provider(provider);
+        config.provider = radiumical_core::providers::parse_provider_kind(provider);
     }
     if let Some(model) = params.get("model").and_then(|v| v.as_str()) {
         config.model = model.into();

@@ -288,6 +288,7 @@ async fn intercept_settings(
             mode: None,
             max_context_tokens: None,
             context_compress_ratio: None,
+            auto_resume_last_task: None,
         });
         cfg.model = Some(config.model.clone());
         cfg.mode = Some(format!("{:?}", config.mode).to_lowercase());

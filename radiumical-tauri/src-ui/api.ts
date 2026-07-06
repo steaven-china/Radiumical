@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface AppInfo {
   model: string;
   provider: string;
+  api_type: string;
   mode: string;
   workspace: string;
   api_base: string;
@@ -54,7 +55,6 @@ export interface ProviderSource {
 export interface ConfigData {
   model?: string;
   provider?: string;
-  api_key?: string;
   api_base?: string;
   llm_timeout_secs?: number;
   max_iterations?: number;
@@ -93,27 +93,31 @@ export const api = {
     providerName: string,
     apiBase: string,
     apiKey: string,
-    model: string
-  ) =>
-    invoke("set_provider", {
+    model: string,
+    apiType?: string
+  ) => invoke<AppInfo>("set_provider", {
       providerName,
       apiBase,
       apiKey,
       model,
+      apiType,
     }),
   fetchModelsForProvider: (
     providerName: string,
     apiBase: string,
-    apiKey: string
+    apiKey: string,
+    apiType?: string
   ) =>
     invoke<string[]>("fetch_models_for_provider", {
       providerName,
       apiBase,
       apiKey,
+      apiType,
     }),
   getConfig: () => invoke<ConfigData>("get_config"),
   saveConfig: (config: ConfigData) => invoke("save_config", { configJson: config }),
   saveApiKey: (apiKey: string) => invoke("save_api_key", { apiKey }),
+  reloadConfig: () => invoke<AppInfo>("reload_config"),
   getMessages: () => invoke<ChatMessage[]>("get_messages"),
   getConversationItems: () => invoke<ChatMessage[]>("get_conversation_items"),
   choiceResponse: (id: string, value: string) => invoke("choice_response", { id, value }),

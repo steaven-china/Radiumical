@@ -21,8 +21,9 @@ use clap::Parser;
 use radiumical_core::commands::{CommandOutcome, CommandPool};
 use radiumical_core::pipeline::PipelineRunner;
 use radiumical_core::provider::create_provider;
-use radiumical_core::providers::{discover_models, ProviderRegistry, DEFAULT_REGISTRY_URL};
-use radiumical_core::types::{ProviderKind, SessionConfig};
+use radiumical_core::providers::{
+    discover_models, parse_provider_kind, ProviderRegistry, DEFAULT_REGISTRY_URL,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tui::{BackendCmd, UiEvent};
@@ -114,11 +115,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let provider_kind = match cli.provider.to_lowercase().as_str() {
-        "anthropic" => ProviderKind::Anthropic,
-        "ollama" => ProviderKind::Ollama,
-        _ => ProviderKind::OpenAI,
-    };
+    let provider_kind = parse_provider_kind(&cli.provider);
 
     let registry_entry = radiumical_core::find_provider(&cli.provider);
 
@@ -180,50 +177,31 @@ async fn main() -> Result<()> {
         let _ = registry.switch(&ws_name);
     }
 
-    // ── Config: global + workspace merge ──
-    let file_cfg =
-        radiumical_core::config::Config::load().unwrap_or(radiumical_core::config::Config {
-            model: None,
-            provider: None,
-            api_key: None,
-            api_base: None,
-            heartbeat_secs: None,
-            llm_timeout_secs: None,
-            max_iterations: None,
-            reasoning_effort: None,
-            mode: None,
-            max_context_tokens: None,
-            context_compress_ratio: None,
-        });
+    // ── Config: default → config.toml → workspace.toml → CLI overrides ──
+    let session_id = format!(
+        "sess-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
 
-    let mut config = SessionConfig {
-        provider: provider_kind,
-        model,
-        api_key: api_key.clone(),
-        api_base: api_base.clone(),
-        max_iterations: cli.max_iterations,
-        system_prompt: radiumical_core::types::default_system_prompt(),
-        llm_timeout_secs: cli.llm_timeout,
-        tool_timeout_secs: cli.tool_timeout,
-        heartbeat_interval_secs: cli.heartbeat,
-        concurrency: cli.concurrency,
-        use_markdown: false, // TUI handles rendering
-        mode: radiumical_core::types::AgentMode::Auto,
-        max_context_tokens: file_cfg.max_context_tokens.unwrap_or(1_000_000),
-        context_compress_ratio: file_cfg.context_compress_ratio.unwrap_or(0.8),
-        auto_continue: true,
-        session_id: format!(
-            "sess-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-        ),
-    };
+    let mut config = radiumical_core::config::Config::load_for_workspace(&ws_hash);
 
-    // Apply workspace-level overrides
-    let ws_settings = radiumical_core::session::load_workspace_settings(&ws_hash);
-    ws_settings.apply_to_config(&mut config);
+    // CLI args take highest priority
+    config.provider = provider_kind;
+    config.model = model;
+    config.api_key = api_key.clone();
+    if let Some(ref b) = api_base {
+        config.api_base = Some(b.clone());
+    }
+    config.max_iterations = cli.max_iterations;
+    config.llm_timeout_secs = cli.llm_timeout;
+    config.tool_timeout_secs = cli.tool_timeout;
+    config.heartbeat_interval_secs = cli.heartbeat;
+    config.concurrency = cli.concurrency;
+    config.use_markdown = false;
+    config.session_id = session_id;
 
     let mut provider = create_provider(
         &config.provider,
@@ -231,6 +209,10 @@ async fn main() -> Result<()> {
         &config.api_key,
         &config.model,
     );
+
+    if let Some(ref effort) = config.thinking_effort {
+        provider.set_reasoning_effort(Some(effort.clone()));
+    }
 
     // Set sub-agent defaults so SubAgentTool can spawn independently
     radiumical_core::subagent::set_defaults(config.clone(), Arc::clone(&provider));

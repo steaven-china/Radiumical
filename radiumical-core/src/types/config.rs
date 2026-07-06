@@ -42,16 +42,28 @@ pub struct SessionConfig {
     /// Whether the harness should auto-continue when the orchestrator has ready tasks.
     /// When false, the harness stops after each LLM turn and waits for the user.
     pub auto_continue: bool,
+    /// Whether to auto-resume the most recent session on startup.
+    pub auto_resume_last_task: bool,
     /// Stable identifier for this TUI/backend session. Used for checkpoint branches.
     pub session_id: String,
+    /// Default reasoning / thinking effort level for the provider (e.g. "low", "medium", "high", "max").
+    /// `None` means use the provider's built-in default.
+    pub thinking_effort: Option<String>,
 }
 
 /// Supported LLM provider backends.
+///
+/// Built-in variants cover the most common protocols. The [`ProviderKind::Custom`]
+/// variant lets the registry-driven provider list extend support without code
+/// changes: it carries the provider name and its `api_type` (e.g. `openai-chat`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProviderKind {
     OpenAI,
     Anthropic,
     Ollama,
+    /// Registry-derived or otherwise unrecorded provider.
+    /// Fields: `(name, api_type)`.
+    Custom(String, String),
 }
 
 impl ProviderKind {
@@ -60,6 +72,17 @@ impl ProviderKind {
             ProviderKind::OpenAI => "openai",
             ProviderKind::Anthropic => "anthropic",
             ProviderKind::Ollama => "ollama",
+            ProviderKind::Custom(name, _) => name.as_str(),
+        }
+    }
+
+    /// API protocol/format used to pick the right adapter.
+    pub fn api_type(&self) -> &str {
+        match self {
+            ProviderKind::OpenAI => "openai-chat",
+            ProviderKind::Anthropic => "anthropic",
+            ProviderKind::Ollama => "ollama",
+            ProviderKind::Custom(_, api_type) => api_type.as_str(),
         }
     }
 
@@ -68,6 +91,7 @@ impl ProviderKind {
             ProviderKind::OpenAI => "https://api.openai.com/v1",
             ProviderKind::Anthropic => "https://api.anthropic.com/v1",
             ProviderKind::Ollama => "http://localhost:11434/v1",
+            ProviderKind::Custom(_, _) => "",
         }
     }
 
@@ -76,6 +100,7 @@ impl ProviderKind {
             ProviderKind::OpenAI => "gpt-4o",
             ProviderKind::Anthropic => "claude-sonnet-4-20250514",
             ProviderKind::Ollama => "codellama",
+            ProviderKind::Custom(_, _) => "",
         }
     }
 }
@@ -98,7 +123,9 @@ impl Default for SessionConfig {
             max_context_tokens: 1_000_000,
             context_compress_ratio: 0.8,
             auto_continue: true,
+            auto_resume_last_task: false,
             session_id: "default".into(),
+            thinking_effort: None,
         }
     }
 }

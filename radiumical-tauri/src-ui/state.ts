@@ -91,7 +91,10 @@ class Store {
       this.update({ appInfo: info });
     } catch (e) {
       console.error("Failed to get app info:", e);
+      this.addToast("Failed to load app info", "error");
     }
+    // Load provider registry early so the UI can resolve api_base/model.
+    await this.loadProviders();
     // Fetch initial display from backend
     try {
       const display = await api.getDisplay();
@@ -220,13 +223,15 @@ class Store {
   async loadProviders() {
     try {
       this.update({ providers: await api.fetchProviders() });
-    } catch {}
+    } catch (e: any) {
+      console.error("Failed to load providers:", e);
+      this.addToast(`Failed to load providers: ${e}`, "error");
+    }
   }
 
-  async switchProvider(providerName: string, apiBase: string, apiKey: string, model: string) {
+  async switchProvider(providerName: string, apiBase: string, apiKey: string, model: string, apiType?: string) {
     try {
-      await api.setProvider(providerName, apiBase, apiKey, model);
-      const info = await api.getAppInfo();
+      const info = await api.setProvider(providerName, apiBase, apiKey, model, apiType);
       this.update({ appInfo: info });
       this.addToast(`Switched: ${providerName}/${model}`, "info");
     } catch (e: any) {
@@ -260,6 +265,17 @@ class Store {
       this.addToast("API key saved", "info");
     } catch (e: any) {
       this.addToast(`Failed: ${e}`, "error");
+    }
+  }
+
+  async reloadConfig() {
+    try {
+      const info = await api.reloadConfig();
+      this.update({ appInfo: info });
+      await this.loadProviders();
+      this.addToast("Config reloaded", "info");
+    } catch (e: any) {
+      this.addToast(`Failed to reload config: ${e}`, "error");
     }
   }
 

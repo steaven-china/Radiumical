@@ -120,7 +120,7 @@ impl OpenAICompatibleProvider {
         Self {
             client: reqwest::Client::new(),
             api_base: api_base.trim_end_matches('/').to_string(),
-            api_key: api_key.to_string(),
+            api_key: api_key.trim().to_string(),
             model: model.to_string(),
             reasoning_effort: std::sync::Mutex::new(reasoning),
         }
@@ -137,6 +137,106 @@ impl Clone for OpenAICompatibleProvider {
             reasoning_effort: std::sync::Mutex::new(self.reasoning_effort.lock().unwrap().clone()),
         }
     }
+}
+
+/// Process a single non-empty SSE `data:` payload. Returns events to emit and whether the
+/// stream should terminate. Mutates the provided accumulators.
+fn process_sse_data(
+    data: &str,
+    tool_call_acc: &mut Vec<ToolCallAccumulator>,
+    reasoning_buf: &mut String,
+) -> (Vec<ProviderEvent>, bool) {
+    let mut events = Vec::new();
+    if data == "[DONE]" {
+        // Flush any accumulated tool calls before finishing
+        if !tool_call_acc.is_empty() {
+            let tool_calls: Vec<ToolCall> = tool_call_acc
+                .iter()
+                .map(|acc| ToolCall {
+                    id: acc.id.clone().unwrap_or_default(),
+                    call_type: acc.call_type.clone().unwrap_or_else(|| "function".into()),
+                    function: crate::types::FunctionCall {
+                        name: acc.name.clone().unwrap_or_default(),
+                        arguments: acc.arguments.clone().unwrap_or_default(),
+                    },
+                })
+                .collect();
+            events.push(ProviderEvent::ToolCalls(tool_calls));
+        }
+        events.push(ProviderEvent::Done);
+        return (events, true);
+    }
+
+    let chunk: ChatChunk = match serde_json::from_str(data) {
+        Ok(c) => c,
+        Err(_) => return (events, false),
+    };
+
+    for choice in chunk.choices {
+        // Check finish reason
+        if let Some(ref reason) = choice.finish_reason {
+            if reason == "tool_calls" {
+                // We have complete tool calls
+                let tool_calls: Vec<ToolCall> = tool_call_acc
+                    .iter()
+                    .map(|acc| ToolCall {
+                        id: acc.id.clone().unwrap_or_default(),
+                        call_type: acc.call_type.clone().unwrap_or_else(|| "function".into()),
+                        function: crate::types::FunctionCall {
+                            name: acc.name.clone().unwrap_or_default(),
+                            arguments: acc.arguments.clone().unwrap_or_default(),
+                        },
+                    })
+                    .collect();
+
+                events.push(ProviderEvent::ToolCalls(tool_calls));
+                events.push(ProviderEvent::Done);
+                return (events, true);
+            }
+        }
+
+        if let Some(delta) = choice.delta {
+            // Reasoning / thinking content (DeepSeek)
+            if let Some(rc) = delta.reasoning_content {
+                if !rc.is_empty() {
+                    reasoning_buf.push_str(&rc);
+                    events.push(ProviderEvent::Reasoning(rc));
+                }
+            }
+            // Text content
+            if let Some(content) = delta.content {
+                if !content.is_empty() {
+                    events.push(ProviderEvent::Text(content));
+                }
+            }
+
+            // Tool calls
+            if let Some(tc_deltas) = delta.tool_calls {
+                for tc_delta in tc_deltas {
+                    while tool_call_acc.len() <= tc_delta.index {
+                        tool_call_acc.push(ToolCallAccumulator::default());
+                    }
+                    let acc = &mut tool_call_acc[tc_delta.index];
+
+                    if let Some(id) = tc_delta.id {
+                        acc.id = Some(id);
+                    }
+                    if let Some(ct) = tc_delta.call_type {
+                        acc.call_type = Some(ct);
+                    }
+                    if let Some(func) = tc_delta.function {
+                        if let Some(name) = func.name {
+                            acc.name = Some(name);
+                        }
+                        if let Some(args) = func.arguments {
+                            acc.arguments.get_or_insert_default().push_str(&args);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (events, false)
 }
 
 #[async_trait::async_trait]
@@ -164,13 +264,12 @@ impl Provider for OpenAICompatibleProvider {
             reasoning_effort: self.reasoning_effort.lock().ok().and_then(|r| r.clone()),
         };
 
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await?;
+        let mut req = self.client.post(&url).json(&request);
+        let key = self.api_key.trim();
+        if !key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        let response = req.send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -200,113 +299,29 @@ impl Provider for OpenAICompatibleProvider {
                 if data.is_empty() {
                     continue;
                 }
-                if data == "[DONE]" {
-                    // Flush any accumulated tool calls before finishing
-                    if !tool_call_acc.is_empty() {
-                        let tool_calls: Vec<ToolCall> = tool_call_acc
-                            .iter()
-                            .map(|acc| ToolCall {
-                                id: acc.id.clone().unwrap_or_default(),
-                                call_type: acc
-                                    .call_type
-                                    .clone()
-                                    .unwrap_or_else(|| "function".into()),
-                                function: crate::types::FunctionCall {
-                                    name: acc.name.clone().unwrap_or_default(),
-                                    arguments: acc.arguments.clone().unwrap_or_default(),
-                                },
-                            })
-                            .collect();
-                        if tx.send(ProviderEvent::ToolCalls(tool_calls)).await.is_err() {
-                            tracing::debug!("provider event channel closed");
-                        }
-                    }
-                    if tx.send(ProviderEvent::Done).await.is_err() {
+                let (events, done) = process_sse_data(data, &mut tool_call_acc, &mut reasoning_buf);
+                for event in events {
+                    if tx.send(event).await.is_err() {
                         tracing::debug!("provider event channel closed");
                     }
+                }
+                if done {
                     return Ok(());
                 }
+            }
+        }
 
-                let chunk: ChatChunk = match serde_json::from_str(data) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-
-                for choice in chunk.choices {
-                    // Check finish reason
-                    if let Some(ref reason) = choice.finish_reason {
-                        if reason == "tool_calls" {
-                            // We have complete tool calls
-                            let tool_calls: Vec<ToolCall> = tool_call_acc
-                                .iter()
-                                .map(|acc| ToolCall {
-                                    id: acc.id.clone().unwrap_or_default(),
-                                    call_type: acc
-                                        .call_type
-                                        .clone()
-                                        .unwrap_or_else(|| "function".into()),
-                                    function: crate::types::FunctionCall {
-                                        name: acc.name.clone().unwrap_or_default(),
-                                        arguments: acc.arguments.clone().unwrap_or_default(),
-                                    },
-                                })
-                                .collect();
-
-                            if tx.send(ProviderEvent::ToolCalls(tool_calls)).await.is_err() {
-                                tracing::debug!("provider event channel closed");
-                            }
-                            if tx.send(ProviderEvent::Done).await.is_err() {
-                                tracing::debug!("provider event channel closed");
-                            }
-                            return Ok(());
-                        }
-                    }
-
-                    if let Some(delta) = choice.delta {
-                        // Reasoning / thinking content (DeepSeek)
-                        if let Some(rc) = delta.reasoning_content {
-                            if !rc.is_empty() {
-                                reasoning_buf.push_str(&rc);
-                                if tx.send(ProviderEvent::Reasoning(rc)).await.is_err() {
-                                    tracing::debug!("provider event channel closed");
-                                }
-                            }
-                        }
-                        // Text content
-                        if let Some(content) = delta.content {
-                            if !content.is_empty()
-                                && tx.send(ProviderEvent::Text(content)).await.is_err()
-                            {
-                                tracing::debug!("provider event channel closed");
-                            }
-                        }
-
-                        // Tool calls
-                        if let Some(tc_deltas) = delta.tool_calls {
-                            for tc_delta in tc_deltas {
-                                while tool_call_acc.len() <= tc_delta.index {
-                                    tool_call_acc.push(ToolCallAccumulator::default());
-                                }
-                                let acc = &mut tool_call_acc[tc_delta.index];
-
-                                if let Some(id) = tc_delta.id {
-                                    acc.id = Some(id);
-                                }
-                                if let Some(ct) = tc_delta.call_type {
-                                    acc.call_type = Some(ct);
-                                }
-                                if let Some(func) = tc_delta.function {
-                                    if let Some(name) = func.name {
-                                        acc.name = Some(name);
-                                    }
-                                    if let Some(args) = func.arguments {
-                                        acc.arguments.get_or_insert_default().push_str(&args);
-                                    }
-                                }
-                            }
-                        }
-                    }
+        // Stream ended: process any remaining buffered line that lacked a trailing newline.
+        let remaining = buffer.trim();
+        if let Some(data) = remaining.strip_prefix("data: ") {
+            let (events, done) = process_sse_data(data, &mut tool_call_acc, &mut reasoning_buf);
+            for event in events {
+                if tx.send(event).await.is_err() {
+                    tracing::debug!("provider event channel closed");
                 }
+            }
+            if done {
+                return Ok(());
             }
         }
 
@@ -367,13 +382,12 @@ pub fn create_provider(
     model: &str,
 ) -> Arc<dyn Provider> {
     let base = api_base.unwrap_or_else(|| kind.default_base());
-    let inner: Arc<dyn Provider> = match kind {
-        ProviderKind::OpenAI | ProviderKind::Ollama => {
-            Arc::new(OpenAICompatibleProvider::new(base, api_key, model))
-        }
-        ProviderKind::Anthropic => Arc::new(UnsupportedProvider {
+    let inner: Arc<dyn Provider> = match kind.api_type() {
+        "openai-chat" | "ollama" => Arc::new(OpenAICompatibleProvider::new(base, api_key, model)),
+        "anthropic" => Arc::new(UnsupportedProvider {
             name: "anthropic".into(),
         }),
+        other => Arc::new(UnsupportedProvider { name: other.into() }),
     };
     crate::llm_cache::wrap(model.into(), inner)
 }

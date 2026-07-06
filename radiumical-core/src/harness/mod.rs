@@ -354,6 +354,7 @@ impl Harness {
                     if let Err(send_err) = ui_tx.send(UiEvent::Error(e.to_string())).await {
                         tracing::warn!(error = %send_err, "failed to send chat error to UI");
                     }
+                    let _ = ui_tx.send(UiEvent::LlmDone).await;
                     return Err(e);
                 }
                 Err(join_err) => {

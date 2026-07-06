@@ -511,6 +511,8 @@ pub struct WorkspaceSettings {
     pub context_compress_ratio: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_continue: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_resume_last_task: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
