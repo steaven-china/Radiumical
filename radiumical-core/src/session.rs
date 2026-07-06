@@ -3,14 +3,13 @@
 //! Each workspace gets its own session directory, so sessions from different
 //! projects never collide.  Each line is a typed record: meta / user / assistant
 //! / reasoning / tool / raw.
+use crate::types::{AgentMode, Message, MessageContent, Role, ToolCall, ToolResult};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-
-use crate::types::{AgentMode, Message, MessageContent, Role, ToolCall, ToolResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMeta {
@@ -27,7 +26,7 @@ pub struct SessionMeta {
     pub message_count: usize,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionMode {
     #[default]
@@ -800,6 +799,377 @@ impl Session {
 
     pub fn delete(name: &str) -> Result<bool> {
         delete_dir(&Self::dir(), name)
+    }
+}
+
+/// Session filtering, sorting, and retrieval utilities backed by a [`SessionPool`].
+pub struct SessionTools {
+    pool: SessionPool,
+}
+
+/// Strategy for picking which session to load.
+pub enum UsageChoices {
+    /// Most recently updated session.
+    Newest,
+    /// Least recently updated session.
+    Oldest,
+    /// Load a specific session by name.
+    Customize(String),
+}
+
+/// Content-level metrics computed from a session file.
+///
+/// Each field is populated by scanning every [`SessionItem`] in the file
+/// (excluding the leading [`SessionItem::Meta`]).
+#[derive(Debug, Clone, Default)]
+pub struct SessionStats {
+    /// Number of [`SessionItem::User`] records.
+    pub user_messages: usize,
+    /// Number of [`SessionItem::Assistant`] records.
+    pub assistant_messages: usize,
+    /// Number of [`SessionItem::Tool`] records that represent a tool call.
+    pub tool_calls: usize,
+    /// Number of [`SessionItem::Tool`] records that carry a result.
+    pub tool_results: usize,
+    /// Sum of `.len()` across all `content` / `args` / `result` strings.
+    pub total_content_length: usize,
+}
+
+/// Sort key for listing sessions.
+pub enum SortBy {
+    /// Sort by the `updated` timestamp.
+    Updated,
+    /// Sort by the `created` timestamp.
+    Created,
+    /// Sort by session name.
+    Name,
+    /// Sort by message count (from meta — fast, no file read).
+    MessageCount,
+    /// Sort by model name.
+    Model,
+    /// Sort by provider name.
+    Provider,
+    /// Sort by session mode.
+    Mode,
+    /// Sort by thinking effort.
+    ThinkingEffort,
+    /// Sort by description text.
+    Description,
+    // ── content-based sorts (read every session file) ──
+    /// Sort by number of user messages (requires reading the file).
+    UserMessages,
+    /// Sort by number of assistant messages (requires reading the file).
+    AssistantMessages,
+    /// Sort by number of tool calls issued (requires reading the file).
+    ToolCalls,
+    /// Sort by number of tool results received (requires reading the file).
+    ToolResults,
+    /// Sort by total character count of all content (requires reading the file).
+    TotalContentLength,
+}
+
+/// Sort direction.
+pub enum SortOrder {
+    /// Ascending order.
+    Asc,
+    /// Descending order.
+    Desc,
+}
+
+/// Composable session filter.  All fields default to `None` (no-op).
+pub struct SessionFilter {
+    /// Keep sessions whose name contains this substring (case-insensitive).
+    pub name_contains: Option<String>,
+    /// Keep sessions that match this model exactly.
+    pub model: Option<String>,
+    /// Keep sessions that match this mode exactly.
+    pub mode: Option<SessionMode>,
+    /// Keep sessions that match this provider exactly.
+    pub provider: Option<String>,
+}
+
+impl SessionTools {
+    /// Build from an existing [`SessionPool`].
+    pub fn new(pool: SessionPool) -> Self {
+        Self { pool }
+    }
+
+    /// Convenience constructor that delegates to [`SessionPool::for_workspace`].
+    pub fn for_workspace(workspace: &str) -> Self {
+        Self {
+            pool: SessionPool::for_workspace(workspace),
+        }
+    }
+
+    /// List all sessions with optional combined filtering and sorting.
+    ///
+    /// When `filter` is `None` all sessions are returned; otherwise non-`None`
+    /// fields are AND-ed together.  Results are sorted in ascending order by the
+    /// chosen key, then reversed when `order` is [`SortOrder::Desc`].
+    pub fn list_filtered(
+        &self,
+        filter: Option<&SessionFilter>,
+        sort_by: SortBy,
+        order: SortOrder,
+    ) -> Result<Vec<SessionMeta>> {
+        let mut sessions = self.pool.list()?;
+
+        if let Some(f) = filter {
+            sessions.retain(|s| {
+                f.name_contains
+                    .as_ref()
+                    .map_or(true, |n| s.name.to_lowercase().contains(&n.to_lowercase()))
+                    && f.model.as_ref().map_or(true, |m| s.model == *m)
+                    && f.mode.map_or(true, |m| s.mode == m)
+                    && f.provider.as_ref().map_or(true, |p| s.provider == *p)
+            });
+        }
+
+        match sort_by {
+            SortBy::Updated => sessions.sort_by(|a, b| a.updated.cmp(&b.updated)),
+            SortBy::Created => sessions.sort_by(|a, b| a.created.cmp(&b.created)),
+            SortBy::Name => sessions.sort_by(|a, b| a.name.cmp(&b.name)),
+            SortBy::MessageCount => sessions.sort_by_key(|s| s.message_count),
+            SortBy::Model => sessions.sort_by(|a, b| a.model.cmp(&b.model)),
+            SortBy::Provider => sessions.sort_by(|a, b| a.provider.cmp(&b.provider)),
+            SortBy::Mode => sessions.sort_by_key(|s| s.mode),
+            SortBy::ThinkingEffort => {
+                sessions.sort_by(|a, b| a.thinking_effort.cmp(&b.thinking_effort))
+            }
+            SortBy::Description => sessions.sort_by(|a, b| a.description.cmp(&b.description)),
+            // Content-based sorts: load each session file and compute stats.
+            SortBy::UserMessages => {
+                let stats: Vec<usize> = sessions
+                    .iter()
+                    .map(|m| self.content_stats(&m.name).map_or(0, |s| s.user_messages))
+                    .collect();
+                let mut indexed: Vec<_> = sessions.into_iter().zip(stats).collect();
+                indexed.sort_by_key(|(_, count)| *count);
+                sessions = indexed.into_iter().map(|(m, _)| m).collect();
+            }
+            SortBy::AssistantMessages => {
+                let stats: Vec<usize> = sessions
+                    .iter()
+                    .map(|m| {
+                        self.content_stats(&m.name)
+                            .map_or(0, |s| s.assistant_messages)
+                    })
+                    .collect();
+                let mut indexed: Vec<_> = sessions.into_iter().zip(stats).collect();
+                indexed.sort_by_key(|(_, count)| *count);
+                sessions = indexed.into_iter().map(|(m, _)| m).collect();
+            }
+            SortBy::ToolCalls => {
+                let stats: Vec<usize> = sessions
+                    .iter()
+                    .map(|m| self.content_stats(&m.name).map_or(0, |s| s.tool_calls))
+                    .collect();
+                let mut indexed: Vec<_> = sessions.into_iter().zip(stats).collect();
+                indexed.sort_by_key(|(_, count)| *count);
+                sessions = indexed.into_iter().map(|(m, _)| m).collect();
+            }
+            SortBy::ToolResults => {
+                let stats: Vec<usize> = sessions
+                    .iter()
+                    .map(|m| self.content_stats(&m.name).map_or(0, |s| s.tool_results))
+                    .collect();
+                let mut indexed: Vec<_> = sessions.into_iter().zip(stats).collect();
+                indexed.sort_by_key(|(_, count)| *count);
+                sessions = indexed.into_iter().map(|(m, _)| m).collect();
+            }
+            SortBy::TotalContentLength => {
+                let stats: Vec<usize> = sessions
+                    .iter()
+                    .map(|m| {
+                        self.content_stats(&m.name)
+                            .map_or(0, |s| s.total_content_length)
+                    })
+                    .collect();
+                let mut indexed: Vec<_> = sessions.into_iter().zip(stats).collect();
+                indexed.sort_by_key(|(_, count)| *count);
+                sessions = indexed.into_iter().map(|(m, _)| m).collect();
+            }
+        }
+
+        if matches!(order, SortOrder::Desc) {
+            sessions.reverse();
+        }
+
+        Ok(sessions)
+    }
+
+    /// Read a session file and compute content-level [`SessionStats`].
+    ///
+    /// This is intentionally separate from [`list_filtered`] so callers can
+    /// inspect stats without re-scanning the file.  Returns `None` when the
+    /// session file cannot be read or parsed.
+    pub fn content_stats(&self, name: &str) -> Option<SessionStats> {
+        let path = self.pool.dir().join(format!("{}.jsonl", hash_name(name)));
+        let data = fs::read_to_string(&path).ok()?;
+        let mut stats = SessionStats::default();
+        for line in data.lines().skip(1) {
+            let item: SessionItem = serde_json::from_str(line).ok()?;
+            match item {
+                SessionItem::User { ref content } => {
+                    stats.user_messages += 1;
+                    stats.total_content_length += content.len();
+                }
+                SessionItem::Assistant { ref content } => {
+                    stats.assistant_messages += 1;
+                    stats.total_content_length += content.len();
+                }
+                SessionItem::Reasoning { ref content } => {
+                    stats.total_content_length += content.len();
+                }
+                SessionItem::Tool {
+                    ref args,
+                    ref result,
+                    ..
+                } => {
+                    stats.tool_calls += 1;
+                    stats.total_content_length += args.len();
+                    if result.is_some() {
+                        stats.tool_results += 1;
+                        stats.total_content_length += result.as_ref().unwrap().len();
+                    }
+                }
+                SessionItem::Meta { .. } | SessionItem::Raw { .. } => {}
+            }
+        }
+        Some(stats)
+    }
+
+    /// Load a single session's full data according to the given [`UsageChoices`].
+    ///
+    /// - [`UsageChoices::Newest`] / [`UsageChoices::Oldest`]: picks the most /
+    ///   least recently updated session.
+    /// - [`UsageChoices::Customize`]: loads the named session directly.
+    ///
+    /// Returns `Ok(None)` when no sessions exist.
+    pub fn get_session(
+        &self,
+        choice: UsageChoices,
+    ) -> Result<Option<(SessionMeta, Vec<SessionItem>)>> {
+        match choice {
+            UsageChoices::Newest | UsageChoices::Oldest => {
+                let mut list = self.pool.list()?;
+                list.sort_by(|a, b| a.updated.cmp(&b.updated));
+                if matches!(choice, UsageChoices::Oldest) {
+                    list.reverse();
+                }
+                if let Some(first) = list.first() {
+                    self.pool.load(&first.name)
+                } else {
+                    Ok(None)
+                }
+            }
+            UsageChoices::Customize(name) => self.pool.load(&name),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WorkspaceTools — workspace listing, filtering, and sorting
+// ---------------------------------------------------------------------------
+
+/// Sort key for listing workspaces.
+pub enum WorkspaceSortBy {
+    /// Sort by workspace name.
+    Name,
+    /// Sort by workspace path.
+    Path,
+    /// Sort by last-active timestamp.
+    LastActive,
+    /// Sort by pinned status (pinned first when descending).
+    Pinned,
+    /// Sort by number of tags.
+    TagCount,
+    /// Sort by number of sessions in the workspace.
+    SessionCount,
+}
+
+/// Composable workspace filter.  All fields default to `None` (no-op).
+pub struct WorkspaceFilter {
+    /// Keep workspaces whose name contains this substring (case-insensitive).
+    pub name_contains: Option<String>,
+    /// Keep workspaces whose path contains this substring (case-insensitive).
+    pub path_contains: Option<String>,
+    /// Keep only pinned / unpinned workspaces.
+    pub pinned: Option<bool>,
+    /// Keep workspaces that have this tag.
+    pub has_tag: Option<String>,
+}
+
+/// Workspace listing, filtering, and sorting utilities.
+///
+/// Operates on a shared [`WorkspaceRegistry`] and the sessions directory to
+/// compute per-workspace session counts.
+pub struct WorkspaceTools;
+
+impl WorkspaceTools {
+    /// List workspaces with optional combined filtering and sorting.
+    ///
+    /// Session counts are computed by reading each workspace's session
+    /// directory.  Workspaces with no session directory get a count of 0.
+    ///
+    /// When `filter` is `None` all workspaces are returned; otherwise non-`None`
+    /// fields are AND-ed together.  Results are sorted in ascending order by the
+    /// chosen key, then reversed when `order` is [`SortOrder::Desc`].
+    pub fn list_filtered(
+        registry: &WorkspaceRegistry,
+        filter: Option<&WorkspaceFilter>,
+        sort_by: WorkspaceSortBy,
+        order: SortOrder,
+    ) -> Vec<WorkspaceEntry> {
+        let mut entries: Vec<WorkspaceEntry> = registry.workspaces.clone();
+
+        if let Some(f) = filter {
+            entries.retain(|w| {
+                f.name_contains
+                    .as_ref()
+                    .map_or(true, |n| w.name.to_lowercase().contains(&n.to_lowercase()))
+                    && f.path_contains
+                        .as_ref()
+                        .map_or(true, |p| w.path.to_lowercase().contains(&p.to_lowercase()))
+                    && f.pinned.map_or(true, |p| w.pinned == p)
+                    && f.has_tag
+                        .as_ref()
+                        .map_or(true, |t| w.tags.iter().any(|tag| tag == t))
+            });
+        }
+
+        match sort_by {
+            WorkspaceSortBy::Name => entries.sort_by(|a, b| a.name.cmp(&b.name)),
+            WorkspaceSortBy::Path => entries.sort_by(|a, b| a.path.cmp(&b.path)),
+            WorkspaceSortBy::LastActive => {
+                entries.sort_by(|a, b| a.last_active.cmp(&b.last_active))
+            }
+            WorkspaceSortBy::Pinned => entries.sort_by_key(|w| w.pinned),
+            WorkspaceSortBy::TagCount => entries.sort_by_key(|w| w.tags.len()),
+            WorkspaceSortBy::SessionCount => entries.sort_by_key(|w| Self::count_sessions(&w.hash)),
+        }
+
+        if matches!(order, SortOrder::Desc) {
+            entries.reverse();
+        }
+
+        entries
+    }
+
+    /// Count the number of `.jsonl` session files in a workspace's directory.
+    pub fn count_sessions(hash: &str) -> usize {
+        let dir = sessions_dir().join(hash);
+        if !dir.exists() {
+            return 0;
+        }
+        fs::read_dir(&dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
+                    .count()
+            })
+            .unwrap_or(0)
     }
 }
 
