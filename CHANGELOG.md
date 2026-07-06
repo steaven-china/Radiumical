@@ -5,6 +5,80 @@ All notable changes to Radiumical will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [pre-v0.1.0b] - 2026-07-06
+
+### Added
+
+#### Tauri Desktop App
+- Full TypeScript UI layer with Vite bundling, live HMR, and session-based chat interface
+- Real-time streaming markdown rendering via `marked` + `highlight.js`
+- Slash-command palette with categorized command discovery
+- Session management UI: list, save, load, delete sessions
+- Settings panel with model/provider/mode configuration
+- Choice modal for tool-driven user interactions (e.g. confirm, pick options)
+- Provider picker with automatic API key resolution from embedded registry
+- Custom provider support (`ProviderKind::Custom`) with manual API base + key entry
+- Welcome screen with hint chips and ASCII logo
+
+#### Build & Release
+- Multi-binary release packaging: TUI, RPC, and Tauri output organized into `tui/`, `rpc/`, `tauri/` subdirectories
+- Platform-suffixed binary names in CI/CD (e.g. `radiumical-linux-x64`)
+- `custom-protocol` feature for Tauri release builds
+- `build.sh` and `build.ps1` convenience scripts for local development
+- CLI command mode (`-c help|update|status`) with self-update scaffolding
+- Registry-driven provider resolution replacing all hardcoded provider-to-model mappings
+
+#### Registry & Providers
+- Embedded `providers.jsonl` at compile time for offline provider key resolution
+- `find_provider()` and `ProviderSource::default_model` for registry lookups
+- `ProviderKind::Custom(name, api_type)` for arbitrary OpenAI-compatible endpoints
+- Short-form RPC messages: `{proc, params}` alongside standard JSON-RPC
+
+#### Session Management
+- `SessionTools`, `SessionFilter`, `SortBy`, `SortOrder`, `SessionStats` for programmatic session queries
+- Content-level filtering (name, model, mode, provider) with sorting and stats aggregation
+- `auto_resume_last_task` flag to resume the previous session on TUI startup
+
+#### Version Display
+- Compile-time version info via `build.rs` (`git describe --tags --always --dirty`)
+- `radiumical_core::version` module — format: `[hash/profile+arch]` (e.g. `[7a742e9c/release-small+x86_64]`)
+- Web UI: version badge in toolbar top-right corner at 4px monospace
+- TUI: version appended to status bar
+
+### Fixed
+
+#### Cancellation & Reliability
+- Cancellation propagated throughout harness, tool loop, and sub-agents via watch channels
+- Cancelled tool calls now fill in proper error results instead of burning the conversation
+- `run_command` tool switched from sync `spawn_blocking` to `tokio::process::Command` with `kill_on_drop` — child processes terminate immediately on cancel/timeout
+- Search tool wrapped in `spawn_blocking` with 512 KB file-size guard
+
+#### Windows Subprocess UX
+- Console windows no longer flash when Tauri spawns subprocesses (`cmd.exe`, `bash.exe`, `git.exe`, `cargo`, `node`, etc.)
+- Added `process_util` module: `std_command()` / `tokio_command()` with `CREATE_NO_WINDOW` on Windows
+- Sync `std::process::Command` replaced with async `tokio::process::Command` in checkpoint, systools, secure_env, and playwright tools
+
+#### TUI Rendering
+- Wrapped-line height measurement in `measure_blocks` fixing viewport math
+- Multi-line errors split into separate output blocks for correct rendering
+- ASCII art alignment and toolbar layout fixes
+- Deprecated broken auto-load feature on startup
+
+#### Lint Hygiene
+- 8× `map_or(true, ...)` → `is_none_or(...)` in session filter code
+- 2× redundant `&` on `config.provider.name()` in Tauri autosave
+
+### Changed
+
+#### Documentation
+- README overhaul with comparison table (Electron vs Python vs Radiumical), value proposition, and version badge
+- Tightened tagline: "No Electron, No Python, Pure Rust"
+- Updated architecture, provider-flow, and building docs
+
+#### Project Structure
+- Tauri frontend moved to `radiumical-tauri/src-ui/` with TypeScript modules (`api.ts`, `commands.ts`, `state.ts`, `ui.ts`, `markdown.ts`)
+- TUI `App` struct decomposed into grouped state types (`InputState`, `ThinkingState`, `ViewportState`, `OverlayState`)
+
 ## [0.1.0-pre.1] - 2026-07-04
 
 ### Added
