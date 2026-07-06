@@ -33,6 +33,7 @@ export function mountApp(root: HTMLElement) {
           </div>
           <div class="toolbar-center"><span id="model-label">&mdash;</span></div>
           <div class="toolbar-right">
+            <span id="version-info" class="version-info"></span>
             <select id="mode-select">
               <option value="auto">Auto</option>
               <option value="plan">Plan</option>

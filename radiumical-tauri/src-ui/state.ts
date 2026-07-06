@@ -93,6 +93,12 @@ class Store {
       console.error("Failed to get app info:", e);
       this.addToast("Failed to load app info", "error");
     }
+    // Load version string
+    try {
+      const ver = await api.getVersion();
+      const el = document.getElementById("version-info");
+      if (el) el.textContent = ver;
+    } catch {}
     // Load provider registry early so the UI can resolve api_base/model.
     await this.loadProviders();
     // Fetch initial display from backend

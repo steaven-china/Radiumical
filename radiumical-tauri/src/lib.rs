@@ -130,6 +130,11 @@ async fn get_display(state: tauri::State<'_, AppState>) -> Result<Vec<DisplayIte
 }
 
 #[tauri::command]
+fn get_version() -> String {
+    radiumical_core::version::version_string()
+}
+
+#[tauri::command]
 async fn run_task(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -889,6 +894,7 @@ pub fn run() {
             load_session,
             delete_session,
             get_display,
+            get_version,
             get_app_info,
             save_api_key,
             set_model,

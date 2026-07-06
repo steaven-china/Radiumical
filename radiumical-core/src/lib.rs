@@ -38,6 +38,7 @@ pub mod subagent;
 pub mod systools;
 pub mod tools;
 pub mod types;
+pub mod version;
 
 // ═══ Stable public API re-exports ═══
 

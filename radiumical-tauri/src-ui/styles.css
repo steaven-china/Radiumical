@@ -170,6 +170,16 @@ html, body {
 
 .toolbar-right { min-width: 180px; justify-content: flex-end; }
 
+.version-info {
+  font-size: 4px;
+  color: var(--text-dim);
+  opacity: 0.5;
+  margin-right: 4px;
+  font-family: monospace;
+  white-space: nowrap;
+  align-self: center;
+}
+
 .icon-btn {
   background: transparent;
   border: none;

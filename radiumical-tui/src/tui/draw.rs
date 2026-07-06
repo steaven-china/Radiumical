@@ -758,7 +758,8 @@ fn draw_status(f: &mut Frame, area: Rect, app: &App) {
         AgentMode::Plan => "Plan",
         AgentMode::Exec => "Exec",
     };
-    let right_text = format!("{} | {}", app.model, mode);
+    let version = radiumical_core::version::version_string();
+    let right_text = format!("{} | {}  {}", app.model, mode, version);
     // Reserve exactly the width the right side needs (with a little padding).
     let right_len = right_text.width() + 2;
     let right_w = right_len.min(area.width.saturating_sub(8) as usize).max(8) as u16;

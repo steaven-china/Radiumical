@@ -85,6 +85,7 @@ export const api = {
   loadSession: (name: string) => invoke("load_session", { name }),
   deleteSession: (name: string) => invoke<boolean>("delete_session", { name }),
   getDisplay: () => invoke<DisplayItem[]>("get_display"),
+  getVersion: () => invoke<string>("get_version"),
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
   setModel: (model: string) => invoke("set_model", { model }),
   setMode: (mode: string) => invoke("set_mode", { mode }),
